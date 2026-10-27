@@ -98,6 +98,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/devices/**").hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.PUT, "/api/devices/**").hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.DELETE, "/api/devices/**").hasAnyRole("ADMIN", "MANAGER")
+                        // ERP：读 = 登录即可（班组长要看基础资料），写 = ADMIN/MANAGER
+                        .requestMatchers(HttpMethod.POST, "/api/erp/**").hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.PUT, "/api/erp/**").hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.DELETE, "/api/erp/**").hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.POST, "/api/alarms/rules", "/api/alarms/rules/**")
                         .hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.DELETE, "/api/alarms/rules/**")

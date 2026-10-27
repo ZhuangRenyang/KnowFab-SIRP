@@ -15,6 +15,7 @@ export const router = createRouter({
     { path: '/digest', component: ComingSoon, meta: { title: 'AI 早报' } },
     { path: '/system', component: ComingSoon, meta: { title: '系统', roles: ['ADMIN'] } },
     { path: '/users', component: () => import('@/views/UserManageView.vue'), meta: { title: '用户管理', roles: ['ADMIN'] } },
+    { path: '/erp/base', component: () => import('@/views/ErpBaseView.vue'), meta: { title: '基础资料' } },
     { path: '/discovery', component: ComingSoon, meta: { title: '设备发现', roles: ['ADMIN'] } },
     { path: '/:pathMatch(.*)*', redirect: '/' }
   ]
