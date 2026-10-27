@@ -28,6 +28,11 @@ public record DeviceUpsert(
         String servoBrand,
         Boolean enabled,
         String apiKey,
-        List<PointDef> points
+        List<PointDef> points,
+        /* 生产入库联动（DH-44） */
+        Long prodSkuId,
+        Long prodWarehouseId,
+        Integer prodResetHour,
+        Boolean prodAutoStockin
 ) {
 }

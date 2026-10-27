@@ -106,6 +106,20 @@ public class DeviceEntity {
     @Column(name = "points_json")
     private String pointsJson;
 
+    /* ---- 生产入库联动（DH-44）：绑定成品 SKU 后，计数点每 +N 自动生成入库单 ---- */
+    @Column(name = "prod_sku_id")
+    private Long prodSkuId;
+
+    @Column(name = "prod_wh_id")
+    private Long prodWhId;
+
+    /** 日产量统计清零时刻（0~23 点）：如填 8，则"一天"从早 8 点算到次日 8 点 */
+    @Column(name = "prod_reset_hour", nullable = false)
+    private int prodResetHour = 0;
+
+    @Column(name = "prod_auto_stockin", nullable = false)
+    private boolean prodAutoStockin = false;
+
     public Long getId() {
         return id;
     }
@@ -273,4 +287,13 @@ public class DeviceEntity {
     public void setPointsJson(String pointsJson) {
         this.pointsJson = pointsJson;
     }
+
+    public Long getProdSkuId() { return prodSkuId; }
+    public void setProdSkuId(Long prodSkuId) { this.prodSkuId = prodSkuId; }
+    public Long getProdWhId() { return prodWhId; }
+    public void setProdWhId(Long prodWhId) { this.prodWhId = prodWhId; }
+    public int getProdResetHour() { return prodResetHour; }
+    public void setProdResetHour(int prodResetHour) { this.prodResetHour = prodResetHour; }
+    public boolean isProdAutoStockin() { return prodAutoStockin; }
+    public void setProdAutoStockin(boolean prodAutoStockin) { this.prodAutoStockin = prodAutoStockin; }
 }

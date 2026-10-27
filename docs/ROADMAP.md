@@ -145,7 +145,7 @@ jshERP 模块逐个映射为我们的 DH 编号；零售与 SaaS 两个模块明
 | DH-56 | 组装拆卸单 | 后置——需要 BOM 概念，等有装配场景客户 | 后置 |
 | DH-53 | 零售管理 | 后置——POS/零售对工厂场景优先级低 | 后置 |
 | — | 多租户 SaaS | **明确不做**：单厂部署定位，多租户是另一门生意 | 不做 |
-| DH-44 | （参照项目没有） | **生产入库联动**：产线成品计数自动生成成品入库单——设备联网带来的差异化能力 | 待做（依赖 DH-41） |
+| DH-44 | （参照项目没有） | **生产入库联动（机器级）**：每台设备绑定成品 SKU + 目标仓库 + 每日清零时刻（夜班口径），计数点每 +N 自动生成 PROD_IN 入库单（10 秒汇总粒度，库存 10 秒内到位）；产量统计（今日/本月/今年，日界按清零时刻切）+ 设备详情 30 天折线图；数据源 prod_hourly.output（清零/断线补记已处理） | **已完成**（实测：sim 计数 77→91 联动出单 qty 7~15/10s；班组长不可见配置入口属 B1 表单权限）；产线维度汇总随 DH-41 |
 
 注：单据类模块（DH-43b/52/45b/54）共享同一张 `erp_stock_bill` 主表 + 明细表 + `bill_type` 字段，
 库存视图永远从流水聚合推导（不存冗余库存数），这是 jshERP 验证过的正确姿势，也是 DH-43 验收标准。
@@ -170,6 +170,7 @@ DH-46 框架（多厂商+开关）可以提前做，改造成本低（现有一�
 | 2026-10-26 | 初版。从对话与 `OPEN-DECISIONS.md` 汇总 28 项；新增 DH-02/DH-05 两个现场核实出的缺口。当日关闭 DH-02（404）、DH-01 与 DH-23（登录/角色/限流）、新增并关闭 DH-19（AI 早报）、DH-20（后台系统设置）、DH-05（迁移脚本执行机制）、DH-06（交付包审计）、DH-21（车间大屏）、DH-22（报警码字典） |
 | 2026-10-27 | 新增并关闭 DH-29：独立故障屏 `fault.html`（免登录白名单、2×2 维修卡、15 秒轮播、无故障正常态、rotate=N 双屏自动轮换） |
 | 2026-10-27 | 新增并关闭 DH-30：设备发现页 `discover.html` + `/api/discovery/**`（C 段扫描、寄存器对拍探测、点表 JSON 生成；只读 fc03/04、仅 ADMIN、限量；新增 tools/modbus-tcp-sim.py 模拟从站）。同日扩展：多段扫描（逗号分隔，上限 256→1024 台、并发 32→64），应对千台工厂跨多 C 段 |
+| 2026-10-27 | **DH-44 生产入库联动（机器级）完成**：device 加 prod_sku_id/prod_wh_id/prod_reset_hour/prod_auto_stockin 四列（ddl-auto 自动迁移）；ProdRollup 计数增量处挂钩子 → ErpProdInboundService（60s 配置缓存 + 10s 汇总落单，落库失败自动回缓冲重试，无默认仓告警暂缓）；新表 erp_stock_bill（bill_type 通用单据，后续采购/销售/盘点复用）；ErpProdController：/prod/status（配置+今日/本月/今年统计，日界按设备清零时刻切）/prod/daily（N 天折线）/prod/config；前端设备表单新增"生产入库联动"区（绑定成品/目标仓库/清零时刻）、设备详情新增产量统计卡（KPI 三数 + 30 天折线图）。实测：sim 设备计数 77→91，入库单 10s/张 qty 7~15 连续出单，30 天序列正常，0 ERROR |
 | 2026-10-27 | **ERP 全功能对齐启动：基础资料三件套落地**（用户拍板 jshERP 功能全要）——后端新增 erp 包：`erp_sku`/`erp_warehouse`/`erp_partner` 三实体（BCrypt 同款纪律：长文本 LONGVARCHAR、epoch 毫秒时间、IDENTITY）+ ErpBaseController（三组 CRUD+搜索+默认仓唯一化+往来单位三态）；SecurityConfig 按 HTTP 方法收口（POST/PUT/DELETE /api/erp/** → ADMIN/MANAGER，GET 登录即可）；前端 /erp/base 三页签页（商品/往来单位/仓库，含搜索/弹窗表单/停用启用/删除确认，LEADER 只读遮罩）。实测：建商品查重/默认仓/客户/搜索/班组长写 403 读 200 全过，0 ERROR。ROADMAP E 节新增全功能对齐矩阵（DH-42/43a/45a 完成，43b 库存单据下一个，零售/SaaS 后置） |
 | 2026-10-27 | **用户管理独立分类 + ERP 参照调研定稿**：①Vue 侧导航"系统"组升级为"系统管理"组（系统 + 用户管理两项），新增 /users 独立页（用户列表/行内角色变更/重置密码 prompt 校验 8 位/停用启用/删除/新增用户行内表单，契约与 UserController 逐字段对齐，最后一个管理员保护由后端兜底）；②调研 jshERP（Apache-2.0，进销存三件套+流水驱动库存）/ERPNext（GPLv3 只学模型）/Odoo（Community 残缺不作基准），参照与改名对照表写入 ROADMAP E 节（material→erp_sku、depot→erp_warehouse、单据→erp_stock_bill 等，全部自研重写不引入参照源码）；③admin 密码改 123456（BCrypt 直更 sys_user，API ≥8 位校验保持不动，交付环境不受影响） |
 | 2026-10-27 | **前端 Vue 3 迁移 B0+B1 落地**（专家团三文档确认后实施）：frontend/ 基座（Vue 3.5.44 + Vite 8.3.5 + router 5 hash + pinia 4.1 + Element Plus 2.14.7 按需解析 + ECharts 6 按需，版本 npm 逐包核验）；Design Tokens v2 单一源（设计师产出 + 图表语义 Token 补齐）；http.ts 统一 401/403 出口；WS 应用级单例（250ms 合并节流 + 1/2/4/8s 封顶重连）；usePolling 生命周期自动清理；登录页 + 设备监控页（卡片墙/筛选分页/详情点位网格/表单弹窗五模板/API Key 生成复制重置停用）完成；产物进 static/app，新增 WebConfig 转发 /app（唯一后端增量，SecurityConfig/pom/application.yml 零改动）；体积实测入口 gzip 48.7KB（预算 250KB）、全站 ~355KB（预算 1MB）；自测 36 过/0 挂（4 项 discovery 因模拟器未跑 SKIP）。旧页面未动；B2~B7 页签与一次性切换待后续批次 |

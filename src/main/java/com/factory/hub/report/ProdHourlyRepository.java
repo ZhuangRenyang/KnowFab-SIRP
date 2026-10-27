@@ -12,6 +12,8 @@ public interface ProdHourlyRepository extends JpaRepository<ProdHourly, Long> {
 
     List<ProdHourly> findByHourStartBetween(long from, long to);
 
+    List<ProdHourly> findByDeviceCodeAndHourStartBetween(String deviceCode, long from, long to);
+
     List<ProdHourly> findByHourStart(long hourStart);
 
     @Modifying

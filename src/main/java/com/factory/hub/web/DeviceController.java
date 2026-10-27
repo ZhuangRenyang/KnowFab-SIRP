@@ -82,7 +82,8 @@ public class DeviceController {
                 d.getDataBits(), d.getStopBits(), d.getParity(), d.getUnitId(),
                 d.getPollIntervalMs(), d.getServoBrand(), d.getTimeoutMs(), d.getOfflineAfterFails(),
                 d.isApiKeyEnabled(),
-                d.getEnabled(), d.getApiKey(), d.getPointsJson()));
+                d.getEnabled(), d.getApiKey(), d.getPointsJson(),
+                d.getProdSkuId(), d.getProdWhId(), d.getProdResetHour(), d.isProdAutoStockin()));
     }
 
     /** 新增或按 code 覆盖 */
@@ -289,6 +290,10 @@ public class DeviceController {
         d.setEnabled(req.enabled() == null || req.enabled());
         d.setApiKey(req.apiKey());
         d.setApiKeyEnabled(req.apiKeyEnabled() == null || req.apiKeyEnabled());
+        d.setProdSkuId(req.prodSkuId());
+        d.setProdWhId(req.prodWarehouseId());
+        d.setProdResetHour(req.prodResetHour() == null ? 0 : Math.max(0, Math.min(23, req.prodResetHour())));
+        d.setProdAutoStockin(req.prodAutoStockin() != null && req.prodAutoStockin());
         if (req.points() != null) {
             d.setPointsJson(mapper.writeValueAsString(req.points()));
         }

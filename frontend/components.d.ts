@@ -47,6 +47,7 @@ declare module 'vue' {
     ErpSkuTab: typeof import('./src/components/erp/ErpSkuTab.vue')['default']
     ErpWarehouseTab: typeof import('./src/components/erp/ErpWarehouseTab.vue')['default']
     PointTrend: typeof import('./src/components/PointTrend.vue')['default']
+    ProdStats: typeof import('./src/components/ProdStats.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     StatusBadge: typeof import('./src/components/StatusBadge.vue')['default']

@@ -1,6 +1,7 @@
 package com.factory.hub.report;
 
 import com.factory.hub.collect.SnapshotStore;
+import com.factory.hub.erp.ErpProdInboundService;
 import com.factory.hub.model.PointValue;
 import com.factory.hub.service.DeviceService;
 import jakarta.annotation.PreDestroy;
@@ -56,6 +57,7 @@ public class ProdRollup {
     private final SnapshotStore store;
     private final DeviceService deviceService;
     private final ProdHourlyRepository repo;
+    private final ErpProdInboundService inbound;
 
     /** key = deviceCode|hourStart，值是该小时该设备的累计 */
     private final Map<String, ProdHourly> buckets = new ConcurrentHashMap<>();
@@ -73,10 +75,12 @@ public class ProdRollup {
         long resets = 0;
     }
 
-    public ProdRollup(SnapshotStore store, DeviceService deviceService, ProdHourlyRepository repo) {
+    public ProdRollup(SnapshotStore store, DeviceService deviceService, ProdHourlyRepository repo,
+                      ErpProdInboundService inbound) {
         this.store = store;
         this.deviceService = deviceService;
         this.repo = repo;
+        this.inbound = inbound;
     }
 
     /**
@@ -130,6 +134,9 @@ public class ProdRollup {
                         if (backfill) {
                             p.setBackfill(p.getBackfill() + delta);
                         }
+                        // DH-44 生产入库联动：增量交给 ERP（服务内部按设备配置过滤，
+                        // 没启用联动的设备在这里是空操作）
+                        inbound.onProduced(code, delta, ts, backfill);
                     }
                 }
                 st.count = cur;

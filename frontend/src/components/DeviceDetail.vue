@@ -43,6 +43,7 @@
     </div>
 
     <PointTrend :device="d" />
+    <ProdStats :code="d.code" />
 
     <div v-if="d.lastError" class="last-err">最后错误：{{ d.lastError }}</div>
   </div>
@@ -56,6 +57,7 @@ import { useDevicesStore, statusOf, fmt } from '@/stores/devices'
 import { devicesApi } from '@/api/devices'
 import StatusBadge from '@/components/StatusBadge.vue'
 import PointTrend from '@/components/PointTrend.vue'
+import ProdStats from '@/components/ProdStats.vue'
 
 const props = defineProps<{ code: string }>()
 const emit = defineEmits<{ edit: [code: string]; removed: [code: string] }>()

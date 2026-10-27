@@ -64,6 +64,34 @@
         </div>
       </div>
 
+      <div class="sec">生产入库联动（DH-44：绑定成品后，计数点每 +N 自动入成品仓）</div>
+      <el-form-item label-width="90px">
+        <el-switch v-model="f.prodAutoStockin" active-text="启用" inactive-text="关闭" />
+      </el-form-item>
+      <template v-if="f.prodAutoStockin">
+        <div class="frow">
+          <el-form-item label="成品产品">
+            <el-select v-model="f.prodSkuId" filterable clearable placeholder="选这台机器生产的成品（基础资料里维护）" style="width:100%">
+              <el-option v-for="s in skuList" :key="s.id" :value="s.id" :label="`${s.code} · ${s.name}`" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="目标仓库">
+            <el-select v-model="f.prodWarehouseId" clearable placeholder="留空 = 默认仓" style="width:100%">
+              <el-option v-for="w in whList" :key="w.id" :value="w.id" :label="`${w.code} · ${w.name}`" />
+            </el-select>
+          </el-form-item>
+        </div>
+        <div class="frow">
+          <el-form-item label="每日清零">
+            <el-input-number v-model="f.prodResetHour" :min="0" :max="23" />
+            <span class="hint">点：日产量统计从这个时刻重新开始（如早班 8 点交接填 8）</span>
+          </el-form-item>
+        </div>
+        <div class="hint" style="margin:-6px 0 8px 90px">
+          前提：点表里有 role=count 的累计产量点。计数器本身的清零是现场的事，系统在读数变小时自动按重置处理，产量不会算成负数。
+        </div>
+      </template>
+
       <div class="sec">对外接口</div>
       <div class="frow">
         <el-form-item label="对外 API Key">
@@ -102,6 +130,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { ApiError } from '@/api/http'
 import { devicesApi, genKey, PROTOCOLS, BRANDS, TPL } from '@/api/devices'
+import { skuApi, warehouseApi } from '@/api/erp'
 import { useDevicesStore } from '@/stores/devices'
 
 const props = defineProps<{ editCode: string }>()
@@ -117,8 +146,13 @@ const f = reactive({
   serialPort: 'COM3', baudRate: 9600, dataBits: 8, stopBits: 1, parity: 0,
   unitId: 1, unitId2: 1,
   apiKey: '', apiKeyEnabled: true, servoBrand: '',
-  pointsText: JSON.stringify(TPL.machine, null, 2)
+  pointsText: JSON.stringify(TPL.machine, null, 2),
+  prodSkuId: undefined as number | undefined, prodWarehouseId: undefined as number | undefined,
+  prodResetHour: 0, prodAutoStockin: false
 })
+
+const skuList = ref<any[]>([])
+const whList = ref<any[]>([])
 
 const isNet = computed(() => f.protocol === 'modbus-tcp' || f.protocol === 'modbus-rtu-tcp')
 const isRtuTcp = computed(() => f.protocol === 'modbus-rtu-tcp')
@@ -130,12 +164,19 @@ function resetDefaults() {
     protocol: 'modbus-tcp', host: '', port: 502,
     serialPort: 'COM3', baudRate: 9600, dataBits: 8, stopBits: 1, parity: 0,
     unitId: 1, unitId2: 1, apiKey: '', apiKeyEnabled: true, servoBrand: '',
-    pointsText: JSON.stringify(TPL.machine, null, 2)
+    pointsText: JSON.stringify(TPL.machine, null, 2),
+    prodSkuId: undefined, prodWarehouseId: undefined, prodResetHour: 0, prodAutoStockin: false
   })
 }
 
 watch(visible, async (v) => {
   if (!v) return
+  /* 生产入库联动下拉数据（失败静默，主流程不受影响） */
+  try {
+    const [ss, ws] = await Promise.all([skuApi.list(), warehouseApi.list()])
+    skuList.value = ss
+    whList.value = ws
+  } catch { /* 忽略 */ }
   if (!props.editCode) {
     resetDefaults()
     return
@@ -152,6 +193,10 @@ watch(visible, async (v) => {
     unitId: c.unitId || 1, unitId2: c.unitId || 1,
     apiKey: c.apiKey || '', apiKeyEnabled: c.apiKeyEnabled !== false,
     servoBrand: c.servoBrand || ''
+  })
+  Object.assign(f, {
+    prodSkuId: c.prodSkuId ?? undefined, prodWarehouseId: c.prodWarehouseId ?? undefined,
+    prodResetHour: c.prodResetHour ?? 0, prodAutoStockin: !!c.prodAutoStockin
   })
   try {
     f.pointsText = JSON.stringify(JSON.parse(c.pointsJson || '[]'), null, 2)
@@ -194,7 +239,11 @@ async function save() {
     apiKey: f.apiKey.trim(),
     apiKeyEnabled: f.apiKeyEnabled,
     servoBrand: f.servoBrand,
-    points
+    points,
+    prodSkuId: f.prodSkuId ?? null,
+    prodWarehouseId: f.prodWarehouseId ?? null,
+    prodResetHour: Number(f.prodResetHour) || 0,
+    prodAutoStockin: f.prodAutoStockin
   }
   busy.value = true
   try {

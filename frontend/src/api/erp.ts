@@ -82,3 +82,29 @@ export const PARTNER_TYPES = [
 ]
 
 export const partnerTypeLabel = (t: string) => PARTNER_TYPES.find((x) => x.value === t)?.label || t
+
+/* ---------- DH-44 生产入库联动：机器级配置 + 产量统计 ---------- */
+
+export interface ProdStatus {
+  ok?: boolean
+  auto: boolean
+  skuId?: number | null
+  warehouseId?: number | null
+  skuName?: string | null
+  warehouseName?: string | null
+  resetHour: number
+  hasCount: boolean
+  today: number
+  month: number
+  year: number
+  months: { month: number; qty: number }[]
+}
+
+export const prodApi = {
+  status: (code: string) =>
+    http.get<ProdStatus>(`/api/erp/prod/status?code=${encodeURIComponent(code)}`),
+  daily: (code: string, days = 30) =>
+    http.get<{ date: string; qty: number }[]>(`/api/erp/prod/daily?code=${encodeURIComponent(code)}&days=${days}`),
+  saveConfig: (b: { code: string; skuId?: number | null; warehouseId?: number | null; resetHour: number; auto: boolean }) =>
+    http.post<{ ok: boolean; message?: string }>('/api/erp/prod/config', b)
+}

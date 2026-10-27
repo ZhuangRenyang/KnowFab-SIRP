@@ -26,6 +26,10 @@ public record DeviceConfig(
         Boolean apiKeyEnabled,
         Boolean enabled,
         String apiKey,
-        String pointsJson
+        String pointsJson,
+        Long prodSkuId,
+        Long prodWarehouseId,
+        Integer prodResetHour,
+        Boolean prodAutoStockin
 ) {
 }
