@@ -85,7 +85,7 @@ import { useRoute, useRouter } from 'vue-router'
 import {
   Monitor, Bell, Lightning, DataLine, Sunrise,
   OfficeBuilding, Box, Sell, ChatDotRound, Setting,
-  Expand, Fold, Sunny, Moon, ArrowDown
+  Expand, Fold, Sunny, Moon, ArrowDown, User
 } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
@@ -152,7 +152,10 @@ const groups = computed(() => [
     { path: '', label: 'AI 助手', icon: ChatDotRound, disabled: true, tip: '阶段三（DH-47）' }
   ] },
   ...(auth.isAdmin
-    ? [{ title: '系统', items: [{ path: '/system', label: '系统', icon: Setting, disabled: false, tip: '' }] }]
+    ? [{ title: '系统管理', items: [
+        { path: '/system', label: '系统', icon: Setting, disabled: false, tip: '' },
+        { path: '/users', label: '用户管理', icon: User, disabled: false, tip: '' }
+      ] }]
     : [])
 ])
 

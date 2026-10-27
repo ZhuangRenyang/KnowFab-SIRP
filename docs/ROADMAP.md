@@ -115,6 +115,19 @@
 | DH-47 | **AI 助手聊天窗口（全员）** | 所有登录用户可用；侧边/悬浮聊天窗；AI 只能查"**当前用户权限内的数据**"（角色过滤，销售查库存、班组长查本车间），**只读不写**；实现走工具调用（预定义查询：产量/库存/设备状态/报警/能耗）+ 受控只读 SQL 兜底；对话历史本地存库；引用真实数字，AI 只组织语言（延续"AI 只润色，事实本地算"红线） | 待做 |
 | DH-48 | **AI 运维增强（可选）** | 自然语言出报表、异常解读、排班问答；数据同样走权限过滤 | 待做 |
 
+### ERP 参照项目与命名对照（2026-10-27 调研定稿；纪律：只借鉴模型与交互，全部自研重写）
+
+| 参照 | 许可证 | 借鉴什么 | 明确不碰 |
+|---|---|---|---|
+| jshERP 管伊佳ERP（SpringBoot+Vue） | Apache-2.0（GitHub 主仓；Gitee 老镜像 GPL-3.0 以主仓为准） | "商品-仓库-单据"进销存三件套；出入库流水驱动库存（库存=流水累计，与 DH-43 同构）；盘点/调拨/库存预警；权限精确到按钮 | 其源码（含 Apache-2.0 版权件也不复制，且其 Vue2+MyBatis 技术栈与我们 Vue3+JPA 不通） |
+| ERPNext（Frappe） | **GPLv3 强传染——只看文档学模型** | 多仓库/批次序列号/FIFO·移动加权估值/库存预留（v16）；DocType 声明式建模思路 | 其一切代码 |
+| Odoo | Community LGPL + Enterprise 专有 | 模块化 app 矩阵与导航分组；企业级权限粒度 | Community 版残缺功能（完整会计/高级仓库锁 Enterprise），不作为功能基准 |
+
+改名对照（自研表，全部 `erp_` 前缀共库不混表）：jshERP `material 商品` → **`erp_sku`**（DH-42）；
+`depot 仓库` → **`erp_warehouse`**（DH-43）；`采购入库/销售出库单据` → **`erp_stock_bill` + `erp_stock_bill_item`**
+（入库/出库/调拨/盘点四类，库存=流水累计，DH-43）；`供应商/客户` → **`erp_partner`**（partner_type 区分，DH-45 用客户侧）；
+操作日志 → 沿用 DH-24 审计，不另建表。生产入库联动（DH-44）是我们独有的（参照项目没有设备联网），产线成品计数自动生成入库单。
+
 ### 依赖顺序（为什么这么排）
 
 ```
@@ -135,6 +148,7 @@ DH-46 框架（多厂商+开关）可以提前做，改造成本低（现有一�
 | 2026-10-26 | 初版。从对话与 `OPEN-DECISIONS.md` 汇总 28 项；新增 DH-02/DH-05 两个现场核实出的缺口。当日关闭 DH-02（404）、DH-01 与 DH-23（登录/角色/限流）、新增并关闭 DH-19（AI 早报）、DH-20（后台系统设置）、DH-05（迁移脚本执行机制）、DH-06（交付包审计）、DH-21（车间大屏）、DH-22（报警码字典） |
 | 2026-10-27 | 新增并关闭 DH-29：独立故障屏 `fault.html`（免登录白名单、2×2 维修卡、15 秒轮播、无故障正常态、rotate=N 双屏自动轮换） |
 | 2026-10-27 | 新增并关闭 DH-30：设备发现页 `discover.html` + `/api/discovery/**`（C 段扫描、寄存器对拍探测、点表 JSON 生成；只读 fc03/04、仅 ADMIN、限量；新增 tools/modbus-tcp-sim.py 模拟从站）。同日扩展：多段扫描（逗号分隔，上限 256→1024 台、并发 32→64），应对千台工厂跨多 C 段 |
+| 2026-10-27 | **用户管理独立分类 + ERP 参照调研定稿**：①Vue 侧导航"系统"组升级为"系统管理"组（系统 + 用户管理两项），新增 /users 独立页（用户列表/行内角色变更/重置密码 prompt 校验 8 位/停用启用/删除/新增用户行内表单，契约与 UserController 逐字段对齐，最后一个管理员保护由后端兜底）；②调研 jshERP（Apache-2.0，进销存三件套+流水驱动库存）/ERPNext（GPLv3 只学模型）/Odoo（Community 残缺不作基准），参照与改名对照表写入 ROADMAP E 节（material→erp_sku、depot→erp_warehouse、单据→erp_stock_bill 等，全部自研重写不引入参照源码）；③admin 密码改 123456（BCrypt 直更 sys_user，API ≥8 位校验保持不动，交付环境不受影响） |
 | 2026-10-27 | **前端 Vue 3 迁移 B0+B1 落地**（专家团三文档确认后实施）：frontend/ 基座（Vue 3.5.44 + Vite 8.3.5 + router 5 hash + pinia 4.1 + Element Plus 2.14.7 按需解析 + ECharts 6 按需，版本 npm 逐包核验）；Design Tokens v2 单一源（设计师产出 + 图表语义 Token 补齐）；http.ts 统一 401/403 出口；WS 应用级单例（250ms 合并节流 + 1/2/4/8s 封顶重连）；usePolling 生命周期自动清理；登录页 + 设备监控页（卡片墙/筛选分页/详情点位网格/表单弹窗五模板/API Key 生成复制重置停用）完成；产物进 static/app，新增 WebConfig 转发 /app（唯一后端增量，SecurityConfig/pom/application.yml 零改动）；体积实测入口 gzip 48.7KB（预算 250KB）、全站 ~355KB（预算 1MB）；自测 36 过/0 挂（4 项 discovery 因模拟器未跑 SKIP）。旧页面未动；B2~B7 页签与一次性切换待后续批次 |
 | 2026-10-27 | **仓库治理决策：转私有 + 不放开源 License**（用户拍板，经 PlantPilot/AIRP 等撞名调查同期讨论）——商业产品（卖授权）与开源许可冲突：AGPL 授权任何获得方（含竞对）商用，只约束开源修改，等于白送产品本体；私有+无 LICENSE=保留所有权利，客户授权走销售合同。落地：README 方式 A 改 Deploy Key 只读克隆（SSH 别名防冲突、不勾 write、可单独吊销）+ 新增「版权与授权」节；install.sh 标注私有后 --online/raw 需令牌（主交付为 Docker deploy.sh，不受影响）。用户侧待办：GitHub 网页 Settings→Danger Zone→Make private（Gitee 镜像同样私有） |
 | 2026-10-27 | **DH-34 改道交付：Docker Compose 一键部署**（用户指定仿 recruit_system_private 模式，放弃"上传 Release zip"路线）——git clone → deploy.sh 三行装完，MySQL 容器自动建库零配置；deploy-cn.sh 国内本地构建；裸机 install.sh 保留为备选。静态校验全过，真机端到端待客户机验证（同模式伯乐猎已真机验证） |
