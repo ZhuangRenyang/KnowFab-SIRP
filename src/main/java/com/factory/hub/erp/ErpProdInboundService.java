@@ -33,8 +33,7 @@ public class ErpProdInboundService {
     private record Cfg(Long skuId, Long whId) {}
 
     private final DeviceService deviceService;
-    private final ErpStockBillRepository billRepo;
-    private final ErpSkuRepository skuRepo;
+    private final ErpStockService stockService;
     private final ErpWarehouseRepository whRepo;
 
     private final Map<String, Double> pending = new ConcurrentHashMap<>();
@@ -45,12 +44,10 @@ public class ErpProdInboundService {
     private volatile boolean warnedNoWarehouse = false;
 
     public ErpProdInboundService(DeviceService deviceService,
-                                 ErpStockBillRepository billRepo,
-                                 ErpSkuRepository skuRepo,
+                                 ErpStockService stockService,
                                  ErpWarehouseRepository whRepo) {
         this.deviceService = deviceService;
-        this.billRepo = billRepo;
-        this.skuRepo = skuRepo;
+        this.stockService = stockService;
         this.whRepo = whRepo;
     }
 
@@ -116,16 +113,11 @@ public class ErpProdInboundService {
                 }
                 continue;
             }
-            ErpStockBill b = new ErpStockBill();
-            b.setBillNo("SC" + System.currentTimeMillis() + "-" + code);
-            b.setBillType(ErpStockBill.TYPE_PROD_IN);
-            b.setDeviceCode(code);
-            b.setSkuId(c.skuId());
-            b.setWarehouseId(whId);
-            b.setQty(BigDecimal.valueOf(qty).setScale(4, RoundingMode.HALF_UP));
-            b.setRemark(Boolean.TRUE.equals(bfs.get(code)) ? "断线补记" : null);
             try {
-                billRepo.save(b);
+                // 走统一单据服务：生成单头 + 明细行，单据列表里与手工单同一套结构
+                stockService.createProdInbound(code, c.skuId(), whId,
+                        BigDecimal.valueOf(qty).setScale(4, RoundingMode.HALF_UP),
+                        Boolean.TRUE.equals(bfs.get(code)));
             } catch (Exception ex) {
                 // 放回缓冲，下轮重试；不丢产量
                 pending.merge(code, qty, Double::sum);

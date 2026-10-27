@@ -73,6 +73,13 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // ---- 匿名可访问 ----
                         .requestMatchers("/login.html", "/favicon.ico").permitAll()
+                        // SPA 外壳必须匿名可取：登录页本身就在 /app/ 里（#/login）。
+                        // 2026-10-28 修复：此前 /app/** 落入 anyRequest().authenticated()，
+                        // 匿名打开 /login.html → 跳到 /app/#/login → 又被 302 回 /login.html，
+                        // 浏览器陷入死循环，新电脑/新浏览器根本进不了系统（老会话有 cookie 才没暴露）。
+                        // 这里放开的只是前端静态文件（js/css/html），数据仍然全靠 /api/** 认证；
+                        // 页面内的路由守卫会在拿不到会话时停在登录页。
+                        .requestMatchers("/app", "/app/", "/app/**").permitAll()
                         .requestMatchers("/api/auth/login", "/api/auth/me").permitAll()
                         .requestMatchers("/api/system/version").permitAll()
                         // 车间大屏：挂在墙上的电视，不能要求登录。只读聚合接口，

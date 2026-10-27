@@ -67,21 +67,9 @@ public class MigrationInitializer implements ApplicationContextInitializer<Confi
         }
 
         Path dir = Paths.get(env.getProperty("system.migration.dir", "./migrations"));
-        if (!Files.isDirectory(dir)) {
-            return;                                  // 没有迁移目录就是没升级过，正常情况
-        }
-
-        List<Path> files;
-        try (Stream<Path> s = Files.list(dir)) {
-            files = s.filter(p -> p.getFileName().toString().toLowerCase().endsWith(".sql"))
-                    .sorted(Comparator.comparing(p -> versionOf(p), VersionService::compare))
-                    .toList();
-        } catch (Exception e) {
-            log.warn("读取迁移目录失败 {}：{}", dir, e.getMessage());
-            return;
-        }
+        List<SqlFile> files = collect(dir);
         if (files.isEmpty()) {
-            return;
+            return;                                  // 没有迁移脚本就是没升级过，正常情况
         }
 
         String url = env.getProperty("spring.datasource.url");
@@ -98,18 +86,18 @@ public class MigrationInitializer implements ApplicationContextInitializer<Confi
                 ensureTable(c);
                 Set<String> done = appliedVersions(c);
                 int ran = 0;
-                for (Path f : files) {
-                    String ver = versionOf(f);
-                    if (done.contains(ver)) {
+                for (SqlFile f : files) {
+                    if (done.contains(f.version())) {
                         continue;
                     }
-                    if (runOne(c, f, ver)) {
+                    if (runOne(c, f)) {
                         ran++;
                     }
                 }
                 lastRunCount = ran;
                 if (ran > 0) {
-                    log.info("数据库迁移完成：本次执行 {} 个脚本（目录 {}）", ran, dir.toAbsolutePath());
+                    log.info("数据库迁移完成：本次执行 {} 个脚本（外部目录 {} + jar 内置）",
+                            ran, dir.toAbsolutePath());
                 }
             }
         } catch (Exception e) {
@@ -118,6 +106,48 @@ public class MigrationInitializer implements ApplicationContextInitializer<Confi
                     + (e.getMessage() == null ? "" : "：" + e.getMessage());
             log.error("数据库迁移无法执行：{}", e.getMessage());
         }
+    }
+
+    /** 一个待执行的迁移脚本：来自外部目录（运维可改）或 jar 内置（随升级包必达） */
+    private record SqlFile(String version, String name, Path path, String classpath) {}
+
+    /**
+     * 收集迁移脚本：<b>外部目录优先生效</b>（运维可以放同名文件覆盖内置的），
+     * 再补 jar 里 {@code db/migrations/*.sql} 的内置脚本（同版本去重）。
+     * <p>
+     * 为什么要有内置这一路：升级包只替换 jar（bin/upgrade.sh），Docker 镜像也只 COPY jar，
+     * 外部 {@code ./migrations} 目录在现场往往根本不存在——只认外部目录的话，
+     * 新版本的表结构变更永远到不了客户机器，症状是新功能一用就报"字段不存在"。
+     */
+    private List<SqlFile> collect(Path dir) {
+        List<SqlFile> files = new ArrayList<>();
+        if (Files.isDirectory(dir)) {
+            try (Stream<Path> s = Files.list(dir)) {
+                s.filter(p -> p.getFileName().toString().toLowerCase().endsWith(".sql"))
+                        .forEach(p -> files.add(new SqlFile(versionOf(p), p.getFileName().toString(), p, null)));
+            } catch (Exception e) {
+                log.warn("读取迁移目录失败 {}：{}", dir, e.getMessage());
+            }
+        }
+        try {
+            var resolver = new org.springframework.core.io.support.PathMatchingResourcePatternResolver(
+                    MigrationInitializer.class.getClassLoader());
+            for (org.springframework.core.io.Resource r : resolver.getResources("classpath*:db/migrations/*.sql")) {
+                String name = r.getFilename();
+                if (name == null) {
+                    continue;
+                }
+                String ver = versionOfName(name);
+                boolean dup = files.stream().anyMatch(f -> f.version().equals(ver));
+                if (!dup) {
+                    files.add(new SqlFile(ver, name, null, "db/migrations/" + name));
+                }
+            }
+        } catch (Exception e) {
+            log.warn("读取 jar 内置迁移脚本失败：{}", e.getMessage());
+        }
+        files.sort(Comparator.comparing(SqlFile::version, VersionService::compare));
+        return files;
     }
 
     /** 表用裸 DDL 建，和 SchemaMigration 实体保持一致 */
@@ -147,14 +177,15 @@ public class MigrationInitializer implements ApplicationContextInitializer<Confi
         return out;
     }
 
-    private boolean runOne(Connection c, Path file, String version) {
+    private boolean runOne(Connection c, SqlFile f) {
+        String version = f.version();
         String sql;
         try {
-            sql = Files.readString(file, StandardCharsets.UTF_8);
+            sql = read(f);
         } catch (Exception e) {
             record(c, version, false, "读取脚本失败：" + e.getMessage(), 0, "", 1);
             lastError = version + " 读取失败：" + e.getMessage();
-            log.error("迁移脚本 {} 读取失败：{}", file, e.getMessage());
+            log.error("迁移脚本 {} 读取失败：{}", f.name(), e.getMessage());
             return false;
         }
 
@@ -251,9 +282,26 @@ public class MigrationInitializer implements ApplicationContextInitializer<Confi
     }
 
     private String versionOf(Path p) {
-        String name = p.getFileName().toString();
+        return versionOfName(p.getFileName().toString());
+    }
+
+    private static String versionOfName(String name) {
         int dot = name.lastIndexOf('.');
         return dot > 0 ? name.substring(0, dot) : name;
+    }
+
+    /** 读脚本正文：外部目录走文件系统，内置脚本走 jar 里的 classpath */
+    private String read(SqlFile f) throws Exception {
+        if (f.path() != null) {
+            return Files.readString(f.path(), StandardCharsets.UTF_8);
+        }
+        try (java.io.InputStream in = MigrationInitializer.class.getClassLoader()
+                .getResourceAsStream(f.classpath())) {
+            if (in == null) {
+                throw new IllegalStateException("jar 里找不到迁移脚本：" + f.classpath());
+            }
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        }
     }
 
     /** 供页面显示：目录里有哪些脚本 */

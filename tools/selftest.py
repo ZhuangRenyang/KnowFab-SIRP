@@ -206,16 +206,23 @@ def main():
     for path, expect in [("/login.html", 200), ("/screen.html", 200), ("/fault.html", 200)]:
         code, _ = req("GET", path)
         check(f"G 页面 {path} = {expect}", code == expect, code)
-    # cutover 后：/app/ 是主界面（登录后 200、匿名 302 → /login.html 壳）
+    # cutover 后：/app/ 是主界面。SPA 外壳必须匿名可取，否则登录页（在 /app/#/login）
+    # 会被安全层 302 回 /login.html，和 login.html 的跳转壳形成死循环（2026-10-28 修复）
     code, body = req("GET", "/app/", cookie=admin_cookie)
     ok = code == 200 and isinstance(body, str) and 'id="app"' in body
     check("G /app/ 登录后 200 且为 SPA 壳", ok, code)
     try:
         resp = opener.open(urllib.request.Request(BASE + "/app/"), timeout=10)
         code_anon_app = resp.status
+        anon_app_body = resp.read().decode("utf-8", "ignore")
     except urllib.error.HTTPError as e:
         code_anon_app = e.code
-    check("G /app/ 匿名被拦截(302)", code_anon_app == 302, code_anon_app)
+        anon_app_body = ""
+    check("G /app/ 匿名可取(200，登录页在壳里)",
+          code_anon_app == 200 and 'id="app"' in anon_app_body, code_anon_app)
+    # 匿名拿不到任何业务数据（外壳公开 ≠ 数据公开）
+    code, _ = req("GET", "/api/erp/stock/summary")
+    check("G 匿名读库存接口被拒(401)", code == 401, code)
     # 旧路径保留 200 跳转壳（书签兼容 + 审计要求 static/index.html 存在）
     code, body = req("GET", "/index.html", cookie=admin_cookie)
     ok = code == 200 and isinstance(body, str) and "location.replace('/app/')" in body

@@ -108,3 +108,141 @@ export const prodApi = {
   saveConfig: (b: { code: string; skuId?: number | null; warehouseId?: number | null; resetHour: number; auto: boolean }) =>
     http.post<{ ok: boolean; message?: string }>('/api/erp/prod/config', b)
 }
+
+/* ---------- DH-43b 库存与出入库单据 ---------- */
+
+export interface StockBalance {
+  skuId: number
+  code: string
+  name: string
+  spec?: string | null
+  category?: string | null
+  unit?: string | null
+  warehouseId: number
+  warehouseName: string
+  qty: number
+  unitCost: number
+  amount: number
+  minStock?: number | null
+  maxStock?: number | null
+}
+
+export interface StockAlert {
+  skuId: number
+  code: string
+  name: string
+  spec?: string | null
+  unit?: string | null
+  total: number
+  minStock?: number | null
+  maxStock?: number | null
+  status: 'LOW' | 'HIGH'
+  gap: number
+  byWarehouse: { warehouseId: number; warehouseName: string; qty: number }[]
+}
+
+export interface StockBillRow {
+  billNo: string
+  type: string
+  typeLabel: string
+  partnerName?: string | null
+  srcWarehouseName?: string | null
+  warehouseName?: string | null
+  deviceCode?: string | null
+  qty: number
+  amount: number
+  lineCount: number
+  operator?: string | null
+  remark?: string | null
+  createdAt: number
+  voided: boolean
+  voidedBy?: string | null
+}
+
+export interface StockBillLine {
+  lineNo: number
+  skuId: number
+  skuCode: string
+  skuName: string
+  spec?: string | null
+  unit?: string | null
+  warehouseName: string
+  qty: number
+  unitPrice?: number | null
+  amount?: number | null
+}
+
+export interface StockFlowRow {
+  createdAt: number
+  billNo: string
+  type: string
+  typeLabel: string
+  warehouseName?: string | null
+  qty: number
+  balance: number
+  deviceCode?: string | null
+}
+
+export interface StockSummary {
+  ok: boolean
+  skuCount: number
+  stockRowCount: number
+  whCount: number
+  totalQty: number
+  totalValue: number
+  alertCount: number
+  todayIn: number
+  todayOut: number
+  monthIn: number
+  monthOut: number
+  todayBills: number
+  prodToday: number
+}
+
+export interface BillLineInput {
+  skuId: number
+  qty: number
+  unitPrice?: number | null
+}
+
+export const stockApi = {
+  types: () => http.get<{ all: { value: string; label: string }[]; manual: string[] }>('/api/erp/stock/types'),
+  summary: () => http.get<StockSummary>('/api/erp/stock/summary'),
+  trend: (days = 30) => http.get<{ date: string; in: number; out: number }[]>(`/api/erp/stock/trend?days=${days}`),
+  balances: (p: { warehouseId?: number | null; q?: string } = {}) => {
+    const qs = new URLSearchParams()
+    if (p.warehouseId) qs.set('warehouseId', String(p.warehouseId))
+    if (p.q && p.q.trim()) qs.set('q', p.q.trim())
+    const s = qs.toString()
+    return http.get<StockBalance[]>(`/api/erp/stock/balances${s ? '?' + s : ''}`)
+  },
+  alerts: () => http.get<StockAlert[]>('/api/erp/stock/alerts'),
+  flow: (skuId: number, warehouseId: number, limit = 60) =>
+    http.get<StockFlowRow[]>(`/api/erp/stock/flow?skuId=${skuId}&warehouseId=${warehouseId}&limit=${limit}`),
+  bills: (p: {
+    type?: string; from?: number; to?: number; withProd?: boolean
+    kw?: string; page?: number; size?: number
+  } = {}) => {
+    const qs = new URLSearchParams()
+    if (p.type) qs.set('type', p.type)
+    if (p.from) qs.set('from', String(p.from))
+    if (p.to) qs.set('to', String(p.to))
+    if (p.withProd) qs.set('withProd', 'true')
+    if (p.kw && p.kw.trim()) qs.set('kw', p.kw.trim())
+    qs.set('page', String(p.page || 1))
+    qs.set('size', String(p.size || 20))
+    return http.get<{ ok: boolean; total: number; page: number; size: number; rows: StockBillRow[] }>(
+      `/api/erp/stock/bills?${qs.toString()}`)
+  },
+  billDetail: (billNo: string) =>
+    http.get<{ ok: boolean; bill: StockBillRow & { voidedAt?: number | null }; lines: StockBillLine[] }>(
+      `/api/erp/stock/bills/${encodeURIComponent(billNo)}`),
+  createBill: (b: {
+    type: string; partnerId?: number | null; warehouseId: number
+    srcWarehouseId?: number | null; remark?: string; lines: BillLineInput[]
+  }) => http.post<{ ok: boolean; message?: string; billNo?: string; lineCount?: number }>('/api/erp/stock/bills', b),
+  stocktake: (b: { warehouseId: number; remark?: string; lines: BillLineInput[] }) =>
+    http.post<{ ok: boolean; message?: string; billNo?: string; noDiff?: boolean }>('/api/erp/stock/stocktake', b),
+  voidBill: (billNo: string) =>
+    http.post<{ ok: boolean; message?: string }>(`/api/erp/stock/bills/${encodeURIComponent(billNo)}/void`, {})
+}
