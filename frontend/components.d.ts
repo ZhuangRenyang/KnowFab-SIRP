@@ -13,6 +13,7 @@ declare module 'vue' {
   export interface GlobalComponents {
     AccountDialog: typeof import('./src/components/AccountDialog.vue')['default']
     AiConfigDialog: typeof import('./src/components/ai/AiConfigDialog.vue')['default']
+    DemandDialog: typeof import('./src/components/energy/DemandDialog.vue')['default']
     DeviceDetail: typeof import('./src/components/DeviceDetail.vue')['default']
     DeviceFormDialog: typeof import('./src/components/DeviceFormDialog.vue')['default']
     ElAlert: typeof import('element-plus/es')['ElAlert']
@@ -57,6 +58,7 @@ declare module 'vue' {
     RuleDialog: typeof import('./src/components/alarm/RuleDialog.vue')['default']
     ShiftsDialog: typeof import('./src/components/report/ShiftsDialog.vue')['default']
     StatusBadge: typeof import('./src/components/StatusBadge.vue')['default']
+    TariffDialog: typeof import('./src/components/energy/TariffDialog.vue')['default']
   }
   export interface GlobalDirectives {
     vLoading: typeof import('element-plus/es')['ElLoadingDirective']
