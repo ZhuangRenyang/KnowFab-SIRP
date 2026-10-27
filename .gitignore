@@ -27,3 +27,8 @@ application-db.yml
 frontend/node_modules/
 frontend/.vite/
 src/main/resources/static/app/
+
+# Python 缓存
+tools/__pycache__/
+__pycache__/
+*.pyc
