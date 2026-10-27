@@ -61,7 +61,9 @@ mvn spring-boot:run
 # 或者用 IDE：直接运行 DeviceHubApplication
 ```
 
-打开 http://localhost:8080 —— 会看到模拟设备（加工中心 / 注塑机 / 冲压机 / 电表）实时刷数据。
+打开 **http://localhost:8080/app/** —— 新版界面（Vue 3），六个页签全部在内；
+旧的 `/`、`/login.html`、`/discover.html` 现在是 3 行跳转壳，自动送到 `/app/`，旧书签继续有效。
+车间大屏 `screen.html` / `fault.html` 保持原生零依赖，地址不变。
 
 打包成单文件 jar（部署到客户工控机用这个）：
 

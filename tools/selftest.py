@@ -199,14 +199,28 @@ def main():
     check("F3 错 Key 被拒(401)", code == 401, code)
 
     # ============ G. 页面 ============
-    for path, expect in [("/login.html", 200), ("/screen.html", 200), ("/fault.html", 200)]:
-        code, _ = req("GET", path)
-        check(f"G 页面 {path} = {expect}", code == expect, code)
-    # h2-console：H2 已废弃，路径不存在；匿名访问被安全层重定向到登录页（302）
     class NoRedirect(urllib.request.HTTPRedirectHandler):
         def redirect_request(self, req_, fp, code_, msg, headers, newurl):
             return None
     opener = urllib.request.build_opener(NoRedirect)
+    for path, expect in [("/login.html", 200), ("/screen.html", 200), ("/fault.html", 200)]:
+        code, _ = req("GET", path)
+        check(f"G 页面 {path} = {expect}", code == expect, code)
+    # cutover 后：/app/ 是主界面（登录后 200、匿名 302 → /login.html 壳）
+    code, body = req("GET", "/app/", cookie=admin_cookie)
+    ok = code == 200 and isinstance(body, str) and 'id="app"' in body
+    check("G /app/ 登录后 200 且为 SPA 壳", ok, code)
+    try:
+        resp = opener.open(urllib.request.Request(BASE + "/app/"), timeout=10)
+        code_anon_app = resp.status
+    except urllib.error.HTTPError as e:
+        code_anon_app = e.code
+    check("G /app/ 匿名被拦截(302)", code_anon_app == 302, code_anon_app)
+    # 旧路径保留 200 跳转壳（书签兼容 + 审计要求 static/index.html 存在）
+    code, body = req("GET", "/index.html", cookie=admin_cookie)
+    ok = code == 200 and isinstance(body, str) and "location.replace('/app/')" in body
+    check("G /index.html 为跳转壳→/app/", ok, code)
+    # h2-console：H2 已废弃，路径不存在；匿名访问被安全层重定向到登录页（302）
     try:
         resp = opener.open(urllib.request.Request(BASE + "/h2-console"), timeout=10)
         code302 = resp.status
