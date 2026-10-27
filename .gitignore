@@ -1,0 +1,24 @@
+target/
+data/
+logs/
+run.log
+*.log
+.idea/
+*.iml
+.vscode/
+.DS_Store
+
+# ---- 授权相关：这些绝对不能进版本库 ----
+# 私钥泄露 = 谁都能自己签授权，防白嫖就废了。备份到你的网盘/密码管理器，不要放 git
+tools/keys/
+# 客户现场生成的授权文件与试用期状态
+license/*.key
+license/*.bak
+license/state.json
+# 示例授权是给本机演示用的，换台机器就失效
+tools/license-demo.key
+
+# 交付包产物：zip 不进库；version.json 是在线安装的更新源清单，要进库
+dist/*
+!dist/version.json
+application-db.yml

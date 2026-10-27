@@ -1,0 +1,14 @@
+# 统一换行：脚本在 Linux 上跑，CRLF 会让第一行就报 "command not found"
+* text=auto
+*.sh   text eol=lf
+*.java text eol=lf
+*.yml  text eol=lf
+*.html text eol=lf
+*.md   text eol=lf
+*.sql  text eol=lf
+*.factories text eol=lf
+
+*.jar  binary
+*.zip  binary
+*.png  binary
+*.key  binary

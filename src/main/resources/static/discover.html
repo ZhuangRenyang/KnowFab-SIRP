@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>设备发现 · 知造 SIRP</title>
+<script>try{if(localStorage.getItem('dh-theme')==='light')document.documentElement.classList.add('light')}catch(e){}</script>
+<style>
+  /* 设备发现：给接第一台真机的人用的侦察页。
+     扫网段找 Modbus 设备 → 读寄存器对拍找点 → 生成点表贴进添加设备。
+     工具只读不写：写错寄存器会改设备参数，这条路永远不开。 */
+  :root{
+    --bg:#0d1420; --panel:#131c2b; --panel2:#182335; --line:#233350;
+    --text:#e8f1fb; --muted:#8199b5; --dim:#4b5f75;
+    --run:#34d399; --idle:#fbbf24; --alarm:#ff5b5b; --accent:#38bdf8;
+    --num:ui-monospace,Consolas,"Courier New",monospace;
+  }
+  html.light{
+    --bg:#eef1f6; --panel:#ffffff; --panel2:#f6f8fb; --line:#d8e0ea;
+    --text:#1b2534; --muted:#5f6e82; --dim:#8593a6;
+    --run:#15803d; --idle:#b45309; --alarm:#dc2626; --accent:#2563eb;
+  }
+  html.light td{border-bottom-color:rgba(15,23,42,.07)}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:radial-gradient(900px 500px at 50% -10%, #14243a 0%, transparent 60%),var(--bg);
+    color:var(--text);
+    font-family:"HarmonyOS Sans SC","Microsoft YaHei","PingFang SC",system-ui,sans-serif;
+    font-size:14px;min-height:100vh;padding:20px 24px 40px;
+  }
+  header{display:flex;align-items:center;gap:14px;margin-bottom:16px;
+         border-bottom:1px solid var(--line);padding-bottom:14px}
+  h1{font-size:19px;font-weight:600;letter-spacing:.05em}
+  .sub{color:var(--muted);font-size:12px;letter-spacing:.15em}
+  .back{margin-left:auto;color:var(--accent);text-decoration:none;border:1px solid rgba(56,189,248,.4);
+        border-radius:6px;padding:7px 14px;font-size:13px}
+  .back:hover{background:rgba(56,189,248,.12)}
+
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .card{background:linear-gradient(180deg,var(--panel),var(--panel2));
+        border:1px solid var(--line);border-radius:10px;padding:16px;min-width:0}
+  .card.wide{grid-column:1 / -1}
+  .card h2{font-size:15px;font-weight:600;margin-bottom:4px}
+  .card .tip{color:var(--muted);font-size:12px;line-height:1.7;margin-bottom:12px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;align-items:flex-end}
+  .f{display:flex;flex-direction:column;gap:4px}
+  .f label{font-size:12px;color:var(--muted)}
+  .f input,.f select{background:#0b1220;border:1px solid var(--line);border-radius:6px;
+       color:var(--text);padding:8px 10px;font-size:13px;font-family:var(--num);width:110px}
+  .f input.wide{width:150px}
+  button{background:var(--accent);color:#04222f;border:0;border-radius:6px;
+         padding:9px 18px;font-size:13px;font-weight:600;cursor:pointer}
+  button:disabled{opacity:.5;cursor:default}
+  button.ghost{background:transparent;color:var(--accent);border:1px solid rgba(56,189,248,.4)}
+  button.ghost:hover{background:rgba(56,189,248,.12)}
+  .hint{color:var(--dim);font-size:12px;margin-top:6px;line-height:1.7}
+
+  table{width:100%;border-collapse:collapse;font-size:13px;margin-top:10px}
+  th{color:var(--muted);text-align:left;font-weight:400;font-size:12px;
+     padding:6px 8px;border-bottom:1px solid var(--line)}
+  td{padding:6px 8px;border-bottom:1px solid rgba(255,255,255,.04);font-family:var(--num)}
+  td .go{color:var(--accent);cursor:pointer;font-family:inherit}
+  td .go:hover{text-decoration:underline}
+  .empty{color:var(--dim);font-size:13px;padding:14px 0}
+  .up{color:var(--alarm)} .down{color:var(--run)}
+  tr.chg td{background:rgba(251,191,36,.07)}
+
+  textarea{width:100%;min-height:150px;background:#0b1220;color:var(--text);
+           border:1px solid var(--line);border-radius:8px;padding:10px;
+           font-family:var(--num);font-size:12px;line-height:1.6;resize:vertical}
+  .ok-line{color:var(--run);font-size:13px}
+  .err-line{color:var(--alarm);font-size:13px}
+
+  .mask{position:fixed;inset:0;background:rgba(6,11,18,.9);display:none;
+        align-items:center;justify-content:center;z-index:9;flex-direction:column;gap:10px}
+  .mask.show{display:flex}
+  .mask div{color:var(--idle);font-size:16px;letter-spacing:.05em}
+  .mask p{color:var(--muted);font-size:13px}
+
+  @media (max-width:1100px){ .grid{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>设备发现</h1>
+    <div class="sub">NETWORK DISCOVERY · 只读探测</div>
+  </div>
+  <a class="back" href="/">← 返回后台</a>
+  <button class="back" id="theme-btn" onclick="toggleTheme()" title="切换浅色/深色主题" style="border-style:solid">主题</button>
+</header>
+
+<div class="grid">
+
+  <section class="card">
+    <h2>第一步 · 扫网段找设备</h2>
+    <div class="tip">并发测一批 C 段里谁开着 Modbus 端口。同一局域网内，千台规模十几秒出结果；
+      大厂设备跨多个网段就全填上（逗号隔开），单次上限 1024 台，更多分几批。</div>
+    <div class="row">
+      <div class="f"><label>网段（多段用英文逗号隔开）</label><input class="wide" id="s-prefix" value="192.168.1" style="width:230px" placeholder="192.168.1,192.168.2"></div>
+      <div class="f"><label>起始</label><input id="s-from" type="number" value="1" min="1" max="254"></div>
+      <div class="f"><label>结束</label><input id="s-to" type="number" value="254" min="1" max="254"></div>
+      <div class="f"><label>端口</label><input id="s-port" type="number" value="502"></div>
+      <div class="f"><label>超时 ms</label><input id="s-timeout" type="number" value="300"></div>
+      <button id="s-btn" onclick="doScan()">开始扫描</button>
+    </div>
+    <div class="hint" id="s-note">扫的是本机所在网络——确认服务器和设备网线/WiFi 在同一路由下。</div>
+    <table id="s-table" style="display:none">
+      <thead><tr><th>IP 地址</th><th>端口</th><th>操作</th></tr></thead>
+      <tbody id="s-body"></tbody>
+    </table>
+    <div class="empty" id="s-empty" style="display:none">这个范围里没有开着该端口的设备</div>
+  </section>
+
+  <section class="card">
+    <h2>第二步 · 读寄存器对拍找点</h2>
+    <div class="tip">对扫描到的 IP 读一段寄存器，勾上自动刷新（2 秒一次），
+      然后去设备边：<b style="color:var(--text)">启动机器 → 看哪个值变了；停机再看；报警再看</b>。
+      跟着状态走的 0/1/2 就是运行状态，单调递增的是产量计数，报警时非 0 的是报警字。</div>
+    <div class="row">
+      <div class="f"><label>IP 地址</label><input class="wide" id="p-ip" placeholder="192.168.1.50"></div>
+      <div class="f"><label>端口</label><input id="p-port" type="number" value="502"></div>
+      <div class="f"><label>从站号</label><input id="p-unit" type="number" value="1" min="1" max="247"></div>
+      <div class="f"><label>功能码</label>
+        <select id="p-fc">
+          <option value="3">03 保持寄存器</option>
+          <option value="4">04 输入寄存器</option>
+          <option value="2">02 离散输入（DI 通道）</option>
+        </select></div>
+      <div class="f"><label>帧格式</label>
+        <select id="p-framing">
+          <option value="tcp">Modbus TCP（网口直连）</option>
+          <option value="rtu">RTU 透传（串口服务器）</option>
+        </select></div>
+      <div class="f"><label>起始地址</label><input id="p-from" type="number" value="0" min="0"></div>
+      <div class="f"><label>数量</label><input id="p-count" type="number" value="20" min="1" max="100"></div>
+    </div>
+    <div class="row">
+      <button id="p-btn" onclick="probeOnce()">读一次</button>
+      <button class="ghost" id="p-auto" onclick="toggleAuto()">▶ 自动刷新（2 秒）</button>
+      <button class="ghost" onclick="genJson(true)">生成点表（全部地址）</button>
+      <button class="ghost" onclick="genJson(false)">生成点表（仅变化过的）</button>
+    </div>
+    <div class="f" style="flex-direction:row;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+      <button class="ghost" onclick="scanUnits()">扫从站</button>
+      <label style="color:var(--muted);font-size:12px">范围</label>
+      <input id="u-from" type="number" value="1" min="1" max="247" style="width:64px;padding:5px 8px">
+      <label style="color:var(--muted);font-size:12px">到</label>
+      <input id="u-to" type="number" value="32" min="1" max="247" style="width:64px;padding:5px 8px">
+      <span style="color:var(--dim);font-size:12px">一台盒子后面挂多台 485 设备时，先扫出哪些从站号是活的</span>
+    </div>
+    <div class="hint" id="u-note" style="margin-bottom:6px"></div>
+    <div id="u-chips" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px"></div>
+    <div class="hint" id="p-note">地址是 0 基的（厂家手册写 40001 时这里填 0）。
+      RTU 透传设备生成点表后，添加设备时协议要选 <b style="color:var(--text)">modbus-rtu-tcp</b>，IP/端口填盒子的。
+      <span style="color:var(--alarm)">工具只读不写——绝不碰写功能码，写错地址会改掉设备参数。</span></div>
+    <table id="p-table" style="display:none">
+      <thead><tr><th>地址</th><th>十进制</th><th>十六进制</th><th>变化</th></tr></thead>
+      <tbody id="p-body"></tbody>
+    </table>
+    <div class="err-line" id="p-err"></div>
+  </section>
+
+  <section class="card wide">
+    <h2>第三步 · 点表 JSON（贴到「新增设备」的点表框）</h2>
+    <div class="tip">生成后点复制 → 设备监控 → 新增设备 → 点表框里全选粘贴。
+      <b style="color:var(--text)">然后把 name 改成人话、role 改成实际角色</b>：
+      状态点 role=status、产量计数 role=count、报警字 role=alarm、普通数值 role=value。
+      dataType 先按 u16 试，值超过 65535 或对不上再查手册（可能是 u32/浮点）。</div>
+    <textarea id="json" placeholder="点第二步「生成点表」后出现在这里" spellcheck="false"></textarea>
+    <div class="row" style="margin-top:10px">
+      <button class="ghost" onclick="copyJson()">复制 JSON</button>
+      <span class="hint" id="j-note"></span>
+    </div>
+  </section>
+
+</div>
+
+<div class="mask" id="mask">
+  <div>此功能仅管理员可用</div>
+  <p>用管理员账号在后台登录后再打开本页</p>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let autoTimer = null, lastVals = null, changedSet = new Set(), lastProbeArgs = null;
+
+/* ---------- 权限门：非管理员直接盖住 ---------- */
+(async function(){
+  try{
+    const me = await fetch('/api/auth/me').then(r => r.json());
+    if(!me || !me.authenticated || me.role !== 'ADMIN'){
+      $('mask').classList.add('show');
+    }
+  }catch(e){ $('mask').classList.add('show'); }
+})();
+
+function toggleTheme(){
+  const light = document.documentElement.classList.toggle('light');
+  try{ localStorage.setItem('dh-theme', light ? 'light' : 'dark'); }catch(e){}
+}
+async function api(url, body){
+  const r = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'},
+                               body: JSON.stringify(body)});
+  if (r.status === 403) throw new Error('没有权限（需要管理员）');
+  return r.json();
+}
+
+/* ---------- 扫描 ---------- */
+async function doScan(){
+  const btn = $('s-btn');
+  btn.disabled = true; btn.textContent = '扫描中…';
+  $('s-note').textContent = '正在扫，最多十几秒，取决于超时设置和范围…';
+  try{
+    const d = await api('/api/discovery/scan', {
+      prefixes: $('s-prefix').value.trim(),
+      from: +$('s-from').value, to: +$('s-to').value,
+      port: +$('s-port').value, timeoutMs: +$('s-timeout').value
+    });
+    if (!d.ok){ $('s-note').innerHTML = '<span class="err-line">' + esc(d.error) + '</span>'; return; }
+    $('s-note').textContent = '扫了 ' + d.scanned + ' 个地址，用时 ' + d.elapsedMs + 'ms，找到 ' + d.found.length + ' 台开着 ' + d.port + ' 端口：';
+    $('s-table').style.display = d.found.length ? '' : 'none';
+    $('s-empty').style.display = d.found.length ? 'none' : '';
+    $('s-body').innerHTML = d.found.map(f =>
+      '<tr><td>' + f.ip + '</td><td>' + f.port + '</td>' +
+      '<td><span class="go" onclick="pickIp(\'' + f.ip + '\',' + f.port + ')">探测这台 →</span></td></tr>'
+    ).join('');
+  }catch(e){
+    $('s-note').innerHTML = '<span class="err-line">' + esc(e.message) + '</span>';
+  }finally{
+    btn.disabled = false; btn.textContent = '开始扫描';
+  }
+}
+
+/* ---------- 探测 ---------- */
+function pickIp(ip, port){
+  $('p-ip').value = ip;
+  $('p-port').value = port;
+  probeOnce();
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+async function probeOnce(){
+  const args = {
+    ip: $('p-ip').value.trim(), port: +$('p-port').value, unitId: +$('p-unit').value,
+    fc: +$('p-fc').value, from: +$('p-from').value, count: +$('p-count').value,
+    framing: $('p-framing').value
+  };
+  lastProbeArgs = args;
+  $('p-btn').disabled = true;
+  try{
+    const d = await api('/api/discovery/probe', args);
+    if (!d.ok){
+      $('p-err').textContent = '读取失败：' + d.error;
+      return;
+    }
+    $('p-err').textContent = '';
+    renderProbe(args, d.values, d.hex);
+  }catch(e){
+    $('p-err').textContent = e.message;
+  }finally{
+    $('p-btn').disabled = false;
+  }
+}
+
+/* ---------- 从站扫描（B 路径：一台盒子后面找活着的 485 设备） ---------- */
+async function scanUnits(){
+  const ip = $('p-ip').value.trim();
+  if (!ip){ alert('先填盒子的 IP 地址'); return; }
+  const btn = event && event.target;
+  if (btn) btn.disabled = true;
+  $('u-note').textContent = '正在扫从站，串口线是独占的，最多等十几秒…';
+  $('u-chips').innerHTML = '';
+  try{
+    const d = await api('/api/discovery/units', {
+      ip: ip, port: +$('p-port').value, framing: $('p-framing').value,
+      from: +$('u-from').value, to: +$('u-to').value, timeoutMs: 600
+    });
+    if (!d.ok){ $('u-note').innerHTML = '<span class="err-line">' + esc(d.error) + '</span>'; return; }
+    if (!d.alive.length){
+      $('u-note').textContent = '扫了 ' + d.scanned + ' 个从站号（' + d.elapsedMs + 'ms），没有应答——' +
+        '查盒子是否透传模式、波特率是否和设备一致、A/B 线是否接反。';
+      return;
+    }
+    $('u-note').textContent = '扫了 ' + d.scanned + ' 个从站号（' + d.elapsedMs + 'ms），活着的从站：点一下直接用它探测';
+    $('u-chips').innerHTML = d.alive.map(u =>
+      '<button class="ghost" style="padding:4px 12px;font-family:var(--num)" onclick="pickUnit(' + u + ')">从站 ' + u + '</button>'
+    ).join('');
+  }catch(e){
+    $('u-note').innerHTML = '<span class="err-line">' + esc(e.message) + '</span>';
+  }finally{
+    if (btn) btn.disabled = false;
+  }
+}
+
+function pickUnit(u){
+  $('p-unit').value = u;
+  probeOnce();
+}
+
+function renderProbe(args, vals, hex){
+  $('p-table').style.display = '';
+  const rows = vals.map((v, i) => {
+    const addr = args.from + i;
+    let chg = '';
+    let cls = '';
+    if (lastVals && lastVals.length === vals.length){
+      if (lastVals[i] !== v){
+        const up = v > lastVals[i];
+        chg = (up ? '↑ ' : '↓ ') + lastVals[i] + ' → ' + v;
+        cls = 'chg';
+        changedSet.add(args.fc + ':' + addr);
+      }
+    }
+    return '<tr class="' + cls + '"><td>' + addr + '</td><td>' + v + '</td><td>' + hex[i] +
+           '</td><td>' + chg + '</td></tr>';
+  });
+  $('p-body').innerHTML = rows.join('');
+  lastVals = vals;
+}
+
+function toggleAuto(){
+  if (autoTimer){
+    clearInterval(autoTimer); autoTimer = null;
+    $('p-auto').textContent = '▶ 自动刷新（2 秒）';
+    return;
+  }
+  if (!$('p-ip').value.trim()){ alert('先填 IP 地址'); return; }
+  autoTimer = setInterval(probeOnce, 2000);
+  $('p-auto').textContent = '⏸ 停止自动刷新';
+  probeOnce();
+}
+
+/* ---------- 生成点表 ---------- */
+function genJson(all){
+  if (!lastProbeArgs){ alert('先在第二步读一次寄存器'); return; }
+  const args = lastProbeArgs;
+  const addrList = [];
+  for (let i = 0; i < args.count; i++){
+    const addr = args.from + i;
+    if (all || changedSet.has(args.fc + ':' + addr)) addrList.push(addr);
+  }
+  if (!addrList.length){
+    $('j-note').textContent = '还没有观察到变化的地址——先开着自动刷新去设备边启停几次再回来。';
+    return;
+  }
+  const isBit = args.fc === 2;
+  const pts = addrList.map(a => ({
+    key: (isBit ? 'di' : 'r') + a, name: (isBit ? 'DI 通道' : '寄存器') + a, address: a, functionCode: args.fc,
+    dataType: isBit ? 'bool' : 'u16', scale: 1, unit: '', role: 'value'
+  }));
+  $('json').value = JSON.stringify(pts, null, 2);
+  const kind = isBit ? '离散输入' : '寄存器';
+  $('j-note').textContent = '生成了 ' + pts.length + ' 个点（' + kind + '）。记得改 name 和 role：DI 通道按含义配 status/alarm，计数寄存器配 count。';
+}
+
+function copyJson(){
+  const t = $('json');
+  if (!t.value){ alert('还没有生成点表'); return; }
+  t.select();
+  navigator.clipboard.writeText(t.value).then(
+    () => { $('j-note').textContent = '已复制，去「新增设备」的点表框粘贴。'; },
+    () => { document.execCommand('copy'); $('j-note').textContent = '已复制。'; }
+  );
+}
+
+function esc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g,
+    m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+</script>
+</body>
+</html>

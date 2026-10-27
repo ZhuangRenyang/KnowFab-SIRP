@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>故障维修中心</title>
+<style>
+  /* 独立故障大屏：和 screen.html 同一套零外部依赖、同一配色。
+     看板屏里维修卡只有角落一小块；这里整面墙都给维修人员：
+     多台故障同屏铺开，装不下一页就轮播。 */
+  :root{
+    --bg:#060b12;
+    --panel:#0c1622;
+    --panel2:#101d2c;
+    --line:#1b2a3d;
+    --text:#e8f1fb;
+    --muted:#7f93a9;
+    --dim:#4b5f75;
+    --run:#34d399;
+    --idle:#fbbf24;
+    --stop:#f87171;
+    --alarm:#ff5b5b;
+    --offline:#56687d;
+    --accent:#38bdf8;
+    --num:"DIN Alternate","Bahnschrift","HarmonyOS Sans",ui-monospace,Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden}
+  body{
+    background:
+      radial-gradient(1200px 600px at 50% -10%, #241017 0%, transparent 60%),
+      var(--bg);
+    color:var(--text);
+    font-family:"HarmonyOS Sans SC","Microsoft YaHei","PingFang SC",system-ui,sans-serif;
+    font-size:14px;
+    display:grid;
+    grid-template-rows: 10vh 12vh 1fr 5vh;
+    gap:1.1vh;
+    padding:1.2vh 1.2vw;
+  }
+
+  /* ---------- 顶栏 ---------- */
+  header{display:flex;align-items:center;gap:2vw;border-bottom:1px solid var(--line);
+         padding-bottom:1vh}
+  .brand{display:flex;align-items:center;gap:1vw}
+  .logo{width:4.2vh;height:4.2vh;border:2px solid var(--alarm);border-radius:6px;
+        position:relative;flex:none}
+  .logo::before,.logo::after{content:"";position:absolute;background:var(--alarm);opacity:.9}
+  .logo::before{left:18%;right:18%;top:47%;height:2px;transform:rotate(45deg)}
+  .logo::after{left:18%;right:18%;top:47%;height:2px;transform:rotate(-45deg)}
+  h1{font-size:clamp(18px,1.75vw,34px);font-weight:600;letter-spacing:.06em}
+  .sub{color:var(--muted);font-size:clamp(11px,.78vw,15px);letter-spacing:.18em;margin-top:.4vh}
+  .head-right{margin-left:auto;display:flex;align-items:center;gap:2vw}
+  .link-state{display:flex;align-items:center;gap:.5vw;font-size:clamp(11px,.75vw,14px);
+              color:var(--muted)}
+  .dot{width:.7vh;height:.7vh;border-radius:50%;background:var(--run);
+       box-shadow:0 0 8px var(--run);flex:none}
+  .link-state.bad .dot{background:var(--stop);box-shadow:0 0 8px var(--stop)}
+  .clock{font-family:var(--num);font-size:clamp(22px,2.1vw,42px);letter-spacing:.05em}
+  .clock small{display:block;font-size:clamp(10px,.72vw,14px);color:var(--muted);
+               letter-spacing:.12em;text-align:right;margin-top:.3vh}
+  /* 双屏切换：看板屏 ⇆ 故障屏。鼠标点一下就行；挂墙电视用 ?rotate= 自动轮换 */
+  .screen-switch{display:flex;align-items:center;gap:.5vw;color:var(--accent);
+                 border:1px solid rgba(56,189,248,.4);border-radius:6px;
+                 padding:.7vh .9vw;font-size:clamp(11px,.8vw,15px);cursor:pointer;
+                 text-decoration:none;letter-spacing:.06em;white-space:nowrap}
+  .screen-switch:hover{background:rgba(56,189,248,.12)}
+  .screen-switch small{color:var(--muted);font-size:clamp(9px,.66vw,12px);
+                       font-family:var(--num)}
+
+  /* ---------- KPI ---------- */
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:1.1vw}
+  .kpi{background:linear-gradient(180deg,var(--panel),var(--panel2));
+       border:1px solid var(--line);border-radius:8px;padding:1.2vh 1vw;
+       display:flex;align-items:center;gap:1.2vw;position:relative;overflow:hidden}
+  .kpi::before{content:"";position:absolute;left:0;top:0;width:3px;height:100%;
+               background:linear-gradient(180deg,var(--alarm),transparent 70%);opacity:.55}
+  .kpi .ic{font-family:var(--num);font-size:clamp(22px,2.2vw,44px);line-height:1;flex:none}
+  .kpi .k{font-size:clamp(11px,.78vw,15px);color:var(--muted);letter-spacing:.1em}
+  .kpi .v{font-family:var(--num);font-size:clamp(24px,2.6vw,52px);line-height:1.15;
+          font-variant-numeric:tabular-nums}
+  .kpi .v i{font-style:normal;font-size:clamp(11px,.8vw,16px);color:var(--muted);
+            margin-left:.35vw;font-family:inherit}
+  .kpi .s{font-size:clamp(10px,.7vw,13px);color:var(--dim);margin-top:.2vh}
+  .kpi.alarm .v,.kpi.alarm .ic{color:var(--alarm)}
+  .kpi.warn .v,.kpi.warn .ic{color:var(--idle)}
+  .kpi.good .v,.kpi.good .ic{color:var(--run)}
+  .kpi.info .v,.kpi.info .ic{color:var(--accent)}
+
+  /* ---------- 维修卡区 ---------- */
+  main{position:relative;min-height:0}
+  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(45vw,1fr));
+         gap:1.1vh 1.1vw;height:100%;align-content:stretch}
+  .fcard{background:linear-gradient(180deg,var(--panel),var(--panel2));
+         border:1px solid rgba(255,91,91,.35);border-radius:8px;
+         padding:1.2vh 1vw;display:flex;flex-direction:column;gap:.8vh;
+         min-height:0;overflow:hidden;position:relative;
+         animation:cardIn .45s ease}
+  .fcard::before{content:"";position:absolute;left:0;top:0;width:100%;height:3px;
+                 background:linear-gradient(90deg,var(--alarm),transparent 80%)}
+  @keyframes cardIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  .f-top{display:flex;align-items:center;gap:.7vw;flex:none}
+  .f-top b{font-size:clamp(15px,1.15vw,22px);font-weight:600;white-space:nowrap;
+           overflow:hidden;text-overflow:ellipsis}
+  .f-top .st{font-size:clamp(10px,.72vw,13px);padding:.25vh .5vw;border-radius:4px;
+             border:1px solid var(--line);color:var(--muted);white-space:nowrap;flex:none}
+  .f-top .st.hot{color:var(--alarm);border-color:rgba(255,91,91,.45)}
+  .f-top .num{margin-left:auto;font-family:var(--num);color:var(--muted);
+              font-size:clamp(10px,.72vw,13px);white-space:nowrap;flex:none}
+  .f-cols{display:grid;grid-template-columns: 1fr 1fr;gap:.8vh 1vw;flex:1;min-height:0}
+  .f-col{min-width:0;min-height:0;display:flex;flex-direction:column;gap:.5vh}
+  .f-sec{font-size:clamp(10px,.68vw,12px);color:var(--dim);letter-spacing:.1em;flex:none}
+  .f-al{display:flex;gap:.6vw;align-items:baseline;font-size:clamp(11px,.85vw,16px);
+        padding:.45vh 0;border-bottom:1px dashed rgba(255,255,255,.06)}
+  .f-al .lv{flex:none;font-size:clamp(9px,.64vw,11px);padding:.2vh .4vw;border-radius:3px;
+            border:1px solid currentColor;white-space:nowrap}
+  .f-al .lv.critical{color:var(--alarm)} .f-al .lv.major{color:#fb923c}
+  .f-al .lv.minor{color:var(--idle)}
+  .f-al .fr{color:var(--text);white-space:nowrap;flex:none}
+  .f-al .fm{color:var(--muted);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;
+            white-space:nowrap}
+  .f-al .a-min{font-family:var(--num);color:var(--alarm);white-space:nowrap;flex:none;
+               font-size:clamp(10px,.75vw,14px)}
+  .f-kv{font-size:clamp(11px,.8vw,15px);color:var(--muted);line-height:1.75}
+  .f-kv b{color:var(--text);font-weight:500}
+  .f-kv .err{color:var(--alarm)}
+  .f-code{flex:1;min-height:0;overflow:auto;background:rgba(255,91,91,.05);
+          border:1px solid rgba(255,91,91,.22);border-radius:6px;padding:.8vh .7vw;
+          font-size:clamp(10px,.78vw,14px);line-height:1.8}
+  .f-code .ok{color:var(--run)}
+  .f-code .cw{color:var(--alarm);font-weight:500}
+  .f-code .cd{color:var(--muted);display:block}
+  .f-ai{flex:1;min-height:0;overflow:auto;background:rgba(56,189,248,.06);
+        border:1px solid rgba(56,189,248,.25);border-radius:6px;padding:.8vh .7vw;
+        font-size:clamp(10px,.78vw,14px);line-height:1.8;white-space:pre-wrap;color:var(--text)}
+  .f-ai .src{display:block;font-size:clamp(9px,.66vw,12px);color:var(--accent);
+             letter-spacing:.08em;margin-bottom:.4vh}
+  .f-ai .src.local{color:var(--idle)}
+  .f-ai.pending{color:var(--muted)}
+
+  /* ---------- 无故障全屏正常态 ---------- */
+  .allclear{position:absolute;inset:0;display:none;flex-direction:column;
+            align-items:center;justify-content:center;gap:2vh}
+  .allclear.show{display:flex}
+  .allclear .big{font-size:clamp(40px,4.5vw,90px)}
+  .allclear h2{font-size:clamp(22px,2vw,40px);font-weight:600;letter-spacing:.1em;
+               color:var(--run)}
+  .allclear p{color:var(--muted);font-size:clamp(13px,1vw,20px);letter-spacing:.08em}
+
+  /* ---------- 底部滚动条 ---------- */
+  .ticker{display:flex;align-items:center;gap:1vw;border-top:1px solid var(--line);
+          font-size:clamp(11px,.78vw,14px);color:var(--muted);overflow:hidden;
+          white-space:nowrap}
+  .ticker .tag{color:var(--accent);letter-spacing:.1em;flex:none}
+  .ticker .roll{overflow:hidden;flex:1;position:relative;height:100%}
+  .ticker .roll span{position:absolute;left:0;top:50%;transform:translateY(-50%);
+                     animation:roll 26s linear infinite;padding-left:100%}
+  @keyframes roll{from{transform:translate(0,50%)}to{transform:translate(-100%,50%)}}
+
+  .page-note{position:absolute;right:0;bottom:-3.6vh;font-size:clamp(10px,.7vw,13px);
+             color:var(--dim);letter-spacing:.08em}
+
+  .offline-mask{position:fixed;inset:0;background:rgba(6,11,18,.55);display:none;
+                align-items:center;justify-content:center;z-index:9}
+  .offline-mask.show{display:flex}
+  .offline-mask div{border:1px solid var(--stop);color:var(--stop);padding:1.4vh 2vw;
+                    border-radius:8px;background:rgba(20,10,12,.9);
+                    font-size:clamp(13px,.95vw,18px);letter-spacing:.08em}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="logo"></div>
+    <div>
+      <h1>故障维修中心</h1>
+      <div class="sub">FAULT MAINTENANCE BOARD</div>
+    </div>
+  </div>
+  <div class="head-right">
+    <div class="link-state" id="link">
+      <span class="dot"></span><span id="link-text">数据正常</span>
+    </div>
+    <a class="screen-switch" id="switch" href="/screen.html">◂ 返回看板 <small id="rotate-tip"></small></a>
+    <div class="clock">
+      <span id="clock">--:--:--</span>
+      <small id="date">----</small>
+    </div>
+  </div>
+</header>
+
+<section class="kpis">
+  <div class="kpi alarm">
+    <span class="ic">警</span>
+    <div><div class="k">未处理报警</div><div class="v"><span id="k-alarm">0</span><i>条</i></div></div>
+  </div>
+  <div class="kpi warn">
+    <span class="ic">修</span>
+    <div><div class="k">故障设备</div><div class="v"><span id="k-fault">0</span><i>台</i></div>
+      <div class="s" id="k-fault-sub">报警中 · 需要维修</div></div>
+  </div>
+  <div class="kpi info">
+    <span class="ic">断</span>
+    <div><div class="k">离线/停机</div><div class="v"><span id="k-offline">0</span><i>台</i></div>
+      <div class="s">查网线、查交换机、查电源</div></div>
+  </div>
+  <div class="kpi good">
+    <span class="ic">正</span>
+    <div><div class="k">在线设备</div><div class="v"><span id="k-ok">0</span><i id="k-total">/ 0</i></div>
+      <div class="s" id="k-rate">在线率 --%</div></div>
+  </div>
+</section>
+
+<main>
+  <div class="cards" id="cards"></div>
+  <div class="allclear" id="clear">
+    <div class="big" style="color:var(--run)">√</div>
+    <h2>当前无设备故障</h2>
+    <p>全部设备运行正常，本屏每 5 秒自动刷新</p>
+  </div>
+  <div class="page-note" id="page-note"></div>
+</main>
+
+<div class="ticker">
+  <span class="tag">最新动态</span>
+  <div class="roll"><span id="ticker">系统启动中…</span></div>
+</div>
+
+<div class="offline-mask" id="mask"><div id="mask-text">与服务器断开，正在重试…</div></div>
+
+<script>
+/* 故障大屏脚本：只读、不登录、5 秒拉一次，数据源和看板屏同一个聚合接口。
+   维修卡一页最多 4 张（2×2），超出一页 15 秒轮播。
+   ?rotate=N（分钟）：N 分钟后自动跳到另一块屏，挂墙电视没鼠标也能轮着看。 */
+const $ = id => document.getElementById(id);
+const PER_PAGE = 4;
+let lastOk = 0, failures = 0, faultAll = [], faultPage = 0, faultAt = 0;
+
+function num(n){ return (n == null || isNaN(n)) ? '0' : Number(n).toLocaleString('zh-CN'); }
+function esc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g,
+    m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+/* ---------- 时钟 ---------- */
+function tickClock(){
+  const d = new Date();
+  const p = n => String(n).padStart(2,'0');
+  $('clock').textContent = p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());
+  const w = ['周日','周一','周二','周三','周四','周五','周六'][d.getDay()];
+  $('date').textContent = d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+w;
+}
+setInterval(tickClock, 1000); tickClock();
+
+/* ---------- 双屏自动轮换：?rotate=N 分钟后跳去另一块屏 ---------- */
+(function(){
+  const mins = parseFloat(new URLSearchParams(location.search).get('rotate')) || 0;
+  if (!(mins > 0)) return;
+  const target = '/screen.html?rotate=' + mins;
+  $('switch').href = target;
+  const deadline = Date.now() + mins * 60000;
+  setInterval(() => {
+    const left = Math.max(0, deadline - Date.now());
+    const m = Math.floor(left / 60000), s = Math.floor(left % 60000 / 1000);
+    $('rotate-tip').textContent = m + ':' + String(s).padStart(2,'0') + ' 后切看板';
+  }, 1000);
+  setTimeout(() => { location.href = target; }, mins * 60000);
+})();
+
+/* ---------- 渲染 ---------- */
+function render(d){
+  renderKpi(d);
+  faultAt = Date.now();
+  renderCards(d.faults || []);
+  renderTicker(d);
+  lastOk = Date.now();
+  setLink(true);
+}
+
+function renderKpi(d){
+  const al = d.alarms || {}, dev = d.device || {}, faults = d.faults || [];
+  $('k-alarm').textContent = num(al.open);
+  $('k-fault').textContent = num(faults.length);
+  $('k-fault-sub').textContent = faults.length
+    ? ('严重 ' + num(al.critical) + ' · 重要 ' + num(al.major) + ' · 其余一般')
+    : '全部设备无报警';
+  const offline = (dev.offline || 0) + (dev.stop || 0) - faults.length;
+  $('k-offline').textContent = num(Math.max(0, offline));
+  $('k-ok').textContent = num(dev.online);
+  $('k-total').textContent = '/ ' + num(dev.total);
+  $('k-rate').textContent = '在线率 ' + (dev.onlineRate == null ? '--' : dev.onlineRate) + '%';
+}
+
+function renderCards(list){
+  faultAll = list;
+  if (faultPage * PER_PAGE >= list.length) faultPage = 0;
+  const box = $('cards'), note = $('page-note'), clear = $('clear');
+  if (!list.length){
+    box.innerHTML = '';
+    clear.classList.add('show');
+    note.textContent = '';
+    return;
+  }
+  clear.classList.remove('show');
+  const pages = Math.ceil(list.length / PER_PAGE);
+  note.textContent = pages > 1
+    ? ('故障设备 ' + list.length + ' 台 · 第 ' + (faultPage+1) + '/' + pages + ' 页 · 自动轮播')
+    : ('故障设备 ' + list.length + ' 台');
+  box.innerHTML = list.slice(faultPage * PER_PAGE, (faultPage + 1) * PER_PAGE).map(cardHtml).join('');
+}
+
+function cardHtml(f){
+  const comm = f.comm || {};
+  const lines = (f.alarms || []).slice(0, 4).map(a =>
+    `<div class="f-al"><span class="lv ${(a.levelText==='严重'?'critical':a.levelText==='重要'?'major':'minor')}">${a.levelText}</span>` +
+    `<span class="fr">${esc(a.rule)}</span>` +
+    `<span class="fm" title="${esc(a.message || '')}">${esc(a.message || '')}</span>` +
+    `<span class="a-min">${a.minutes < 1 ? '刚刚' : a.minutes + ' 分'}</span></div>`).join('');
+
+  const plc = (f.plcWords || []);
+  let codeHtml;
+  if (!f.plcHasPoint){
+    codeHtml = '<span class="cd">该设备未配置报警字点位（点表里加 role=alarm）</span>';
+  } else if (!plc.length){
+    codeHtml = '<span class="ok">报警字全部为 0 —— 伺服侧无原始码，按通信/上位报警处理</span>';
+  } else {
+    codeHtml = plc.map(w =>
+      `<span class="cw">${esc(w.key)} = ${w.code}</span>` +
+      (w.known ? `（${esc(w.name)}）` : '（未收录，查' + esc((plc[0] && plc[0].brandText) || '品牌') + '手册）') +
+      (w.known ? `<span class="cd">原因：${esc(w.cause || '-')}｜处理：${esc(w.remedy || '-')}</span>` : '')
+    ).join('');
+  }
+  const brandText = plc.length && plc[0].brandText ? ' · ' + esc(plc[0].brandText) : '';
+
+  const an = f.analysis || {};
+  const srcText = an.source === 'AI' ? 'AI 分析 · 仅供参考'
+                : an.source === 'PENDING' ? 'AI 分析生成中…'
+                : '本地建议 · 未启用 AI';
+  const aiHtml = `<div class="f-ai ${an.source === 'PENDING' ? 'pending' : ''}">` +
+    `<span class="src ${an.source === 'AI' ? '' : 'local'}">${srcText}</span>${esc(an.text || '')}</div>`;
+
+  return `<div class="fcard">
+    <div class="f-top">
+      <b title="${esc(f.code || f.name)}">${esc(f.name)}</b>
+      <span class="st hot">${esc(f.state)}</span>
+      ${f.location ? `<span class="st">${esc(f.location)}</span>` : ''}
+      <span class="num">${(f.alarms || []).length} 条报警</span>
+    </div>
+    <div class="f-cols">
+      <div class="f-col">
+        <div class="f-sec">报警明细</div>
+        ${lines || '<div class="f-kv">无报警明细</div>'}
+        <div class="f-sec" style="margin-top:.4vh">通讯与端口</div>
+        <div class="f-kv">
+          <b>${esc(comm.protocol || '')}</b> ${esc(comm.target || '')}
+          · 从站 ${comm.unitId == null ? '-' : comm.unitId}
+          · 轮询 ${comm.pollMs == null ? '-' : comm.pollMs}ms
+          · 超时 ${comm.timeoutMs == null ? '-' : comm.timeoutMs}ms
+          · <b style="color:${comm.online ? 'var(--run)' : 'var(--alarm)'}">${comm.online ? '在线' : '离线'}</b>
+          ${comm.lastError ? `<br><span class="err">最后错误：${esc(comm.lastError)}</span>` : ''}
+        </div>
+      </div>
+      <div class="f-col">
+        <div class="f-sec">伺服 / PLC 报警字${brandText}</div>
+        <div class="f-code">${codeHtml}</div>
+        ${aiHtml}
+      </div>
+    </div>
+  </div>`;
+}
+
+let tickerLock = 0;
+function renderTicker(d){
+  const now = Date.now();
+  if (now - tickerLock < 8000) return;
+  tickerLock = now;
+  const al = (d.alarms || {}).items || [];
+  let text;
+  if (al.length){
+    text = al.slice(0, 4).map(a => `${a.device}：${a.rule}（${a.levelText}，已持续 ${a.minutes} 分钟）`).join('　｜　');
+  } else if ((d.device || {}).total){
+    text = `全部 ${d.device.total} 台设备无未处理报警。`;
+  } else {
+    text = '尚未接入设备，请先在「设备监控」里添加设备。';
+  }
+  $('ticker').textContent = text;
+}
+
+function setLink(ok){
+  $('link').classList.toggle('bad', !ok);
+  $('link-text').textContent = ok ? '数据正常' : '连接中断';
+}
+
+/* ---------- 拉数据 ---------- */
+async function pull(){
+  try{
+    const r = await fetch('/api/screen/snapshot', {cache:'no-store'});
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    if (!d || !d.ok) throw new Error('返回异常');
+    failures = 0;
+    $('mask').classList.remove('show');
+    render(d);
+  }catch(e){
+    failures++;
+    setLink(false);
+    if (failures >= 2){
+      $('mask').classList.add('show');
+      $('mask-text').textContent = '与服务器断开（已重试 ' + failures + ' 次），' +
+        (lastOk ? '当前显示的是 ' + Math.round((Date.now()-lastOk)/1000) + ' 秒前的数据' : '正在连接…');
+    }
+  }
+}
+
+pull();
+setInterval(pull, 5000);
+// 多页轮播：数据 5 秒刷一次会重置 faultAt，15 秒没人动才翻页
+setInterval(() => {
+  if (faultAll.length > PER_PAGE && Date.now() - faultAt < 30000){
+    faultPage = (faultPage + 1) % Math.ceil(faultAll.length / PER_PAGE);
+    renderCards(faultAll);
+  }
+}, 15000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) pull(); });
+</script>
+</body>
+</html>

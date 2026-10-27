@@ -1,0 +1,122 @@
+server:
+  port: 8080
+  shutdown: graceful
+  tomcat:
+    threads:
+      max: 50
+      min-spare: 5
+
+spring:
+  application:
+    name: device-hub
+  lifecycle:
+    timeout-per-shutdown-phase: 10s
+
+  # MySQL 8 是默认库（2026-10-27 起 H2 已废弃：后面要并 ERP，长期数据、备份、
+  # 和 ERP 共库都要求真数据库）。密码走环境变量 DEVICEHUB_DB_PASSWORD；
+  # 现场一律用 install.sh 生成的 application.yml（会整个覆盖数据源）。
+  # 建库：CREATE DATABASE devicehub DEFAULT CHARSET utf8mb4 COLLATE utf8mb4_general_ci;
+  datasource:
+    url: jdbc:mysql://127.0.0.1:3306/devicehub?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true&rewriteBatchedStatements=true
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: devicehub
+    password: "${DEVICEHUB_DB_PASSWORD:}"
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          batch_size: 30
+
+  hikari:
+    # 采集是异步线程池 + 定时任务，连接数不需要很多；给太多反而把数据库拖慢
+    maximum-pool-size: 10
+    minimum-idle: 2
+    connection-timeout: 10000
+
+  jackson:
+    default-property-inclusion: always
+
+  web:
+    resources:
+      cache:
+        period: 0
+
+  # 升级包上传。默认只有 1MB，升级包有几十 MB，不放开会直接 413
+  servlet:
+    multipart:
+      max-file-size: 300MB
+      max-request-size: 310MB
+
+logging:
+  level:
+    root: INFO
+    com.factory.hub: INFO
+  pattern:
+    console: "%d{HH:mm:ss.SSS} %-5level [%thread] %logger{20} - %msg%n"
+  file:
+    name: ./logs/device-hub.log
+
+# ===================== 能耗（energy）=====================
+energy:
+  # 首次启动时生成 7 天演示能耗数据，这样打开「能耗分析」页就能看到
+  # 趋势图和峰谷分布，而不是一片空白。
+  # 正式交付前必须改成 false，否则客户会看到假电费。
+  # 已有数据时不会重复生成，也不会覆盖真实数据。
+  demo-seed: true
+
+# ===================== 告警（alarm）=====================
+alarm:
+  # 评估周期，毫秒。2 秒足够——规则里最短的持续时间也有几十秒，
+  # 再快只是白烧 CPU。几百台设备时这个循环也只要几毫秒。
+  evaluate-ms: 2000
+  # 启动后多久内不评估。给采集线程一点时间把第一轮数据采回来，
+  # 否则一重启就把所有设备判成离线
+  warmup-seconds: 20
+  # 同一轮触发这么多条以上，合并成一条「批量告警」通知。
+  # 交换机一挂全厂离线，逐条发会把群刷爆，也没人看得出问题在哪
+  storm-threshold: 8
+  # 历史保留天数。只清理已恢复的，没恢复的告警永远留着——那是没处理的事故
+  retain-days: 180
+
+# ===================== 基本电费 / 需量（demand）=====================
+demand:
+  # 首次启动灌 6 天演示需量数据，需量面板打开就有曲线。
+  # 交付前必须改 false，并调 POST /api/energy/demand/purge {"confirm":true}
+  demo-seed: true
+
+# ===================== 报表（report）=====================
+report:
+  # 首次启动灌 7 天演示生产数据，报表页一打开就有东西看。
+  # 交付前必须改 false，并调 POST /api/reports/purge {"confirm":true}
+  demo-seed: true
+
+# ===================== 系统升级（system）=====================
+system:
+  # 首次启动自动创建的管理员。password 留空 → 随机生成 12 位，
+  # 写进 data/initial-admin.txt 并打在启动日志里，登录后请立刻改掉。
+  # install.sh 安装时会自动生成一个随机密码填进来。
+  admin:
+    username: admin
+    display-name: 系统管理员
+    password: ""
+  update:
+    # 升级包暂存目录。网页上传的包校验后放这里，重启时由 bin/apply-pending.sh 替换
+    dir: ./updates
+    # 是否允许网页上点「应用升级」直接重启服务。
+    # false = 只登记，管理员执行 sudo systemctl restart device-hub 生效（更安全，推荐）
+    # true  = 需要安装时用 install.sh --allow-web-restart 给服务用户开一条 sudo 规则
+    allow-web-restart: false
+    # 联网检查更新的源，多个用逗号分隔、按顺序试（国内放前面，海外客户反过来配）。
+    # 填目录地址会自动拼 /version.json；也可以直接填 version.json 的完整地址。
+    # 没配就只支持"手工上传升级包"，不影响其他功能。
+    # 国内示例：https://gitee.com/你的账号/device-hub/raw/master/dist
+    # 海外示例：https://raw.githubusercontent.com/你的账号/device-hub/main/dist
+    sources: ""
+    # 升级包验签公钥。只能验签、不能签发，放配置文件里没关系。
+    # 私钥在 tools/keys/private.key —— 那是签发用的，绝不能进 git，也不能进交付包。
+    # 键名原先是 license.public-key，改名的同时保留旧键兜底（见 UpdateService）。
+    public-key: "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvZ94RkLYAF9BX2/iLHDuAWtMZM7AjSS4IIIYpfUjW7ehGEckVplO7NFtR8KUvhAHu6Ty1Zl+S1k/mcT0a8jR6K6JGg/I5gWkpntKqheTTtY98WemFT0RWGtiLOGsh15fkedA1FYlK/Ns7XSFyGA4Pxg1fe8OXlzo1J9Be9xrBm9H2DuXg9kRv6deUb1tb9h2FsYsA/FAPFC52zD3B+EIQXeX1h9qMsbac57JZJltC/njBUJTC0qF4gKg8nf0nVMIOacTpeVTbLijLMvqsvhNhv5E8cO5TLLxAJ+7qp1FO7FtrJGwPt6cNpLPOQwP7hT0zSOmqlp/OEGF3jQj5KneZQIDAQAB"

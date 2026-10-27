@@ -1,0 +1,3 @@
+# 报警码字典清单：一行一个 json 文件名，加品牌就加文件 + 加这行
+mitsubishi-servo.json
+delta-servo.json

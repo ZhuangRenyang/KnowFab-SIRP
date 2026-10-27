@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>设备联网监控中心</title>
+<style>
+  /* 车间大屏：纯静态、零外部依赖（车间经常没外网，引 CDN 会白屏）。
+     配色只表达设备状态：运行绿 / 待机黄 / 停机红 / 离线灰，不玩花活。 */
+  :root{
+    --bg:#060b12;
+    --panel:#0c1622;
+    --panel2:#101d2c;
+    --line:#1b2a3d;
+    --text:#e8f1fb;
+    --muted:#7f93a9;
+    --dim:#4b5f75;
+    --run:#34d399;
+    --idle:#fbbf24;
+    --stop:#f87171;
+    --alarm:#ff5b5b;
+    --offline:#56687d;
+    --accent:#38bdf8;
+    --num:"DIN Alternate","Bahnschrift","HarmonyOS Sans",ui-monospace,Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden}
+  body{
+    background:
+      radial-gradient(1200px 600px at 50% -10%, #10243a 0%, transparent 60%),
+      var(--bg);
+    color:var(--text);
+    font-family:"HarmonyOS Sans SC","Microsoft YaHei","PingFang SC",system-ui,sans-serif;
+    font-size:14px;
+    display:grid;
+    grid-template-rows: 11vh 17vh 1fr 26vh 5vh;
+    gap:1.1vh;
+    padding:1.2vh 1.2vw;
+  }
+
+  /* ---------- 顶栏 ---------- */
+  header{display:flex;align-items:center;gap:2vw;border-bottom:1px solid var(--line);
+         padding-bottom:1vh}
+  .brand{display:flex;align-items:center;gap:1vw}
+  .logo{width:4.2vh;height:4.2vh;border:2px solid var(--accent);border-radius:6px;
+        position:relative;flex:none}
+  .logo::before,.logo::after{content:"";position:absolute;background:var(--accent);opacity:.9}
+  .logo::before{left:22%;right:22%;top:30%;height:2px}
+  .logo::after{left:22%;right:22%;bottom:30%;height:2px}
+  h1{font-size:clamp(18px,1.75vw,34px);font-weight:600;letter-spacing:.06em}
+  .sub{color:var(--muted);font-size:clamp(11px,.78vw,15px);letter-spacing:.18em;margin-top:.4vh}
+  .head-right{margin-left:auto;display:flex;align-items:center;gap:2vw}
+  .clock{font-family:var(--num);font-size:clamp(22px,2.1vw,42px);letter-spacing:.05em}
+  .clock small{display:block;font-size:clamp(10px,.72vw,14px);color:var(--muted);
+               letter-spacing:.12em;text-align:right;margin-top:.3vh}
+  .link-state{display:flex;align-items:center;gap:.5vw;font-size:clamp(11px,.75vw,14px);
+              color:var(--muted)}
+  .dot{width:.7vh;height:.7vh;border-radius:50%;background:var(--run);
+       box-shadow:0 0 8px var(--run);flex:none}
+  .link-state.bad .dot{background:var(--stop);box-shadow:0 0 8px var(--stop)}
+  /* 双屏切换：看板屏 ⇆ 故障屏。鼠标点一下就行；挂墙电视用 ?rotate= 自动轮换 */
+  .screen-switch{display:flex;align-items:center;gap:.5vw;color:var(--accent);
+                 border:1px solid rgba(56,189,248,.4);border-radius:6px;
+                 padding:.7vh .9vw;font-size:clamp(11px,.8vw,15px);cursor:pointer;
+                 text-decoration:none;letter-spacing:.06em;white-space:nowrap}
+  .screen-switch:hover{background:rgba(56,189,248,.12)}
+  .screen-switch small{color:var(--muted);font-size:clamp(9px,.66vw,12px);
+                       font-family:var(--num)}
+
+  /* ---------- 通用面板 ---------- */
+  .panel{background:linear-gradient(180deg,var(--panel),var(--panel2));
+         border:1px solid var(--line);border-radius:8px;padding:1.4vh 1.2vw;
+         display:flex;flex-direction:column;min-height:0;position:relative;overflow:hidden}
+  .panel::before{content:"";position:absolute;left:0;top:0;width:3px;height:100%;
+                 background:linear-gradient(180deg,var(--accent),transparent 70%);opacity:.55}
+  .p-head{display:flex;align-items:baseline;gap:.6vw;margin-bottom:1.2vh;flex:none}
+  .p-title{font-size:clamp(13px,.95vw,18px);font-weight:600;letter-spacing:.08em}
+  .p-note{font-size:clamp(10px,.7vw,13px);color:var(--dim);letter-spacing:.06em}
+  .p-extra{margin-left:auto;font-size:clamp(10px,.7vw,13px);color:var(--muted)}
+
+  /* ---------- KPI ---------- */
+  .kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:1.1vw}
+  .kpi{background:linear-gradient(180deg,var(--panel),var(--panel2));
+       border:1px solid var(--line);border-radius:8px;padding:1.4vh 1vw;
+       display:flex;flex-direction:column;justify-content:center;position:relative;overflow:hidden}
+  .kpi .k{font-size:clamp(11px,.78vw,15px);color:var(--muted);letter-spacing:.1em}
+  .kpi .v{font-family:var(--num);font-size:clamp(26px,3vw,58px);line-height:1.15;
+          margin-top:.6vh;font-variant-numeric:tabular-nums}
+  .kpi .v i{font-style:normal;font-size:clamp(11px,.8vw,16px);color:var(--muted);
+            margin-left:.35vw;font-family:inherit}
+  .kpi .s{font-size:clamp(10px,.7vw,13px);color:var(--dim);margin-top:.3vh}
+  .kpi.warn{border-color:rgba(255,91,91,.45)}
+  .kpi.warn .v{color:var(--alarm)}
+  .kpi.good .v{color:var(--run)}
+  .kpi.info .v{color:var(--accent)}
+
+  /* ---------- 主区三列 ---------- */
+  main{display:grid;grid-template-columns: 32fr 40fr 38fr;gap:1.1vw;min-height:0}
+
+  /* 环形图 */
+  .donut-wrap{display:flex;align-items:center;gap:1.6vw;flex:1;min-height:0}
+  .donut{position:relative;flex:none;width:min(17vh,15vw);height:min(17vh,15vw)}
+  .donut svg{transform:rotate(-90deg)}
+  .donut .center{position:absolute;inset:0;display:flex;flex-direction:column;
+                 align-items:center;justify-content:center}
+  .donut .center b{font-family:var(--num);font-size:clamp(20px,1.7vw,34px);line-height:1}
+  .donut .center span{font-size:clamp(9px,.65vw,12px);color:var(--muted);margin-top:.4vh;
+                      letter-spacing:.1em}
+  .legend{display:flex;flex-direction:column;gap:.9vh;flex:1;min-width:0}
+  .lg{display:flex;align-items:center;gap:.6vw;font-size:clamp(11px,.82vw,15px)}
+  .lg .sw{width:.9vh;height:.9vh;border-radius:2px;flex:none}
+  .lg .name{color:var(--muted);flex:1;white-space:nowrap}
+  .lg .val{font-family:var(--num);font-variant-numeric:tabular-nums}
+
+  /* 柱状图 */
+  .chart{flex:1;display:flex;align-items:flex-end;gap:.35vw;min-height:0;position:relative;
+         padding-bottom:2.2vh}
+  .gridline{position:absolute;left:0;right:0;border-top:1px dashed rgba(255,255,255,.06)}
+  .bar{flex:1;position:relative;display:flex;flex-direction:column;justify-content:flex-end;
+       align-items:center;height:100%}
+  .bar .fill{width:72%;max-width:28px;background:linear-gradient(180deg,#3ec7f0,#176f9c);
+             border-radius:3px 3px 0 0;min-height:2px;transition:height .5s ease}
+  .bar.tall .fill{background:linear-gradient(180deg,#63e0b0,#1c8f6a)}
+  .bar .h{position:absolute;bottom:-2.1vh;font-size:clamp(8px,.6vw,11px);color:var(--dim);
+          font-family:var(--num)}
+  .bar .n{position:absolute;top:-.2vh;font-size:clamp(9px,.62vw,12px);color:var(--muted);
+          font-family:var(--num);opacity:0}
+  .bar.hl .n{opacity:1;color:var(--accent)}
+
+  /* 报警列表 */
+  .alarms{flex:1;overflow:hidden;display:flex;flex-direction:column;gap:.7vh;min-height:0;
+          position:relative}
+  .alarm-row{display:grid;grid-template-columns:auto 1fr auto auto;gap:.7vw;align-items:center;
+             padding:.85vh .8vw;background:rgba(255,91,91,.05);
+             border-left:3px solid var(--major,var(--alarm));border-radius:4px;
+             animation:slideIn .45s ease}
+  .alarm-row.minor{--major:var(--idle);background:rgba(251,191,36,.05)}
+  .alarm-row.major{--major:#fb923c;background:rgba(251,146,60,.06)}
+  .alarm-row.critical{--major:var(--alarm);background:rgba(255,91,91,.09)}
+  @keyframes slideIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+  .lv{font-size:clamp(9px,.64vw,11px);padding:.25vh .45vw;border-radius:3px;
+      border:1px solid currentColor;letter-spacing:.05em;white-space:nowrap}
+  .lv.critical{color:var(--alarm)} .lv.major{color:#fb923c} .lv.minor{color:var(--idle)}
+  .a-main{min-width:0}
+  .a-dev{font-size:clamp(12px,.9vw,16px);white-space:nowrap;overflow:hidden;
+         text-overflow:ellipsis}
+  .a-rule{font-size:clamp(10px,.72vw,13px);color:var(--muted);margin-top:.3vh;
+          white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .a-since{font-family:var(--num);font-size:clamp(11px,.8vw,15px);color:var(--muted)}
+  .a-min{font-family:var(--num);font-size:clamp(11px,.8vw,15px);
+         color:var(--alarm);white-space:nowrap}
+  .empty{color:var(--dim);font-size:clamp(12px,.85vw,15px);display:flex;align-items:center;
+         justify-content:center;flex:1;letter-spacing:.08em}
+
+  /* ---------- 底部 ---------- */
+  footer{display:grid;grid-template-columns: 38fr 62fr;gap:1.1vw;min-height:0}
+  .reasons{display:flex;flex-direction:column;gap:.95vh;flex:1;justify-content:center}
+  .rs{display:grid;grid-template-columns: 5.4vw 1fr auto;gap:.7vw;align-items:center;
+      font-size:clamp(11px,.82vw,15px)}
+  .rs .rn{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .rs .track{height:.9vh;background:rgba(255,255,255,.05);border-radius:99px;overflow:hidden}
+  .rs .barfill{height:100%;border-radius:99px;background:linear-gradient(90deg,#fb923c,#f87171);
+               transition:width .5s ease}
+  .rs .rv{font-family:var(--num);color:var(--text);white-space:nowrap;
+          font-variant-numeric:tabular-nums}
+
+  .fault{display:flex;flex-direction:column;gap:.9vh;flex:1;min-height:0;overflow:hidden}
+  .f-top{display:flex;align-items:center;gap:.7vw;font-size:clamp(13px,.95vw,17px)}
+  .f-top b{font-weight:600}
+  .f-top .st{font-size:clamp(10px,.7vw,13px);padding:.25vh .5vw;border-radius:4px;
+             border:1px solid var(--line);color:var(--muted)}
+  .f-sec{font-size:clamp(10px,.68vw,12px);color:var(--dim);letter-spacing:.1em;margin-bottom:.5vh}
+  .f-al{display:flex;gap:.6vw;align-items:baseline;font-size:clamp(11px,.82vw,15px);
+        padding:.5vh 0;border-bottom:1px dashed rgba(255,255,255,.05)}
+  .f-al .lv{flex:none}
+  .f-al .fr{color:var(--text);white-space:nowrap}
+  .f-al .fm{color:var(--muted);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;
+            white-space:nowrap}
+  .f-kv{font-size:clamp(11px,.78vw,14px);color:var(--muted);line-height:1.8}
+  .f-kv b{color:var(--text);font-weight:500}
+  .f-kv .err{color:var(--alarm)}
+  .f-ai{flex:1;min-height:0;overflow:auto;background:rgba(56,189,248,.06);
+        border:1px solid rgba(56,189,248,.25);border-radius:6px;padding:.9vh .8vw;
+        font-size:clamp(11px,.8vw,14px);line-height:1.85;white-space:pre-wrap;color:var(--text)}
+  .f-ai .src{display:block;font-size:clamp(9px,.66vw,12px);color:var(--accent);
+             letter-spacing:.08em;margin-bottom:.5vh}
+  .f-ai .src.local{color:var(--idle)}
+  .f-ai.pending{color:var(--muted)}
+  .devgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(9.5vw,1fr));
+           gap:.7vh .7vw;overflow:hidden;align-content:start}
+  .chip{display:flex;align-items:center;gap:.45vw;padding:.65vh .6vw;border-radius:5px;
+        background:rgba(255,255,255,.03);border:1px solid var(--line);min-width:0}
+  .chip .cd{width:.7vh;height:.7vh;border-radius:50%;flex:none;background:var(--offline)}
+  .chip .cn{font-size:clamp(10px,.78vw,14px);white-space:nowrap;overflow:hidden;
+            text-overflow:ellipsis;flex:1;min-width:0}
+  .chip .cs{font-size:clamp(9px,.66vw,12px);white-space:nowrap}
+  .chip.run .cd{background:var(--run);box-shadow:0 0 8px rgba(52,211,153,.7)}
+  .chip.idle .cd{background:var(--idle);box-shadow:0 0 8px rgba(251,191,36,.6)}
+  .chip.stop .cd{background:var(--stop);box-shadow:0 0 8px rgba(248,113,113,.7)}
+  .chip.alarm .cd{background:var(--alarm);box-shadow:0 0 8px rgba(255,91,91,.8)}
+  .chip.offline{opacity:.55}
+  .chip.run .cs{color:var(--run)} .chip.idle .cs{color:var(--idle)}
+  .chip.stop .cs{color:var(--stop)} .chip.alarm .cs{color:var(--alarm)}
+  .chip.offline .cs{color:var(--offline)}
+
+  /* ---------- 滚动条 ---------- */
+  .ticker{display:flex;align-items:center;gap:1vw;border-top:1px solid var(--line);
+          font-size:clamp(11px,.78vw,14px);color:var(--muted);overflow:hidden;white-space:nowrap}
+  .ticker .tag{color:var(--accent);letter-spacing:.1em;flex:none}
+  .ticker .roll{overflow:hidden;flex:1;position:relative;height:100%}
+  .ticker .roll span{position:absolute;left:0;top:50%;transform:translateY(-50%);
+                     animation:roll 26s linear infinite;padding-left:100%}
+  @keyframes roll{from{transform:translate(0,50%)}to{transform:translate(-100%,50%)}}
+
+  .offline-mask{position:fixed;inset:0;background:rgba(6,11,18,.55);display:none;
+                align-items:center;justify-content:center;z-index:9}
+  .offline-mask.show{display:flex}
+  .offline-mask div{border:1px solid var(--stop);color:var(--stop);padding:1.4vh 2vw;
+                    border-radius:8px;background:rgba(20,10,12,.9);
+                    font-size:clamp(13px,.95vw,18px);letter-spacing:.08em}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="logo"></div>
+    <div>
+      <h1>设备联网监控中心</h1>
+      <div class="sub">REAL-TIME EQUIPMENT MONITOR</div>
+    </div>
+  </div>
+  <div class="head-right">
+    <div class="link-state" id="link">
+      <span class="dot"></span><span id="link-text">数据正常</span>
+    </div>
+    <a class="screen-switch" id="switch" href="/fault.html">切换故障屏 ▸ <small id="rotate-tip"></small></a>
+    <div class="clock">
+      <span id="clock">--:--:--</span>
+      <small id="date">----</small>
+    </div>
+  </div>
+</header>
+
+<section class="kpis">
+  <div class="kpi info">
+    <div class="k">今日产量</div>
+    <div class="v"><span id="k-output">0</span><i>件</i></div>
+    <div class="s" id="k-output-sub">按设备累计计数</div>
+  </div>
+  <div class="kpi good">
+    <div class="k">稼动率</div>
+    <div class="v"><span id="k-avail">--</span><i>%</i></div>
+    <div class="s" id="k-avail-sub">运行 ÷ 已记录时长</div>
+  </div>
+  <div class="kpi">
+    <div class="k">停机时长</div>
+    <div class="v"><span id="k-stop">0</span><i>分钟</i></div>
+    <div class="s" id="k-stop-sub">今日累计 · 按运行状态统计</div>
+  </div>
+  <div class="kpi">
+    <div class="k">停机次数</div>
+    <div class="v"><span id="k-stopcnt">0</span><i>次</i></div>
+    <div class="s">来自停机/离线告警</div>
+  </div>
+  <div class="kpi good">
+    <div class="k">在线设备</div>
+    <div class="v"><span id="k-online">0</span><i id="k-total">/ 0</i></div>
+    <div class="s" id="k-rate">在线率 0%</div>
+  </div>
+  <div class="kpi warn" id="kpi-alarm">
+    <div class="k">未处理报警</div>
+    <div class="v"><span id="k-alarm">0</span><i>条</i></div>
+    <div class="s" id="k-alarm-sub">严重 0 · 重要 0</div>
+  </div>
+</section>
+
+<main>
+  <section class="panel">
+    <div class="p-head">
+      <span class="p-title">设备状态分布</span>
+      <span class="p-extra" id="dev-note"></span>
+    </div>
+    <div class="donut-wrap">
+      <div class="donut">
+        <svg viewBox="0 0 160 160" width="100%" height="100%">
+          <circle cx="80" cy="80" r="62" fill="none" stroke="#12202f" stroke-width="18"/>
+          <g id="donut-segs"></g>
+        </svg>
+        <div class="center">
+          <b id="donut-total">0</b>
+          <span>台设备</span>
+        </div>
+      </div>
+      <div class="legend" id="legend"></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="p-head">
+      <span class="p-title">今日产量趋势</span>
+      <span class="p-note">每小时合计</span>
+      <span class="p-extra" id="chart-note"></span>
+    </div>
+    <div class="chart" id="chart">
+      <div class="gridline" style="top:25%"></div>
+      <div class="gridline" style="top:50%"></div>
+      <div class="gridline" style="top:75%"></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="p-head">
+      <span class="p-title">实时报警</span>
+      <span class="p-note">按严重程度排序</span>
+      <span class="p-extra" id="alarm-note"></span>
+    </div>
+    <div class="alarms" id="alarms"></div>
+  </section>
+</main>
+
+<footer>
+  <section class="panel">
+    <div class="p-head">
+      <span class="p-title" id="bl-title">停机原因</span>
+      <span class="p-note" id="bl-note">今日累计时长</span>
+      <span class="p-extra" id="bl-extra"></span>
+    </div>
+    <div class="reasons" id="reasons"></div>
+  </section>
+
+  <section class="panel">
+    <div class="p-head">
+      <span class="p-title">设备状态</span>
+      <span class="p-note">绿 运行 · 黄 待机 · 红 停机 · 灰 离线</span>
+    </div>
+    <div class="devgrid" id="devgrid"></div>
+  </section>
+</footer>
+
+<div class="ticker">
+  <span class="tag">最新动态</span>
+  <div class="roll"><span id="ticker">系统启动中…</span></div>
+</div>
+
+<div class="offline-mask" id="mask"><div id="mask-text">与服务器断开，正在重试…</div></div>
+
+<script>
+/* 车间大屏脚本：只读、不登录、5 秒拉一次。
+   断网时保留最后一屏数据（大屏不能变白板），只在中间压一条提示。 */
+const $ = id => document.getElementById(id);
+const COLORS = { run:'#34d399', idle:'#fbbf24', stop:'#f87171', alarm:'#ff5b5b', offline:'#56687d' };
+const STATE_TEXT = { run:'运行', idle:'待机', stop:'停机', alarm:'报警', offline:'离线' };
+let lastOk = 0, failures = 0, chartMax = 1, lastSnapshot = null;
+
+function num(n){ return (n == null || isNaN(n)) ? '0' : Number(n).toLocaleString('zh-CN'); }
+
+/* ---------- 时钟 ---------- */
+function tickClock(){
+  const d = new Date();
+  const p = n => String(n).padStart(2,'0');
+  $('clock').textContent = p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());
+  const w = ['周日','周一','周二','周三','周四','周五','周六'][d.getDay()];
+  $('date').textContent = d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+w;
+}
+setInterval(tickClock, 1000); tickClock();
+
+/* ---------- 双屏自动轮换：?rotate=N 分钟后跳去故障屏 ---------- */
+(function(){
+  const mins = parseFloat(new URLSearchParams(location.search).get('rotate')) || 0;
+  if (!(mins > 0)) return;
+  const target = '/fault.html?rotate=' + mins;
+  $('switch').href = target;
+  const deadline = Date.now() + mins * 60000;
+  setInterval(() => {
+    const left = Math.max(0, deadline - Date.now());
+    const m = Math.floor(left / 60000), s = Math.floor(left % 60000 / 1000);
+    $('rotate-tip').textContent = m + ':' + String(s).padStart(2,'0') + ' 后切故障屏';
+  }, 1000);
+  setTimeout(() => { location.href = target; }, mins * 60000);
+})();
+
+/* ---------- 渲染 ---------- */
+function render(d){
+  // KPI
+  const p = d.prod || {};
+  $('k-output').textContent = num(p.output);
+  $('k-output-sub').textContent = p.hasData ? '按设备累计计数' : '今日暂无产量数据';
+  $('k-avail').textContent = (p.availability == null) ? '--' : p.availability.toFixed(1);
+  // 停机时长用状态秒数（和稼动率同源），不用告警口径——
+  // 342 秒的状态停机没有对应告警时，显示 0 会让人以为"停机时长是假的"
+  $('k-stop').textContent = num(Math.round((p.stopSec || 0) / 60));
+  $('k-stopcnt').textContent = num(p.stopCount);
+
+  const dev = d.device || {};
+  $('k-online').textContent = num(dev.online);
+  $('k-total').textContent = '/ ' + num(dev.total);
+  $('k-rate').textContent = '在线率 ' + (dev.onlineRate == null ? 0 : dev.onlineRate) + '%';
+
+  const al = d.alarms || {};
+  $('k-alarm').textContent = num(al.open);
+  $('k-alarm-sub').textContent = '严重 ' + num(al.critical) + ' · 重要 ' + num(al.major);
+  $('kpi-alarm').classList.toggle('warn', (al.open || 0) > 0);
+
+  renderDonut(dev);
+  renderChart(d.hours || []);
+  renderAlarms(al.items || []);
+  faultAt = Date.now();
+  renderFaults(d.faults || [], d.stopReasons || []);
+  renderDevices(d.deviceList || []);
+
+  lastOk = Date.now();
+  setLink(true);
+}
+
+function renderDonut(dev){
+  const segs = [
+    ['run', dev.run || 0], ['idle', dev.idle || 0], ['stop', dev.stop || 0],
+    ['alarm', dev.alarm || 0], ['offline', dev.offline || 0]
+  ];
+  const total = dev.total || 0;
+  $('donut-total').textContent = total;
+  $('dev-note').textContent = total ? ('共 ' + total + ' 台') : '未接入设备';
+
+  const C = 2 * Math.PI * 62;
+  let acc = 0, html = '';
+  segs.forEach(([k, v]) => {
+    if (!v || !total) return;
+    const len = C * v / total;
+    html += `<circle cx="80" cy="80" r="62" fill="none" stroke="${COLORS[k]}" stroke-width="18"
+              stroke-dasharray="${Math.max(len - 2, 0.5)} ${C}" stroke-dashoffset="${-acc}"
+              stroke-linecap="butt"/>`;
+    acc += len;
+  });
+  $('donut-segs').innerHTML = html || '<circle cx="80" cy="80" r="62" fill="none" stroke="#1b2a3d" stroke-width="18"/>';
+
+  $('legend').innerHTML = segs.map(([k, v]) =>
+    `<div class="lg"><span class="sw" style="background:${COLORS[k]}"></span>
+       <span class="name">${STATE_TEXT[k]}</span>
+       <span class="val">${v}</span></div>`).join('');
+}
+
+function renderChart(hours){
+  const box = $('chart');
+  // 保留网格线
+  box.innerHTML = '<div class="gridline" style="top:25%"></div>' +
+                  '<div class="gridline" style="top:50%"></div>' +
+                  '<div class="gridline" style="top:75%"></div>';
+  if (!hours.length){
+    box.innerHTML += '<div class="empty" style="position:absolute;inset:0">今日暂无产量数据</div>';
+    return;
+  }
+  chartMax = Math.max(1, ...hours.map(h => h.output || 0));
+  const peak = Math.max(...hours.map(h => h.output || 0));
+  const lastIdx = hours.length - 1;
+
+  hours.forEach((h, i) => {
+    const pct = (h.output || 0) / chartMax * 100;
+    const div = document.createElement('div');
+    div.className = 'bar' + (h.output === peak && peak > 0 ? ' tall' : '') +
+                    (i === lastIdx ? ' hl' : '');
+    div.innerHTML =
+      `<span class="n">${h.output || ''}</span>` +
+      `<div class="fill" style="height:${pct}%"></div>` +
+      `<span class="h">${h.h}</span>`;
+    box.appendChild(div);
+  });
+  $('chart-note').textContent = '峰值 ' + num(peak) + ' 件/时';
+}
+
+let alarmAll = [], alarmPage = 0, ALARM_PER_PAGE = 6;
+
+function renderAlarms(items){
+  alarmAll = items;
+  if (alarmPage * ALARM_PER_PAGE >= alarmAll.length) alarmPage = 0;
+  renderAlarmPage();
+}
+
+function renderAlarmPage(){
+  const box = $('alarms');
+  const total = alarmAll.length;
+  if (!total){
+    $('alarm-note').textContent = '';
+    box.innerHTML = '<div class="empty">暂无未处理报警</div>';
+    return;
+  }
+  const pages = Math.ceil(total / ALARM_PER_PAGE);
+  $('alarm-note').textContent = '共 ' + total + ' 条' +
+    (pages > 1 ? (' · 第 ' + (alarmPage + 1) + '/' + pages + ' 页') : '');
+  const items = alarmAll.slice(alarmPage * ALARM_PER_PAGE, (alarmPage + 1) * ALARM_PER_PAGE);
+  box.innerHTML = items.map(a => `
+    <div class="alarm-row ${(a.level || 'minor').toLowerCase()}">
+      <span class="lv ${(a.level || 'minor').toLowerCase()}">${a.levelText || ''}</span>
+      <div class="a-main">
+        <div class="a-dev">${esc(a.device)}</div>
+        <div class="a-rule">${esc(a.rule)}${a.acked ? ' · 已确认' : ''}</div>
+      </div>
+      <span class="a-since">${esc(a.since || '')}</span>
+      <span class="a-min">${a.minutes < 1 ? '刚刚' : a.minutes + ' 分钟'}</span>
+    </div>`).join('');
+}
+
+let faultAll = [], faultPage = 0, faultAt = 0;
+
+function renderFaults(list, reasons){
+  const title = $('bl-title'), note = $('bl-note'), extra = $('bl-extra');
+  if (!list.length){
+    faultAll = []; faultPage = 0;
+    title.textContent = '停机原因'; note.textContent = '今日累计时长'; extra.textContent = '';
+    renderReasons(reasons);
+    return;
+  }
+  if (faultPage >= list.length) faultPage = 0;
+  const f = list[faultPage];
+  title.textContent = '故障维修看板';
+  note.textContent = '报警设备 ' + list.length + ' 台';
+  extra.textContent = list.length > 1 ? ('第 ' + (faultPage+1) + '/' + list.length + ' 台 · 自动轮播') : '';
+
+  const comm = f.comm || {};
+  const lines = (f.alarms || []).map(a =>
+    `<div class="f-al"><span class="lv ${(a.levelText==='严重'?'critical':a.levelText==='重要'?'major':'minor')}">${a.levelText}</span>` +
+    `<span class="fr">${esc(a.rule)}</span>` +
+    `<span class="fm">${esc(a.message || '')}</span>` +
+    `<span class="a-min">${a.minutes < 1 ? '刚刚' : a.minutes + ' 分'}</span></div>`).join('');
+
+  const an = f.analysis || {};
+  const srcCls = an.source === 'AI' ? '' : 'local';
+  const srcText = an.source === 'AI' ? 'AI 分析 · 仅供参考'
+                : an.source === 'PENDING' ? 'AI 分析生成中…'
+                : '本地建议 · 未启用 AI';
+  const aiHtml = `<div class="f-ai ${an.source === 'PENDING' ? 'pending' : ''}">` +
+    `<span class="src ${srcCls}">${srcText}</span>${esc(an.text || '')}</div>`;
+
+  const plc = (f.plcWords || []);
+  let plcText;
+  if (!f.plcHasPoint){
+    plcText = '该设备未配置报警字点位（点表里加 role=alarm）';
+  } else if (!plc.length){
+    plcText = '正常（全部为 0）';
+  } else {
+    plcText = plc.map(w =>
+      `${esc(w.key)} = ${w.code}` +
+      (w.known ? `（${esc(w.name)}）` : '（未收录，查品牌手册）')
+    ).join('，');
+  }
+  const brandText = plc.length && plc[0].brandText ? esc(plc[0].brandText) : '';
+
+  $('reasons').innerHTML = `
+    <div class="fault">
+      <div class="f-top"><b>${esc(f.name)}</b>
+        <span class="st">${esc(f.state)}</span>
+        ${f.location ? `<span class="st">${esc(f.location)}</span>` : ''}
+        <span class="st" style="color:var(--alarm)">${(f.alarms||[]).length} 条报警</span>
+      </div>
+      <div>${lines}</div>
+      <div class="f-kv">
+        <div class="f-sec">通讯与端口</div>
+        <b>${esc(comm.protocol || '')}</b> ${esc(comm.target || '')}
+        · 从站 ${comm.unitId == null ? '-' : comm.unitId}
+        · 轮询 ${comm.pollMs == null ? '-' : comm.pollMs}ms
+        · 超时 ${comm.timeoutMs == null ? '-' : comm.timeoutMs}ms
+        · <b style="color:${comm.online ? 'var(--run)' : 'var(--alarm)'}">${comm.online ? '在线' : '离线'}</b>
+        ${comm.lastError ? `<br><span class="err">最后错误：${esc(comm.lastError)}</span>` : ''}
+      </div>
+      <div class="f-kv"><div class="f-sec">伺服 / PLC 报警字${brandText ? ' · ' + brandText : ''}</div>
+        <b style="color:${plc.length ? 'var(--alarm)' : 'var(--run)'}">${plcText}</b>
+        ${plc.length ? plc.map(w => w.known
+            ? `<br><span style="color:var(--muted)" title="处理：${esc(w.remedy || '')}">${esc(w.name)}：${esc(w.cause || '')}｜处理：${esc(w.remedy || '')}</span>`
+            : '').join('') : ''}
+      </div>
+      <div class="f-ai-wrap">${aiHtml}</div>
+    </div>`;
+}
+
+function renderReasons(list){
+  const box = $('reasons');
+  if (!list.length){
+    box.innerHTML = '<div class="empty">今日没有停机记录</div>';
+    return;
+  }
+  const max = Math.max(1, ...list.map(r => r.totalMin || 0));
+  box.innerHTML = list.map(r => `
+    <div class="rs">
+      <span class="rn" title="${esc(r.reason)}">${esc(r.reason)}</span>
+      <span class="track"><span class="barfill" style="width:${(r.totalMin||0)/max*100}%"></span></span>
+      <span class="rv">${r.totalMin} 分 · ${r.count} 次</span>
+    </div>`).join('');
+}
+
+function renderDevices(list){
+  const box = $('devgrid');
+  if (!list.length){
+    box.innerHTML = '<div class="empty">未接入设备</div>';
+    return;
+  }
+  box.innerHTML = list.map(d => `
+    <div class="chip ${d.state}">
+      <span class="cd"></span>
+      <span class="cn" title="${esc(d.code)}">${esc(d.name)}</span>
+      <span class="cs">${d.text}</span>
+    </div>`).join('');
+}
+
+let tickerLock = 0;
+function renderTicker(d){
+  const now = Date.now();
+  if (now - tickerLock < 8000) return;
+  tickerLock = now;
+  const al = (d.alarms || {}).items || [];
+  let text;
+  if (al.length){
+    text = al.slice(0, 4).map(a => `${a.device}：${a.rule}（${a.levelText}，已持续 ${a.minutes} 分钟）`).join('　｜　');
+  } else if ((d.device || {}).total){
+    text = `全部 ${d.device.total} 台设备无未处理报警，今日产量 ${d.prod ? d.prod.output : 0} 件。`;
+  } else {
+    text = '尚未接入设备，请先在「设备监控」里添加设备。';
+  }
+  $('ticker').textContent = text;
+}
+
+function esc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g,
+    m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+function setLink(ok){
+  $('link').classList.toggle('bad', !ok);
+  $('link-text').textContent = ok ? '数据正常' : '连接中断';
+}
+
+/* ---------- 拉数据 ---------- */
+async function pull(){
+  try{
+    const r = await fetch('/api/screen/snapshot', {cache:'no-store'});
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    if (!d || !d.ok) throw new Error('返回异常');
+    failures = 0;
+    lastSnapshot = d;
+    $('mask').classList.remove('show');
+    render(d);
+    renderTicker(d);
+  }catch(e){
+    failures++;
+    setLink(false);
+    // 连续两次失败才压提示：一次抖动就糊一层遮罩，看起来像系统挂了
+    if (failures >= 2){
+      $('mask').classList.add('show');
+      $('mask-text').textContent = '与服务器断开（已重试 ' + failures + ' 次），' +
+        (lastOk ? '当前显示的是 ' + Math.round((Date.now()-lastOk)/1000) + ' 秒前的数据' : '正在连接…');
+    }
+  }
+}
+
+pull();
+setInterval(pull, 5000);
+// 报警超过一屏时自动翻页，否则后面的报警永远没人看见
+setInterval(() => {
+  if (alarmAll.length > ALARM_PER_PAGE){
+    alarmPage = (alarmPage + 1) % Math.ceil(alarmAll.length / ALARM_PER_PAGE);
+    renderAlarmPage();
+  }
+}, 8000);
+// 多台设备同时故障时轮播维修卡（数据本身 5 秒刷一次，这里只换页）
+setInterval(() => {
+  if (faultAll.length > 1 && Date.now() - faultAt < 30000){
+    faultPage = (faultPage + 1) % faultAll.length;
+    if (lastSnapshot) renderFaults(faultAll, lastSnapshot.stopReasons || []);
+  }
+}, 12000);
+// 切回标签页立刻刷一次（电视浏览器可能被休眠，回来时数据是旧的）
+document.addEventListener('visibilitychange', () => { if (!document.hidden) pull(); });
+</script>
+</body>
+</html>

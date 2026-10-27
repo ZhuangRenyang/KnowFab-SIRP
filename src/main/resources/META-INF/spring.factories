@@ -1,0 +1,4 @@
+# 数据库迁移必须在任何 Bean 创建之前执行（详见 MigrationInitializer 的注释），
+# 所以挂成 ApplicationContextInitializer，而不是 @Component。
+org.springframework.context.ApplicationContextInitializer=\
+com.factory.hub.system.MigrationInitializer
