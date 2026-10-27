@@ -7,17 +7,17 @@
 <script>try{if(localStorage.getItem('dh-theme')==='light')document.documentElement.classList.add('light')}catch(e){}</script>
 <style>
   :root{
-    --bg:#0d1117; --panel:#161b22; --panel2:#1c2330; --line:#2b3444;
-    --text:#e6edf3; --muted:#8b98a8; --accent:#3b82f6;
-    --run:#22c55e; --idle:#eab308; --stop:#64748b; --alarm:#ef4444; --off:#6b7280;
-    --hover:rgba(255,255,255,.045);
+    --bg:#f6f8f7; --panel:#fbfcfc; --panel2:#f2f5f4; --line:rgba(46,58,62,.085);
+    --text:#101418; --muted:#596368; --accent:#236de9;
+    --run:#58a021; --idle:#b7791f; --stop:#7e888c; --alarm:#e0443b; --off:#99a2a5;
+    --hover:rgba(46,58,62,.045);
   }
   /* 白天主题：html.light 覆盖变量。车间大屏（screen/fault）不受影响，恒为深色 */
   html.light{
-    --bg:#eef1f6; --panel:#ffffff; --panel2:#f6f8fb; --line:#d8e0ea;
-    --text:#1b2534; --muted:#5f6e82; --accent:#2563eb;
-    --run:#15803d; --idle:#b45309; --stop:#64748b; --alarm:#dc2626; --off:#9aa7b6;
-    --hover:rgba(15,23,42,.055);
+    --bg:#f6f8f7; --panel:#fbfcfc; --panel2:#f2f5f4; --line:rgba(46,58,62,.085);
+    --text:#101418; --muted:#596368; --accent:#236de9;
+    --run:#58a021; --idle:#b7791f; --stop:#7e888c; --alarm:#e0443b; --off:#99a2a5;
+    --hover:rgba(46,58,62,.045);
   }
 
   *{box-sizing:border-box;margin:0;padding:0}
@@ -1753,7 +1753,7 @@ function cssEsc(s){
 
 // 峰谷配色：尖峰红、高峰橙、平段蓝、低谷绿。客户的直觉是「红=贵，绿=便宜」，
 // 别按技术顺序配成彩虹色，老板看不懂。
-const SEG_COLOR = {TIP:'#ef4444', PEAK:'#f59e0b', FLAT:'#3b82f6', VALLEY:'#22c55e', UNPRICED:'#64748b'};
+const SEG_COLOR = {TIP:'#e0443b', PEAK:'#f97316', FLAT:'#236de9', VALLEY:'#58a021', UNPRICED:'#99a2a5'};
 
 let tab = 'monitor';
 let energyRange = 'today';
@@ -2356,7 +2356,7 @@ function drawAlarmTrend(trend){
     const bh = Math.max(t.count > 0 ? 2 : 0, ch * (t.count / max));
     const y = padT + ch - bh;
     // 告警用红色系，跟监控页的报警色一致
-    g.fillStyle = (i === n - 1) ? '#ef4444' : 'rgba(239,68,68,.4)';
+    g.fillStyle = (i === n - 1) ? '#e0443b' : 'rgba(224,68,59,.4)';
     const r = Math.min(3, bw / 2, bh / 2);
     g.beginPath();
     g.moveTo(x, padT + ch);

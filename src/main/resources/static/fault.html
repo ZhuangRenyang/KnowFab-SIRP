@@ -9,26 +9,26 @@
      看板屏里维修卡只有角落一小块；这里整面墙都给维修人员：
      多台故障同屏铺开，装不下一页就轮播。 */
   :root{
-    --bg:#060b12;
-    --panel:#0c1622;
-    --panel2:#101d2c;
-    --line:#1b2a3d;
-    --text:#e8f1fb;
-    --muted:#7f93a9;
-    --dim:#4b5f75;
-    --run:#34d399;
-    --idle:#fbbf24;
-    --stop:#f87171;
-    --alarm:#ff5b5b;
-    --offline:#56687d;
-    --accent:#38bdf8;
+    --bg:#0a0c0d;
+    --panel:#1d2124;
+    --panel2:#181c1e;
+    --line:rgba(255,255,255,.08);
+    --text:#eef2f1;
+    --muted:#9ba5a8;
+    --dim:#6c7679;
+    --run:#9be35a;
+    --idle:#e2b34c;
+    --stop:#ff8f87;
+    --alarm:#ff7a71;
+    --offline:#6c7679;
+    --accent:#4c8dff;
     --num:"DIN Alternate","Bahnschrift","HarmonyOS Sans",ui-monospace,Consolas,monospace;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%;overflow:hidden}
   body{
     background:
-      radial-gradient(1200px 600px at 50% -10%, #241017 0%, transparent 60%),
+      radial-gradient(1100px 580px at 50% -8%, rgba(255,122,113,.07) 0%, transparent 62%),
       var(--bg);
     color:var(--text);
     font-family:"HarmonyOS Sans SC","Microsoft YaHei","PingFang SC",system-ui,sans-serif;
@@ -43,8 +43,8 @@
   header{display:flex;align-items:center;gap:2vw;border-bottom:1px solid var(--line);
          padding-bottom:1vh}
   .brand{display:flex;align-items:center;gap:1vw}
-  .logo{width:4.2vh;height:4.2vh;border:2px solid var(--alarm);border-radius:6px;
-        position:relative;flex:none}
+  .logo{width:4.2vh;height:4.2vh;border:2px solid var(--alarm);border-radius:8px;
+        box-shadow:0 0 16px rgba(255,122,113,.3);position:relative;flex:none}
   .logo::before,.logo::after{content:"";position:absolute;background:var(--alarm);opacity:.9}
   .logo::before{left:18%;right:18%;top:47%;height:2px;transform:rotate(45deg)}
   .logo::after{left:18%;right:18%;top:47%;height:2px;transform:rotate(-45deg)}
@@ -61,17 +61,18 @@
                letter-spacing:.12em;text-align:right;margin-top:.3vh}
   /* 双屏切换：看板屏 ⇆ 故障屏。鼠标点一下就行；挂墙电视用 ?rotate= 自动轮换 */
   .screen-switch{display:flex;align-items:center;gap:.5vw;color:var(--accent);
-                 border:1px solid rgba(56,189,248,.4);border-radius:6px;
+                 border:1px solid rgba(76,141,255,.45);border-radius:9999px;
                  padding:.7vh .9vw;font-size:clamp(11px,.8vw,15px);cursor:pointer;
                  text-decoration:none;letter-spacing:.06em;white-space:nowrap}
-  .screen-switch:hover{background:rgba(56,189,248,.12)}
+  .screen-switch:hover{background:rgba(76,141,255,.12)}
   .screen-switch small{color:var(--muted);font-size:clamp(9px,.66vw,12px);
                        font-family:var(--num)}
 
   /* ---------- KPI ---------- */
   .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:1.1vw}
   .kpi{background:linear-gradient(180deg,var(--panel),var(--panel2));
-       border:1px solid var(--line);border-radius:8px;padding:1.2vh 1vw;
+       border:1px solid var(--line);border-radius:14px;padding:1.2vh 1vw;
+       box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
        display:flex;align-items:center;gap:1.2vw;position:relative;overflow:hidden}
   .kpi::before{content:"";position:absolute;left:0;top:0;width:3px;height:100%;
                background:linear-gradient(180deg,var(--alarm),transparent 70%);opacity:.55}
@@ -92,9 +93,10 @@
   .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(45vw,1fr));
          gap:1.1vh 1.1vw;height:100%;align-content:stretch}
   .fcard{background:linear-gradient(180deg,var(--panel),var(--panel2));
-         border:1px solid rgba(255,91,91,.35);border-radius:8px;
+         border:1px solid rgba(255,122,113,.4);border-radius:14px;
          padding:1.2vh 1vw;display:flex;flex-direction:column;gap:.8vh;
          min-height:0;overflow:hidden;position:relative;
+         box-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 10px 26px rgba(0,0,0,.32);
          animation:cardIn .45s ease}
   .fcard::before{content:"";position:absolute;left:0;top:0;width:100%;height:3px;
                  background:linear-gradient(90deg,var(--alarm),transparent 80%)}
@@ -104,7 +106,7 @@
            overflow:hidden;text-overflow:ellipsis}
   .f-top .st{font-size:clamp(10px,.72vw,13px);padding:.25vh .5vw;border-radius:4px;
              border:1px solid var(--line);color:var(--muted);white-space:nowrap;flex:none}
-  .f-top .st.hot{color:var(--alarm);border-color:rgba(255,91,91,.45)}
+  .f-top .st.hot{color:var(--alarm);border-color:rgba(255,122,113,.45)}
   .f-top .num{margin-left:auto;font-family:var(--num);color:var(--muted);
               font-size:clamp(10px,.72vw,13px);white-space:nowrap;flex:none}
   .f-cols{display:grid;grid-template-columns: 1fr 1fr;gap:.8vh 1vw;flex:1;min-height:0}
@@ -114,7 +116,7 @@
         padding:.45vh 0;border-bottom:1px dashed rgba(255,255,255,.06)}
   .f-al .lv{flex:none;font-size:clamp(9px,.64vw,11px);padding:.2vh .4vw;border-radius:3px;
             border:1px solid currentColor;white-space:nowrap}
-  .f-al .lv.critical{color:var(--alarm)} .f-al .lv.major{color:#fb923c}
+  .f-al .lv.critical{color:var(--alarm)} .f-al .lv.major{color:#f0955c}
   .f-al .lv.minor{color:var(--idle)}
   .f-al .fr{color:var(--text);white-space:nowrap;flex:none}
   .f-al .fm{color:var(--muted);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;
@@ -124,14 +126,14 @@
   .f-kv{font-size:clamp(11px,.8vw,15px);color:var(--muted);line-height:1.75}
   .f-kv b{color:var(--text);font-weight:500}
   .f-kv .err{color:var(--alarm)}
-  .f-code{flex:1;min-height:0;overflow:auto;background:rgba(255,91,91,.05);
-          border:1px solid rgba(255,91,91,.22);border-radius:6px;padding:.8vh .7vw;
+  .f-code{flex:1;min-height:0;overflow:auto;background:rgba(255,122,113,.05);
+          border:1px solid rgba(255,122,113,.26);border-radius:10px;padding:.8vh .7vw;
           font-size:clamp(10px,.78vw,14px);line-height:1.8}
   .f-code .ok{color:var(--run)}
   .f-code .cw{color:var(--alarm);font-weight:500}
   .f-code .cd{color:var(--muted);display:block}
-  .f-ai{flex:1;min-height:0;overflow:auto;background:rgba(56,189,248,.06);
-        border:1px solid rgba(56,189,248,.25);border-radius:6px;padding:.8vh .7vw;
+  .f-ai{flex:1;min-height:0;overflow:auto;background:rgba(76,141,255,.06);
+        border:1px solid rgba(76,141,255,.28);border-radius:10px;padding:.8vh .7vw;
         font-size:clamp(10px,.78vw,14px);line-height:1.8;white-space:pre-wrap;color:var(--text)}
   .f-ai .src{display:block;font-size:clamp(9px,.66vw,12px);color:var(--accent);
              letter-spacing:.08em;margin-bottom:.4vh}
@@ -144,6 +146,7 @@
   .allclear.show{display:flex}
   .allclear .big{font-size:clamp(40px,4.5vw,90px)}
   .allclear h2{font-size:clamp(22px,2vw,40px);font-weight:600;letter-spacing:.1em;
+               text-shadow:0 0 24px rgba(155,227,90,.35);
                color:var(--run)}
   .allclear p{color:var(--muted);font-size:clamp(13px,1vw,20px);letter-spacing:.08em}
 

@@ -8,26 +8,26 @@
   /* 车间大屏：纯静态、零外部依赖（车间经常没外网，引 CDN 会白屏）。
      配色只表达设备状态：运行绿 / 待机黄 / 停机红 / 离线灰，不玩花活。 */
   :root{
-    --bg:#060b12;
-    --panel:#0c1622;
-    --panel2:#101d2c;
-    --line:#1b2a3d;
-    --text:#e8f1fb;
-    --muted:#7f93a9;
-    --dim:#4b5f75;
-    --run:#34d399;
-    --idle:#fbbf24;
-    --stop:#f87171;
-    --alarm:#ff5b5b;
-    --offline:#56687d;
-    --accent:#38bdf8;
+    --bg:#0a0c0d;
+    --panel:#1d2124;
+    --panel2:#181c1e;
+    --line:rgba(255,255,255,.08);
+    --text:#eef2f1;
+    --muted:#9ba5a8;
+    --dim:#6c7679;
+    --run:#9be35a;
+    --idle:#e2b34c;
+    --stop:#ff8f87;
+    --alarm:#ff7a71;
+    --offline:#6c7679;
+    --accent:#4c8dff;
     --num:"DIN Alternate","Bahnschrift","HarmonyOS Sans",ui-monospace,Consolas,monospace;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%;overflow:hidden}
   body{
     background:
-      radial-gradient(1200px 600px at 50% -10%, #10243a 0%, transparent 60%),
+      radial-gradient(1100px 580px at 50% -8%, rgba(76,141,255,.09) 0%, transparent 62%),
       var(--bg);
     color:var(--text);
     font-family:"HarmonyOS Sans SC","Microsoft YaHei","PingFang SC",system-ui,sans-serif;
@@ -42,8 +42,8 @@
   header{display:flex;align-items:center;gap:2vw;border-bottom:1px solid var(--line);
          padding-bottom:1vh}
   .brand{display:flex;align-items:center;gap:1vw}
-  .logo{width:4.2vh;height:4.2vh;border:2px solid var(--accent);border-radius:6px;
-        position:relative;flex:none}
+  .logo{width:4.2vh;height:4.2vh;border:2px solid var(--accent);border-radius:8px;
+        box-shadow:0 0 16px rgba(76,141,255,.35);position:relative;flex:none}
   .logo::before,.logo::after{content:"";position:absolute;background:var(--accent);opacity:.9}
   .logo::before{left:22%;right:22%;top:30%;height:2px}
   .logo::after{left:22%;right:22%;bottom:30%;height:2px}
@@ -60,16 +60,17 @@
   .link-state.bad .dot{background:var(--stop);box-shadow:0 0 8px var(--stop)}
   /* 双屏切换：看板屏 ⇆ 故障屏。鼠标点一下就行；挂墙电视用 ?rotate= 自动轮换 */
   .screen-switch{display:flex;align-items:center;gap:.5vw;color:var(--accent);
-                 border:1px solid rgba(56,189,248,.4);border-radius:6px;
+                 border:1px solid rgba(76,141,255,.45);border-radius:9999px;
                  padding:.7vh .9vw;font-size:clamp(11px,.8vw,15px);cursor:pointer;
                  text-decoration:none;letter-spacing:.06em;white-space:nowrap}
-  .screen-switch:hover{background:rgba(56,189,248,.12)}
+  .screen-switch:hover{background:rgba(76,141,255,.12)}
   .screen-switch small{color:var(--muted);font-size:clamp(9px,.66vw,12px);
                        font-family:var(--num)}
 
   /* ---------- 通用面板 ---------- */
   .panel{background:linear-gradient(180deg,var(--panel),var(--panel2));
-         border:1px solid var(--line);border-radius:8px;padding:1.4vh 1.2vw;
+         border:1px solid var(--line);border-radius:14px;padding:1.4vh 1.2vw;
+         box-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 10px 26px rgba(0,0,0,.32);
          display:flex;flex-direction:column;min-height:0;position:relative;overflow:hidden}
   .panel::before{content:"";position:absolute;left:0;top:0;width:3px;height:100%;
                  background:linear-gradient(180deg,var(--accent),transparent 70%);opacity:.55}
@@ -81,7 +82,8 @@
   /* ---------- KPI ---------- */
   .kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:1.1vw}
   .kpi{background:linear-gradient(180deg,var(--panel),var(--panel2));
-       border:1px solid var(--line);border-radius:8px;padding:1.4vh 1vw;
+       border:1px solid var(--line);border-radius:14px;padding:1.4vh 1vw;
+       box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
        display:flex;flex-direction:column;justify-content:center;position:relative;overflow:hidden}
   .kpi .k{font-size:clamp(11px,.78vw,15px);color:var(--muted);letter-spacing:.1em}
   .kpi .v{font-family:var(--num);font-size:clamp(26px,3vw,58px);line-height:1.15;
@@ -89,7 +91,7 @@
   .kpi .v i{font-style:normal;font-size:clamp(11px,.8vw,16px);color:var(--muted);
             margin-left:.35vw;font-family:inherit}
   .kpi .s{font-size:clamp(10px,.7vw,13px);color:var(--dim);margin-top:.3vh}
-  .kpi.warn{border-color:rgba(255,91,91,.45)}
+  .kpi.warn{border-color:rgba(255,122,113,.45)}
   .kpi.warn .v{color:var(--alarm)}
   .kpi.good .v{color:var(--run)}
   .kpi.info .v{color:var(--accent)}
@@ -118,9 +120,9 @@
   .gridline{position:absolute;left:0;right:0;border-top:1px dashed rgba(255,255,255,.06)}
   .bar{flex:1;position:relative;display:flex;flex-direction:column;justify-content:flex-end;
        align-items:center;height:100%}
-  .bar .fill{width:72%;max-width:28px;background:linear-gradient(180deg,#3ec7f0,#176f9c);
-             border-radius:3px 3px 0 0;min-height:2px;transition:height .5s ease}
-  .bar.tall .fill{background:linear-gradient(180deg,#63e0b0,#1c8f6a)}
+  .bar .fill{width:72%;max-width:28px;background:linear-gradient(180deg,#5b93ee,#2b62c4);
+             border-radius:3px 3px 0 0;min-height:2px;transition:height .5s ease;box-shadow:0 0 10px rgba(76,141,255,.22)}
+  .bar.tall .fill{background:linear-gradient(180deg,#a8ec6e,#4e9418)}
   .bar .h{position:absolute;bottom:-2.1vh;font-size:clamp(8px,.6vw,11px);color:var(--dim);
           font-family:var(--num)}
   .bar .n{position:absolute;top:-.2vh;font-size:clamp(9px,.62vw,12px);color:var(--muted);
@@ -131,16 +133,16 @@
   .alarms{flex:1;overflow:hidden;display:flex;flex-direction:column;gap:.7vh;min-height:0;
           position:relative}
   .alarm-row{display:grid;grid-template-columns:auto 1fr auto auto;gap:.7vw;align-items:center;
-             padding:.85vh .8vw;background:rgba(255,91,91,.05);
-             border-left:3px solid var(--major,var(--alarm));border-radius:4px;
+             padding:.85vh .8vw;background:rgba(255,122,113,.05);
+             border-left:3px solid var(--major,var(--alarm));border-radius:8px;
              animation:slideIn .45s ease}
-  .alarm-row.minor{--major:var(--idle);background:rgba(251,191,36,.05)}
-  .alarm-row.major{--major:#fb923c;background:rgba(251,146,60,.06)}
-  .alarm-row.critical{--major:var(--alarm);background:rgba(255,91,91,.09)}
+  .alarm-row.minor{--major:var(--idle);background:rgba(226,179,76,.05)}
+  .alarm-row.major{--major:#f0955c;background:rgba(240,149,92,.06)}
+  .alarm-row.critical{--major:var(--alarm);background:rgba(255,122,113,.09)}
   @keyframes slideIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
   .lv{font-size:clamp(9px,.64vw,11px);padding:.25vh .45vw;border-radius:3px;
       border:1px solid currentColor;letter-spacing:.05em;white-space:nowrap}
-  .lv.critical{color:var(--alarm)} .lv.major{color:#fb923c} .lv.minor{color:var(--idle)}
+  .lv.critical{color:var(--alarm)} .lv.major{color:#f0955c} .lv.minor{color:var(--idle)}
   .a-main{min-width:0}
   .a-dev{font-size:clamp(12px,.9vw,16px);white-space:nowrap;overflow:hidden;
          text-overflow:ellipsis}
@@ -159,7 +161,7 @@
       font-size:clamp(11px,.82vw,15px)}
   .rs .rn{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .rs .track{height:.9vh;background:rgba(255,255,255,.05);border-radius:99px;overflow:hidden}
-  .rs .barfill{height:100%;border-radius:99px;background:linear-gradient(90deg,#fb923c,#f87171);
+  .rs .barfill{height:100%;border-radius:99px;background:linear-gradient(90deg,#f0955c,#ff8f87);
                transition:width .5s ease}
   .rs .rv{font-family:var(--num);color:var(--text);white-space:nowrap;
           font-variant-numeric:tabular-nums}
@@ -179,8 +181,8 @@
   .f-kv{font-size:clamp(11px,.78vw,14px);color:var(--muted);line-height:1.8}
   .f-kv b{color:var(--text);font-weight:500}
   .f-kv .err{color:var(--alarm)}
-  .f-ai{flex:1;min-height:0;overflow:auto;background:rgba(56,189,248,.06);
-        border:1px solid rgba(56,189,248,.25);border-radius:6px;padding:.9vh .8vw;
+  .f-ai{flex:1;min-height:0;overflow:auto;background:rgba(76,141,255,.06);
+        border:1px solid rgba(76,141,255,.28);border-radius:10px;padding:.9vh .8vw;
         font-size:clamp(11px,.8vw,14px);line-height:1.85;white-space:pre-wrap;color:var(--text)}
   .f-ai .src{display:block;font-size:clamp(9px,.66vw,12px);color:var(--accent);
              letter-spacing:.08em;margin-bottom:.5vh}
@@ -188,16 +190,16 @@
   .f-ai.pending{color:var(--muted)}
   .devgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(9.5vw,1fr));
            gap:.7vh .7vw;overflow:hidden;align-content:start}
-  .chip{display:flex;align-items:center;gap:.45vw;padding:.65vh .6vw;border-radius:5px;
+  .chip{display:flex;align-items:center;gap:.45vw;padding:.65vh .6vw;border-radius:8px;
         background:rgba(255,255,255,.03);border:1px solid var(--line);min-width:0}
   .chip .cd{width:.7vh;height:.7vh;border-radius:50%;flex:none;background:var(--offline)}
   .chip .cn{font-size:clamp(10px,.78vw,14px);white-space:nowrap;overflow:hidden;
             text-overflow:ellipsis;flex:1;min-width:0}
   .chip .cs{font-size:clamp(9px,.66vw,12px);white-space:nowrap}
-  .chip.run .cd{background:var(--run);box-shadow:0 0 8px rgba(52,211,153,.7)}
-  .chip.idle .cd{background:var(--idle);box-shadow:0 0 8px rgba(251,191,36,.6)}
-  .chip.stop .cd{background:var(--stop);box-shadow:0 0 8px rgba(248,113,113,.7)}
-  .chip.alarm .cd{background:var(--alarm);box-shadow:0 0 8px rgba(255,91,91,.8)}
+  .chip.run .cd{background:var(--run);box-shadow:0 0 8px rgba(155,227,90,.7)}
+  .chip.idle .cd{background:var(--idle);box-shadow:0 0 8px rgba(226,179,76,.6)}
+  .chip.stop .cd{background:var(--stop);box-shadow:0 0 8px rgba(255,143,135,.7)}
+  .chip.alarm .cd{background:var(--alarm);box-shadow:0 0 8px rgba(255,122,113,.8)}
   .chip.offline{opacity:.55}
   .chip.run .cs{color:var(--run)} .chip.idle .cs{color:var(--idle)}
   .chip.stop .cs{color:var(--stop)} .chip.alarm .cs{color:var(--alarm)}
@@ -216,7 +218,7 @@
                 align-items:center;justify-content:center;z-index:9}
   .offline-mask.show{display:flex}
   .offline-mask div{border:1px solid var(--stop);color:var(--stop);padding:1.4vh 2vw;
-                    border-radius:8px;background:rgba(20,10,12,.9);
+                    border-radius:12px;background:rgba(23,28,30,.92);
                     font-size:clamp(13px,.95vw,18px);letter-spacing:.08em}
 </style>
 </head>
@@ -349,7 +351,7 @@
 /* 车间大屏脚本：只读、不登录、5 秒拉一次。
    断网时保留最后一屏数据（大屏不能变白板），只在中间压一条提示。 */
 const $ = id => document.getElementById(id);
-const COLORS = { run:'#34d399', idle:'#fbbf24', stop:'#f87171', alarm:'#ff5b5b', offline:'#56687d' };
+const COLORS = { run:'#9be35a', idle:'#e2b34c', stop:'#ff8f87', alarm:'#ff7a71', offline:'#6c7679' };
 const STATE_TEXT = { run:'运行', idle:'待机', stop:'停机', alarm:'报警', offline:'离线' };
 let lastOk = 0, failures = 0, chartMax = 1, lastSnapshot = null;
 
