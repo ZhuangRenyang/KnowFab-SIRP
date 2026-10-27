@@ -172,33 +172,39 @@ function addDevice() {
 <style scoped>
 .shell { min-height: 100vh; }
 .aside {
-  background: var(--surface); border-right: 1px solid var(--border);
+  background: var(--rail-bg); border-right: 1px solid var(--border);
   display: flex; flex-direction: column; transition: width var(--motion-base) var(--ease-standard);
   overflow: hidden;
 }
-.brand { display: flex; align-items: center; gap: 10px; padding: 14px 14px 10px; }
+.brand { display: flex; align-items: center; gap: 10px; padding: 16px 14px 12px; }
 .brand-mark {
-  flex: none; width: 30px; height: 30px; border-radius: var(--radius-sm);
+  flex: none; width: 32px; height: 32px; border-radius: 10px;
   background: var(--accent); color: var(--accent-on);
+  box-shadow: var(--e-accent);
   display: flex; align-items: center; justify-content: center; font-weight: 600;
 }
 .brand-text { display: flex; flex-direction: column; line-height: 1.25; }
 .brand-text b { font-size: var(--text-md); }
 .brand-text span { font-size: var(--text-2xs); color: var(--muted); }
-.nav { flex: 1; overflow-y: auto; padding: 4px 8px; }
+.nav { flex: 1; overflow-y: auto; padding: 4px 10px; }
 .group-label {
   font-size: var(--text-2xs); color: var(--meta); letter-spacing: 2px;
-  padding: 12px 8px 4px;
+  padding: 14px 8px 4px;
 }
 .nav-item {
-  display: flex; align-items: center; gap: 10px; padding: 9px 10px; margin: 2px 0;
-  border-radius: var(--radius-sm); color: var(--fg-2); cursor: pointer; user-select: none;
-  border-left: 3px solid transparent; transition: background var(--motion-fast) var(--ease-standard);
+  display: flex; align-items: center; gap: 10px; padding: 9px 12px; margin: 2px 0;
+  border-radius: 10px; color: var(--fg-2); cursor: pointer; user-select: none;
+  transition: background var(--motion-fast) var(--ease-standard),
+              box-shadow var(--motion-fast) var(--ease-standard),
+              color var(--motion-fast) var(--ease-standard);
 }
 .nav-item:hover { background: var(--hover); color: var(--fg); }
 .nav-item.active {
-  background: var(--accent-soft); color: var(--fg); border-left-color: var(--accent);
+  background: var(--pill-bg);
+  box-shadow: var(--elev-raised), var(--pill-inset);
+  color: var(--fg);
 }
+.nav-item.active .el-icon { color: var(--accent); }
 .nav-item.disabled { opacity: .45; cursor: not-allowed; }
 .foot {
   display: flex; align-items: center; gap: 6px; padding: 10px 12px;
@@ -213,7 +219,7 @@ function addDevice() {
 .body-col { min-width: 0; }
 .hd {
   display: flex; align-items: center; gap: 16px;
-  border-bottom: 1px solid var(--border); background: var(--surface);
+  border-bottom: 1px solid var(--border); background: var(--rail-bg);
 }
 .hd-title { font-size: var(--text-md); font-weight: 500; white-space: nowrap; }
 .hd-title span { color: var(--muted); font-size: var(--text-xs); font-weight: 400; margin-left: 4px; }
@@ -233,6 +239,9 @@ function addDevice() {
 .user-pill {
   display: inline-flex; align-items: center; gap: 4px; cursor: pointer;
   color: var(--fg-2); font-size: var(--text-sm); white-space: nowrap;
+  padding: 6px 12px; border-radius: var(--radius-pill);
+  background: var(--pill-bg); box-shadow: var(--pill-inset);
 }
+.user-pill:hover { color: var(--fg); }
 .main { padding: var(--space-5); background: var(--bg); }
 </style>

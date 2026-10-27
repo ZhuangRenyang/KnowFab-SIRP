@@ -1,126 +1,114 @@
 /* ============================================================
-   知造 SIRP Design Tokens v2 — 四层体系（设计师颜好看产出，单一来源）
-   引入顺序：element-plus css → 本文件 → 页面样式
-   主题机制：html.dark = 深色（默认）| html.light = 浅色
-   两个 class 由 stores/theme.ts 同步维护，localStorage 键 dh-theme 与老页面互通
+   知造 SIRP Design Tokens v3 —— 珍珠玻璃（Pearl Glass）
+   设计语言采纳自用户指定参照仓库 wbr664393425-lgtm/scaffold-master
+   （MIT License, Copyright (c) 2026 wbr664393425-lgtm），按本系统语义适配。
+   全站颜色、圆角、阴影、字色的唯一来源；页面与组件只引用令牌，不手写取值。
+   主题：浅色为默认（:root）；html.dark = 深色（同一套语义换材质）。
    ============================================================ */
 
-/* ---------- A1 身份层 + 表面/前景/边框（深色默认） ---------- */
-:root, html.dark {
-  --bg: #0d1117;
-  --surface: #161b22;
-  --surface-2: #1c2330;
-  --surface-3: #222b3a;
-  --fg: #e6edf3;
-  --fg-2: #b6c2cf;
-  --muted: #8b98a8;
-  --meta: #64748b;
-  --border: #2b3444;
-  --border-soft: rgba(255, 255, 255, .06);
-  --border-strong: #3d4b60;
-  --hover: rgba(255, 255, 255, .045);
-  --accent: #3b82f6;
+:root {
+  font-family: "SF Pro Display", "SF Pro Text", "PingFang SC", -apple-system,
+    BlinkMacSystemFont, "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  font-synthesis: none;
+  color-scheme: light;
+
+  /* ── 字色五档（珍珠玻璃） ── */
+  --bg: #f6f8f7;             /* 页面底：柔和灰白画布 */
+  --surface: #fbfcfc;        /* 阅读面：卡片 / 表格 / 弹窗 */
+  --surface-2: #f2f5f4;      /* 嵌套块 / 输入底 / KPI 槽 */
+  --surface-3: #eef2f1;      /* 悬浮强化 */
+  --fg: #101418;
+  --fg-2: #596368;
+  --muted: #7e888c;
+  --meta: #99a2a5;
+  --border: rgba(46, 58, 62, .085);
+  --border-soft: rgba(46, 58, 62, .06);
+  --border-strong: rgba(46, 58, 62, .16);
+  --hover: rgba(46, 58, 62, .045);
+  --press: rgba(46, 58, 62, .075);
+
+  /* ── 主操作蓝 / 状态色（青柠=正常，红=警示） ── */
+  --accent: #236de9;
   --accent-on: #ffffff;
-  --accent-hover: #2f74e0;
-  --accent-active: #2660c4;
-  --accent-soft: rgba(59, 130, 246, .14);
-  --run: #22c55e;   --run-soft: rgba(34, 197, 94, .15);
-  --idle: #eab308;  --idle-soft: rgba(234, 179, 8, .15);
-  --stop: #94a3b8;  --stop-soft: rgba(100, 116, 139, .2);
-  --alarm: #ef4444; --alarm-soft: rgba(239, 68, 68, .18);
-  --off: #9ca3af;   --off-soft: rgba(107, 114, 128, .2);
-  --success: #3fb950;
-  --warn: #d29922;
-  --danger: #f85149;
-  --info: #58a6ff;
+  --accent-hover: #1d61d5;
+  --accent-active: #1a55c0;
+  --accent-soft: rgba(35, 109, 233, .1);
+  --run: #58a021;   --run-soft: rgba(130, 221, 45, .14);
+  --idle: #b7791f;  --idle-soft: rgba(234, 179, 8, .13);
+  --stop: #7e888c;  --stop-soft: rgba(100, 116, 139, .14);
+  --alarm: #e0443b; --alarm-soft: rgba(255, 90, 80, .11);
+  --off: #99a2a5;   --off-soft: rgba(107, 114, 128, .14);
+  --success: #58a021;
+  --warn: #b7791f;
+  --danger: #e0443b;
+  --info: #236de9;
+
+  /* ── 材质阴影：接触 + 环境两段；主操作带蓝色氛围 ── */
+  --shade: 46, 58, 62;
   --elev-flat: none;
   --elev-ring: 0 0 0 1px var(--border);
-  --elev-raised: 0 0 0 1px var(--border);
-  --elev-modal: 0 8px 32px rgba(0, 0, 0, .5);
-  --mask: rgba(0, 0, 0, .6);
-}
-html.light {
-  --bg: #eef1f6;
-  --surface: #ffffff;
-  --surface-2: #f6f8fb;
-  --surface-3: #eef2f7;
-  --fg: #1b2534;
-  --fg-2: #3d4b60;
-  --muted: #5f6e82;
-  --meta: #8896a8;
-  --border: #d8e0ea;
-  --border-soft: rgba(15, 23, 42, .06);
-  --border-strong: #b9c6d6;
-  --hover: rgba(15, 23, 42, .055);
-  --accent: #2563eb;
-  --accent-on: #ffffff;
-  --accent-hover: #1d4ed8;
-  --accent-active: #1e40af;
-  --accent-soft: rgba(37, 99, 235, .10);
-  --run: #15803d;   --run-soft: rgba(34, 197, 94, .12);
-  --idle: #b45309;  --idle-soft: rgba(234, 179, 8, .12);
-  --stop: #64748b;  --stop-soft: rgba(100, 116, 139, .14);
-  --alarm: #dc2626; --alarm-soft: rgba(239, 68, 68, .10);
-  --off: #9aa7b6;   --off-soft: rgba(107, 114, 128, .14);
-  --success: #16a34a;
-  --warn: #b45309;
-  --danger: #dc2626;
-  --info: #0969da;
-  --elev-flat: none;
-  --elev-ring: 0 0 0 1px var(--border);
-  --elev-raised: 0 1px 2px rgba(15, 23, 42, .05), 0 2px 8px rgba(15, 23, 42, .06);
-  --elev-modal: 0 8px 32px rgba(15, 23, 42, .14);
-  --mask: rgba(15, 23, 42, .4);
-}
+  --elev-raised: 0 1px 2px rgba(var(--shade), .05), 0 5px 14px rgba(var(--shade), .04);
+  --elev-modal: 0 2px 6px rgba(var(--shade), .07), 0 22px 50px rgba(var(--shade), .08);
+  --e-accent: 0 1px 2px rgba(20, 66, 148, .28), 0 8px 18px rgba(35, 109, 233, .24);
+  --e-accent-hover: 0 1px 2px rgba(20, 66, 148, .32), 0 12px 24px rgba(35, 109, 233, .3);
+  --edge: inset 0 1px 0 rgba(255, 255, 255, .92);
+  --mask: rgba(16, 20, 24, .26);
 
-/* ---------- A1-structure 主色阶（两主题共用） ---------- */
-:root {
-  --color-primary-50: #eff6ff;  --color-primary-100: #dbeafe;
-  --color-primary-200: #bfdbfe; --color-primary-300: #93c5fd;
-  --color-primary-400: #60a5fa; --color-primary-500: #3b82f6;
-  --color-primary-600: #2563eb; --color-primary-700: #1d4ed8;
-  --color-primary-800: #1e40af; --color-primary-900: #1e3a8a;
-}
+  /* ── 导航轨 / 胶囊材质（App 壳专用） ── */
+  --rail-bg: rgba(250, 251, 250, .92);
+  --pill-bg: linear-gradient(145deg, rgba(255, 255, 255, .93), rgba(246, 251, 249, .62));
+  --pill-inset: inset 0 -1px 0 rgba(105, 122, 128, .08);
 
-/* ---------- A2 结构层：字体/间距/圆角/动效（两主题共用） ---------- */
-:root {
-  --font-body: "Inter", "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+  /* ── 圆角：五级 + 胶囊 ── */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-pill: 9999px;
+
+  /* ── 主色阶（EP light-N 混色用） ── */
+  --color-primary-50: #eff5fd;
+  --color-primary-100: #d8e6fa;
+  --color-primary-200: #bcd4f8;
+  --color-primary-300: #8bb4f3;
+  --color-primary-400: #5b93ee;
+  --color-primary-500: #236de9;
+  --color-primary-600: #1d61d5;
+  --color-primary-700: #1a55c0;
+  --color-primary-800: #1748a3;
+  --color-primary-900: #143c8a;
+
+  /* ── 字体与字号 ── */
+  --font-body: "SF Pro Text", "PingFang SC", -apple-system, BlinkMacSystemFont,
+    "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
   --text-2xs: 11px;  --text-xs: 12px;  --text-sm: 13px;  --text-base: 14px;
   --text-md: 15px;   --text-lg: 17px;  --text-xl: 20px;  --text-2xl: 28px;
   --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
   --space-5: 20px; --space-6: 24px; --space-8: 32px; --space-10: 40px; --space-12: 48px;
-  --radius-sm: 6px; --radius-md: 8px; --radius-lg: 10px;
-  --radius-xl: 12px; --radius-pill: 9999px;
   --motion-fast: 120ms; --motion-base: 180ms; --motion-slow: 300ms;
-  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
-  --focus-ring: 0 0 0 3px var(--accent-soft);
-}
+  --ease-standard: cubic-bezier(.16, 1, .3, 1);
+  --focus-ring: 0 0 0 3px rgba(35, 109, 233, .18);
 
-/* ---------- 图表语义 Token（总监按 PRD §2 补齐：峰谷红贵绿便宜等口径） ---------- */
-:root, html.dark {
-  --chart-tariff-sharp: #ef4444;    /* 尖峰 红=贵 */
-  --chart-tariff-peak: #f97316;     /* 高峰 橙 */
-  --chart-tariff-flat: #3b82f6;     /* 平段 蓝 */
-  --chart-tariff-valley: #22c55e;   /* 低谷 绿=便宜 */
-  --chart-tariff-unpriced: #64748b; /* 未计价 灰 */
-  --chart-night-dim: #334155;       /* 夜班柱暗色 */
-  --chart-demand-line: #ef4444;     /* 合同需量虚线 */
-}
-html.light {
-  --chart-tariff-peak: #ea580c;
-  --chart-tariff-flat: #2563eb;
+  /* ── 图表语义 Token（峰谷红贵绿便宜等口径不变，色值对齐珍珠玻璃） ── */
+  --chart-tariff-sharp: #e0443b;
+  --chart-tariff-peak: #f97316;
+  --chart-tariff-flat: #236de9;
+  --chart-tariff-valley: #58a021;
+  --chart-tariff-unpriced: #99a2a5;
   --chart-night-dim: #cbd5e1;
+  --chart-demand-line: #e0443b;
+  --dot-glow: 0 0 6px;
 }
 
-/* ---------- Element Plus 变量映射（引用 Token，零裸 hex） ---------- */
+/* ── Element Plus 桥：组件库整体换装成珍珠玻璃 ── */
 :root {
   --el-color-primary: var(--accent);
-  --el-color-primary-light-3: var(--color-primary-400);
-  --el-color-primary-light-5: var(--color-primary-200);
-  --el-color-primary-light-7: var(--color-primary-100);
-  --el-color-primary-light-8: #f0f6ff;
-  --el-color-primary-light-9: #eff6ff;
+  --el-color-primary-light-3: #5b93ee;
+  --el-color-primary-light-5: #8bb4f3;
+  --el-color-primary-light-7: #bcd4f8;
+  --el-color-primary-light-8: #d8e6fa;
+  --el-color-primary-light-9: #eff5fd;
   --el-color-primary-dark-2: var(--accent-hover);
   --el-color-success: var(--run);
   --el-color-warning: var(--idle);
@@ -129,7 +117,7 @@ html.light {
   --el-color-info: var(--stop);
   --el-bg-color: var(--surface);
   --el-bg-color-page: var(--bg);
-  --el-bg-color-overlay: var(--surface);
+  --el-bg-color-overlay: #ffffff;
   --el-text-color-primary: var(--fg);
   --el-text-color-regular: var(--fg-2);
   --el-text-color-secondary: var(--muted);
@@ -143,8 +131,8 @@ html.light {
   --el-fill-color-light: var(--surface-3);
   --el-fill-color-lighter: var(--surface-2);
   --el-fill-color-blank: var(--surface);
-  --el-border-radius-base: var(--radius-sm);
-  --el-border-radius-small: 4px;
+  --el-border-radius-base: 8px;
+  --el-border-radius-small: 6px;
   --el-border-radius-round: var(--radius-pill);
   --el-font-size-base: var(--text-base);
   --el-font-size-small: var(--text-sm);
@@ -154,22 +142,76 @@ html.light {
   --el-box-shadow: var(--elev-modal);
   --el-mask-color: var(--mask);
 }
-/* EP 暗色覆盖（新基座 html.dark 生效；含 el-table 暗色已知坑的预防性覆盖） */
+
+/* ── 深色外观：同一套语义，换成深色珍珠材质 ── */
 html.dark {
-  --el-color-primary-light-3: var(--color-primary-400);
-  --el-color-primary-light-5: var(--color-primary-300);
-  --el-color-primary-light-7: var(--color-primary-200);
-  --el-color-primary-light-8: var(--color-primary-100);
-  --el-color-primary-light-9: var(--accent-soft);
-  --el-bg-color-overlay: var(--surface-3);
-  --el-border-color-extra-light: transparent;
+  color-scheme: dark;
+  --bg: #121517;
+  --surface: #1b1f21;
+  --surface-2: #22272a;
+  --surface-3: #272d30;
+  --fg: #eef2f1;
+  --fg-2: #b0babd;
+  --muted: #8d979a;
+  --meta: #6c7679;
+  --border: rgba(255, 255, 255, .07);
+  --border-soft: rgba(255, 255, 255, .05);
+  --border-strong: rgba(255, 255, 255, .14);
+  --hover: rgba(255, 255, 255, .05);
+  --press: rgba(255, 255, 255, .08);
+  --accent: #4c8dff;
+  --accent-hover: #3d7ff2;
+  --accent-active: #2f6fe0;
+  --accent-soft: rgba(76, 141, 255, .16);
+  --run: #9be35a;   --run-soft: rgba(130, 221, 45, .16);
+  --idle: #e2b34c;  --idle-soft: rgba(234, 179, 8, .16);
+  --stop: #8d979a;  --stop-soft: rgba(141, 151, 154, .16);
+  --alarm: #ff7a71; --alarm-soft: rgba(255, 90, 80, .16);
+  --off: #6c7679;   --off-soft: rgba(108, 118, 121, .18);
+  --success: #9be35a;
+  --warn: #e2b34c;
+  --danger: #ff7a71;
+  --info: #4c8dff;
+  --shade: 0, 0, 0;
+  --elev-raised: 0 1px 2px rgba(0, 0, 0, .3), 0 5px 14px rgba(0, 0, 0, .2);
+  --elev-modal: 0 2px 6px rgba(0, 0, 0, .36), 0 22px 50px rgba(0, 0, 0, .42);
+  --e-accent: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 18px rgba(76, 141, 255, .26);
+  --e-accent-hover: 0 1px 2px rgba(0, 0, 0, .4), 0 12px 24px rgba(76, 141, 255, .34);
+  --edge: inset 0 1px 0 rgba(255, 255, 255, .06);
+  --mask: rgba(0, 0, 0, .5);
+  --rail-bg: rgba(22, 26, 28, .94);
+  --pill-bg: linear-gradient(145deg, rgba(255, 255, 255, .11), rgba(255, 255, 255, .05));
+  --pill-inset: inset 0 -1px 0 rgba(0, 0, 0, .2);
+  --chart-tariff-sharp: #ff7a71;
+  --chart-tariff-flat: #4c8dff;
+  --chart-tariff-valley: #9be35a;
+  --chart-tariff-unpriced: #6c7679;
+  --chart-night-dim: #334155;
+
+  --el-color-primary: var(--accent);
+  --el-color-primary-light-3: #2f5cb8;
+  --el-color-primary-light-5: #24479a;
+  --el-color-primary-light-7: #1c3a7d;
+  --el-color-primary-light-8: #183166;
+  --el-color-primary-light-9: #16294f;
+  --el-color-primary-dark-2: var(--accent-hover);
+  --el-bg-color: var(--surface);
+  --el-bg-color-overlay: #23282b;
+  --el-border-color: rgba(255, 255, 255, .07);
+  --el-border-color-light: rgba(255, 255, 255, .05);
+  --el-border-color-lighter: rgba(255, 255, 255, .05);
+  --el-fill-color: var(--surface-2);
+  --el-fill-color-light: var(--surface-3);
+  --el-fill-color-blank: var(--surface);
+  --el-box-shadow-light: var(--elev-raised);
+  --el-box-shadow: var(--elev-modal);
   --el-table-border-color: var(--border-soft);
   --el-table-header-bg-color: var(--surface-2);
   --el-table-tr-bg-color: var(--surface);
   --el-table-row-hover-bg-color: var(--hover);
 }
 
-/* ---------- 基础规则 ---------- */
+/* ── 基础元素 ── */
 body {
   margin: 0;
   font: var(--text-base)/1.6 var(--font-body);
@@ -190,3 +232,14 @@ body {
     transition-duration: .01ms !important;
   }
 }
+
+/* ── Element Plus 控件珍珠化（全局一层，组件不再各自写阴影圆角） ── */
+.el-button { border-radius: 10px; }
+.el-button--primary { box-shadow: var(--e-accent); }
+.el-button--primary:hover { box-shadow: var(--e-accent-hover); }
+.el-button--danger { box-shadow: 0 1px 2px rgba(150, 40, 34, .26), 0 8px 18px rgba(255, 90, 80, .24); }
+.el-card { border-radius: var(--radius-lg); border: 1px solid var(--border); box-shadow: var(--elev-raised); }
+.el-dialog { border-radius: var(--radius-xl); box-shadow: var(--elev-modal); }
+.el-input__wrapper, .el-textarea__inner { border-radius: 10px; }
+.el-table { --el-table-border-color: var(--border-soft); }
+.el-tag { border-radius: var(--radius-sm); }
