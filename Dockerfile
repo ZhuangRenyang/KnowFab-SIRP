@@ -2,6 +2,16 @@
 # 构建：docker build -t knowfab-sirp .
 # 国内加速：docker build --build-arg MAVEN_MIRROR=https://maven.aliyun.com/repository/public -t knowfab-sirp .
 
+# ---------- 前端层：Node 22 构建 Vue（ADR-002） ----------
+FROM node:22-alpine AS frontend
+ARG NPM_REGISTRY=""
+WORKDIR /fe
+COPY frontend/package.json frontend/package-lock.json ./
+RUN if [ -n "$NPM_REGISTRY" ]; then npm config set registry "$NPM_REGISTRY"; fi && npm ci
+COPY frontend/ ./
+# vite.config 默认 outDir 指向 ../src/main/resources/static/app，容器内显式重定向
+RUN npm run build -- --outDir /fe/dist --emptyOutDir
+
 # ---------- 构建层：Maven + JDK 17 ----------
 FROM maven:3.9-eclipse-temurin-17 AS build
 WORKDIR /src
@@ -13,6 +23,8 @@ RUN if [ -n "$MAVEN_MIRROR" ]; then mkdir -p /root/.m2 \
 COPY pom.xml ./
 RUN mvn -q -B dependency:go-offline || true
 COPY src ./src
+# 前端产物并入 jar（static/app）
+COPY --from=frontend /fe/dist ./src/main/resources/static/app
 RUN mvn -q -B -DskipTests package
 
 # ---------- 运行层：纯 JRE，体积最小 ----------

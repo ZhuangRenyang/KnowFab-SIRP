@@ -1,0 +1,234 @@
+<template>
+  <el-config-provider :locale="zhCn">
+    <router-view v-if="isLogin" />
+    <el-container v-else class="shell">
+    <el-aside :width="collapsed ? '56px' : '212px'" class="aside">
+      <div class="brand">
+        <div class="brand-mark">知</div>
+        <div v-if="!collapsed" class="brand-text"><b>知造 SIRP</b><span>AI 智慧工厂</span></div>
+      </div>
+
+      <nav class="nav">
+        <template v-for="g in groups" :key="g.title">
+          <div v-if="!collapsed" class="group-label">{{ g.title }}</div>
+          <template v-for="it in g.items" :key="g.title + it.label">
+            <router-link v-if="!it.disabled" v-slot="{ navigate, isActive }" :to="it.path" custom>
+              <div class="nav-item" :class="{ active: isActive }" @click="navigate()">
+                <el-icon :size="18"><component :is="it.icon" /></el-icon>
+                <span v-if="!collapsed">{{ it.label }}</span>
+              </div>
+            </router-link>
+            <el-tooltip v-else :content="it.tip || it.label" placement="right" :disabled="!collapsed">
+              <div class="nav-item disabled">
+                <el-icon :size="18"><component :is="it.icon" /></el-icon>
+                <span v-if="!collapsed">{{ it.label }}</span>
+              </div>
+            </el-tooltip>
+          </template>
+        </template>
+      </nav>
+
+      <div class="foot">
+        <a class="foot-link" href="/" title="切换前的旧版界面（迁移期临时保留）">旧版</a>
+        <a class="foot-link" href="/screen.html" target="_blank" title="打开车间大屏（不需要登录）">大屏</a>
+        <el-icon class="foot-icon" :title="theme.light ? '切换深色' : '切换浅色'" @click="theme.toggle()">
+          <Moon v-if="theme.light" /><Sunny v-else />
+        </el-icon>
+        <el-icon class="foot-icon" :title="collapsed ? '展开菜单' : '收起菜单'" @click="toggleCollapsed">
+          <Expand v-if="collapsed" /><Fold v-else />
+        </el-icon>
+      </div>
+    </el-aside>
+
+    <el-container class="body-col">
+      <el-header class="hd" height="52px">
+        <div class="hd-title">知造 SIRP <span>AI 智慧工厂管理系统</span></div>
+        <div class="hd-stats num">
+          <span>设备 <b>{{ devices.stats.total }}</b></span>
+          <span>在线 <b class="c-run">{{ devices.stats.online }}</b></span>
+          <span>运行 <b class="c-run">{{ devices.stats.running }}</b></span>
+          <span>报警 <b class="c-alarm">{{ devices.stats.alarm }}</b></span>
+        </div>
+        <div class="hd-right">
+          <span class="ws-pill" :class="ws.connected ? 'on' : 'off'">
+            <i class="dot" />{{ ws.connected ? '实时连接' : '已断开，重连中' }}
+          </span>
+          <el-badge :value="alarmsOpen > 99 ? '99+' : alarmsOpen" :hidden="alarmsOpen <= 0" :max="99">
+            <el-icon class="hd-icon" title="报警记录" @click="router.push('/alarm')"><Bell /></el-icon>
+          </el-badge>
+          <el-button v-if="auth.canWrite" type="primary" size="small" @click="addDevice">+ 新增设备</el-button>
+          <el-dropdown trigger="click" @command="onUserCmd">
+            <span class="user-pill">
+              {{ auth.displayName }} · {{ auth.roleLabel }}
+              <el-icon><ArrowDown /></el-icon>
+            </span>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="account">账号与密码</el-dropdown-item>
+                <el-dropdown-item divided command="logout">退出登录</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </div>
+      </el-header>
+      <el-main class="main"><router-view /></el-main>
+    </el-container>
+  </el-container>
+  </el-config-provider>
+
+  <AccountDialog v-model="acctVisible" />
+</template>
+
+<script setup lang="ts">
+import { computed, onMounted, onScopeDispose, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import {
+  Monitor, Bell, Lightning, DataLine, Sunrise,
+  OfficeBuilding, Box, Sell, ChatDotRound, Setting,
+  Expand, Fold, Sunny, Moon, ArrowDown
+} from '@element-plus/icons-vue'
+import { useAuthStore } from '@/stores/auth'
+import { useThemeStore } from '@/stores/theme'
+import { useWsStore } from '@/stores/ws'
+import { useDevicesStore } from '@/stores/devices'
+import { alarmsApi } from '@/api/alarms'
+import { usePolling } from '@/composables/usePolling'
+import AccountDialog from '@/components/AccountDialog.vue'
+import zhCn from 'element-plus/es/locale/lang/zh-cn'
+
+const route = useRoute()
+const router = useRouter()
+const auth = useAuthStore()
+const theme = useThemeStore()
+const ws = useWsStore()
+const devices = useDevicesStore()
+
+const isLogin = computed(() => route.path === '/login')
+const acctVisible = ref(false)
+
+/* 侧边栏收缩：沿用 dh-sb-min 键；窗口 <960px 默认收起（PRD §0.1） */
+const collapsed = ref(false)
+try { collapsed.value = localStorage.getItem('dh-sb-min') === '1' } catch { /* 隐私模式 */ }
+onMounted(() => { if (window.innerWidth < 960) collapsed.value = true })
+function toggleCollapsed() {
+  collapsed.value = !collapsed.value
+  try { localStorage.setItem('dh-sb-min', collapsed.value ? '1' : '0') } catch { /* 隐私模式 */ }
+}
+
+/* 登录态驱动 WS 连接与首屏数据 */
+watch(() => auth.user, (u) => { if (u) ws.connect(); else ws.close() }, { immediate: true })
+watch(() => auth.ready, (r) => {
+  if (r && auth.user) {
+    devices.bindWs()
+    devices.load()
+    loadAlarmSummary()
+  }
+}, { immediate: true })
+
+/* 铃铛：ws 事件节流触发 + 20s 兜底轮询（PRD §0.1） */
+const alarmsOpen = ref(0)
+async function loadAlarmSummary() {
+  try { alarmsOpen.value = (await alarmsApi.summary()).open ?? 0 } catch { /* 静默，下一轮兜底 */ }
+}
+usePolling(loadAlarmSummary, 20000, { immediate: false })
+onScopeDispose(ws.on('alarms:dirty', () => loadAlarmSummary()))
+
+const groups = computed(() => [
+  { title: '生产监控', items: [
+    { path: '/', label: '设备监控', icon: Monitor },
+    { path: '/alarm', label: '报警', icon: Bell }
+  ] },
+  { title: '分析', items: [
+    { path: '/energy', label: '能耗分析', icon: Lightning },
+    { path: '/report', label: '报表', icon: DataLine },
+    { path: '/digest', label: 'AI 早报', icon: Sunrise }
+  ] },
+  { title: 'ERP · 规划中', items: [
+    { path: '', label: '产线管理', icon: OfficeBuilding, disabled: true, tip: '阶段一（DH-40/41）' },
+    { path: '', label: '仓库管理', icon: Box, disabled: true, tip: '阶段二（DH-43/44）' },
+    { path: '', label: '销售查询', icon: Sell, disabled: true, tip: '阶段二（DH-45）' }
+  ] },
+  { title: '智能 · 规划中', items: [
+    { path: '', label: 'AI 助手', icon: ChatDotRound, disabled: true, tip: '阶段三（DH-47）' }
+  ] },
+  ...(auth.isAdmin
+    ? [{ title: '系统', items: [{ path: '/system', label: '系统', icon: Setting, disabled: false, tip: '' }] }]
+    : [])
+])
+
+function onUserCmd(cmd: string) {
+  if (cmd === 'account') acctVisible.value = true
+  else if (cmd === 'logout') auth.logout().then(() => router.replace('/login'))
+}
+function addDevice() {
+  router.push({ path: '/', query: { new: '1' } })
+}
+</script>
+
+<style scoped>
+.shell { min-height: 100vh; }
+.aside {
+  background: var(--surface); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; transition: width var(--motion-base) var(--ease-standard);
+  overflow: hidden;
+}
+.brand { display: flex; align-items: center; gap: 10px; padding: 14px 14px 10px; }
+.brand-mark {
+  flex: none; width: 30px; height: 30px; border-radius: var(--radius-sm);
+  background: var(--accent); color: var(--accent-on);
+  display: flex; align-items: center; justify-content: center; font-weight: 600;
+}
+.brand-text { display: flex; flex-direction: column; line-height: 1.25; }
+.brand-text b { font-size: var(--text-md); }
+.brand-text span { font-size: var(--text-2xs); color: var(--muted); }
+.nav { flex: 1; overflow-y: auto; padding: 4px 8px; }
+.group-label {
+  font-size: var(--text-2xs); color: var(--meta); letter-spacing: 2px;
+  padding: 12px 8px 4px;
+}
+.nav-item {
+  display: flex; align-items: center; gap: 10px; padding: 9px 10px; margin: 2px 0;
+  border-radius: var(--radius-sm); color: var(--fg-2); cursor: pointer; user-select: none;
+  border-left: 3px solid transparent; transition: background var(--motion-fast) var(--ease-standard);
+}
+.nav-item:hover { background: var(--hover); color: var(--fg); }
+.nav-item.active {
+  background: var(--accent-soft); color: var(--fg); border-left-color: var(--accent);
+}
+.nav-item.disabled { opacity: .45; cursor: not-allowed; }
+.foot {
+  display: flex; align-items: center; gap: 6px; padding: 10px 12px;
+  border-top: 1px solid var(--border);
+}
+.foot-link { color: var(--muted); font-size: var(--text-xs); text-decoration: none; }
+.foot-link:hover { color: var(--fg); }
+.foot-icon { margin-left: auto; color: var(--muted); cursor: pointer; }
+.foot-icon + .foot-icon { margin-left: 0; }
+.foot-icon:hover { color: var(--fg); }
+
+.body-col { min-width: 0; }
+.hd {
+  display: flex; align-items: center; gap: 16px;
+  border-bottom: 1px solid var(--border); background: var(--surface);
+}
+.hd-title { font-size: var(--text-md); font-weight: 500; white-space: nowrap; }
+.hd-title span { color: var(--muted); font-size: var(--text-xs); font-weight: 400; margin-left: 4px; }
+.hd-stats { display: flex; gap: 14px; color: var(--muted); font-size: var(--text-sm); white-space: nowrap; }
+.hd-stats b { color: var(--fg); margin: 0 2px; }
+.c-run { color: var(--run) !important; }
+.c-alarm { color: var(--alarm) !important; }
+.hd-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+.ws-pill {
+  display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-xs);
+  color: var(--muted); white-space: nowrap;
+}
+.ws-pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--off); }
+.ws-pill.on .dot { background: var(--run); box-shadow: var(--dot-glow, 0 0 6px) var(--run); }
+.hd-icon { cursor: pointer; color: var(--fg-2); font-size: 18px; }
+.hd-icon:hover { color: var(--fg); }
+.user-pill {
+  display: inline-flex; align-items: center; gap: 4px; cursor: pointer;
+  color: var(--fg-2); font-size: var(--text-sm); white-space: nowrap;
+}
+.main { padding: var(--space-5); background: var(--bg); }
+</style>

@@ -33,9 +33,10 @@ if [ ! -f .env ]; then
     echo "APP_PORT=8080"
     echo "DB_PASSWORD=sirp_$(rand_hex)"
     echo "MAVEN_MIRROR=https://maven.aliyun.com/repository/public"
+    echo "NPM_REGISTRY=https://registry.npmmirror.com"
   } > .env
   chmod 600 .env
-  ok ".env 已生成（MAVEN_MIRROR 已指向阿里云）"
+  ok ".env 已生成（Maven/NPM 镜像已指向国内源）"
 else
   ok ".env 已存在，沿用现有配置"
 fi

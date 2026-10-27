@@ -10,3 +10,5 @@ run*.log
 .env
 .idea/
 .vscode/
+frontend/node_modules/
+frontend/.vite/

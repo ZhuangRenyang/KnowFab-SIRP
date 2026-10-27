@@ -47,6 +47,19 @@ if [ "$DO_BUILD" -eq 1 ]; then
   fi
   [ -n "${JAVA_HOME:-}" ] || command -v java >/dev/null 2>&1 \
     || die "需要 JAVA_HOME 或 PATH 里有 java"
+  # ---------- 前端构建（Vue 3 + Vite，ADR-002）：frontend/ 存在则必须成功 ----------
+  if [ -d "$ROOT/frontend" ]; then
+    command -v npm >/dev/null 2>&1 \
+      || die "frontend/ 存在但本机没有 npm。装 Node 20+，或临时移走 frontend/ 目录"
+    say "构建前端（frontend/ → static/app/）"
+    NPM_REG="${NPM_REGISTRY:-https://registry.npmmirror.com}"
+    ( cd "$ROOT/frontend" \
+        && { npm ci --registry="$NPM_REG" --no-fund --no-audit >/dev/null 2>&1 \
+             || npm install --registry="$NPM_REG" --no-fund --no-audit; } \
+        && npm run build ) || die "前端构建失败——jar 会缺新版界面，已中止打包"
+    ok "前端构建完成"
+  fi
+
   say "构建 jar（$MVN_BIN）"
   ( cd "$ROOT" && "$MVN_BIN" -q -DskipTests package ) || die "构建失败，看上面的报错"
   ok "构建完成"

@@ -22,3 +22,8 @@ tools/license-demo.key
 dist/*
 !dist/version.json
 application-db.yml
+
+# 前端：依赖与构建产物不进库（package-lock.json 必须进库，npm ci 依赖它）
+frontend/node_modules/
+frontend/.vite/
+src/main/resources/static/app/

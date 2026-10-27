@@ -1,0 +1,192 @@
+/* ============================================================
+   知造 SIRP Design Tokens v2 — 四层体系（设计师颜好看产出，单一来源）
+   引入顺序：element-plus css → 本文件 → 页面样式
+   主题机制：html.dark = 深色（默认）| html.light = 浅色
+   两个 class 由 stores/theme.ts 同步维护，localStorage 键 dh-theme 与老页面互通
+   ============================================================ */
+
+/* ---------- A1 身份层 + 表面/前景/边框（深色默认） ---------- */
+:root, html.dark {
+  --bg: #0d1117;
+  --surface: #161b22;
+  --surface-2: #1c2330;
+  --surface-3: #222b3a;
+  --fg: #e6edf3;
+  --fg-2: #b6c2cf;
+  --muted: #8b98a8;
+  --meta: #64748b;
+  --border: #2b3444;
+  --border-soft: rgba(255, 255, 255, .06);
+  --border-strong: #3d4b60;
+  --hover: rgba(255, 255, 255, .045);
+  --accent: #3b82f6;
+  --accent-on: #ffffff;
+  --accent-hover: #2f74e0;
+  --accent-active: #2660c4;
+  --accent-soft: rgba(59, 130, 246, .14);
+  --run: #22c55e;   --run-soft: rgba(34, 197, 94, .15);
+  --idle: #eab308;  --idle-soft: rgba(234, 179, 8, .15);
+  --stop: #94a3b8;  --stop-soft: rgba(100, 116, 139, .2);
+  --alarm: #ef4444; --alarm-soft: rgba(239, 68, 68, .18);
+  --off: #9ca3af;   --off-soft: rgba(107, 114, 128, .2);
+  --success: #3fb950;
+  --warn: #d29922;
+  --danger: #f85149;
+  --info: #58a6ff;
+  --elev-flat: none;
+  --elev-ring: 0 0 0 1px var(--border);
+  --elev-raised: 0 0 0 1px var(--border);
+  --elev-modal: 0 8px 32px rgba(0, 0, 0, .5);
+  --mask: rgba(0, 0, 0, .6);
+}
+html.light {
+  --bg: #eef1f6;
+  --surface: #ffffff;
+  --surface-2: #f6f8fb;
+  --surface-3: #eef2f7;
+  --fg: #1b2534;
+  --fg-2: #3d4b60;
+  --muted: #5f6e82;
+  --meta: #8896a8;
+  --border: #d8e0ea;
+  --border-soft: rgba(15, 23, 42, .06);
+  --border-strong: #b9c6d6;
+  --hover: rgba(15, 23, 42, .055);
+  --accent: #2563eb;
+  --accent-on: #ffffff;
+  --accent-hover: #1d4ed8;
+  --accent-active: #1e40af;
+  --accent-soft: rgba(37, 99, 235, .10);
+  --run: #15803d;   --run-soft: rgba(34, 197, 94, .12);
+  --idle: #b45309;  --idle-soft: rgba(234, 179, 8, .12);
+  --stop: #64748b;  --stop-soft: rgba(100, 116, 139, .14);
+  --alarm: #dc2626; --alarm-soft: rgba(239, 68, 68, .10);
+  --off: #9aa7b6;   --off-soft: rgba(107, 114, 128, .14);
+  --success: #16a34a;
+  --warn: #b45309;
+  --danger: #dc2626;
+  --info: #0969da;
+  --elev-flat: none;
+  --elev-ring: 0 0 0 1px var(--border);
+  --elev-raised: 0 1px 2px rgba(15, 23, 42, .05), 0 2px 8px rgba(15, 23, 42, .06);
+  --elev-modal: 0 8px 32px rgba(15, 23, 42, .14);
+  --mask: rgba(15, 23, 42, .4);
+}
+
+/* ---------- A1-structure 主色阶（两主题共用） ---------- */
+:root {
+  --color-primary-50: #eff6ff;  --color-primary-100: #dbeafe;
+  --color-primary-200: #bfdbfe; --color-primary-300: #93c5fd;
+  --color-primary-400: #60a5fa; --color-primary-500: #3b82f6;
+  --color-primary-600: #2563eb; --color-primary-700: #1d4ed8;
+  --color-primary-800: #1e40af; --color-primary-900: #1e3a8a;
+}
+
+/* ---------- A2 结构层：字体/间距/圆角/动效（两主题共用） ---------- */
+:root {
+  --font-body: "Inter", "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+  --text-2xs: 11px;  --text-xs: 12px;  --text-sm: 13px;  --text-base: 14px;
+  --text-md: 15px;   --text-lg: 17px;  --text-xl: 20px;  --text-2xl: 28px;
+  --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
+  --space-5: 20px; --space-6: 24px; --space-8: 32px; --space-10: 40px; --space-12: 48px;
+  --radius-sm: 6px; --radius-md: 8px; --radius-lg: 10px;
+  --radius-xl: 12px; --radius-pill: 9999px;
+  --motion-fast: 120ms; --motion-base: 180ms; --motion-slow: 300ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --focus-ring: 0 0 0 3px var(--accent-soft);
+}
+
+/* ---------- 图表语义 Token（总监按 PRD §2 补齐：峰谷红贵绿便宜等口径） ---------- */
+:root, html.dark {
+  --chart-tariff-sharp: #ef4444;    /* 尖峰 红=贵 */
+  --chart-tariff-peak: #f97316;     /* 高峰 橙 */
+  --chart-tariff-flat: #3b82f6;     /* 平段 蓝 */
+  --chart-tariff-valley: #22c55e;   /* 低谷 绿=便宜 */
+  --chart-tariff-unpriced: #64748b; /* 未计价 灰 */
+  --chart-night-dim: #334155;       /* 夜班柱暗色 */
+  --chart-demand-line: #ef4444;     /* 合同需量虚线 */
+}
+html.light {
+  --chart-tariff-peak: #ea580c;
+  --chart-tariff-flat: #2563eb;
+  --chart-night-dim: #cbd5e1;
+}
+
+/* ---------- Element Plus 变量映射（引用 Token，零裸 hex） ---------- */
+:root {
+  --el-color-primary: var(--accent);
+  --el-color-primary-light-3: var(--color-primary-400);
+  --el-color-primary-light-5: var(--color-primary-200);
+  --el-color-primary-light-7: var(--color-primary-100);
+  --el-color-primary-light-8: #f0f6ff;
+  --el-color-primary-light-9: #eff6ff;
+  --el-color-primary-dark-2: var(--accent-hover);
+  --el-color-success: var(--run);
+  --el-color-warning: var(--idle);
+  --el-color-danger: var(--alarm);
+  --el-color-error: var(--alarm);
+  --el-color-info: var(--stop);
+  --el-bg-color: var(--surface);
+  --el-bg-color-page: var(--bg);
+  --el-bg-color-overlay: var(--surface);
+  --el-text-color-primary: var(--fg);
+  --el-text-color-regular: var(--fg-2);
+  --el-text-color-secondary: var(--muted);
+  --el-text-color-placeholder: var(--meta);
+  --el-text-color-disabled: var(--meta);
+  --el-border-color: var(--border);
+  --el-border-color-light: var(--border-soft);
+  --el-border-color-lighter: var(--border-soft);
+  --el-border-color-extra-light: transparent;
+  --el-fill-color: var(--surface-2);
+  --el-fill-color-light: var(--surface-3);
+  --el-fill-color-lighter: var(--surface-2);
+  --el-fill-color-blank: var(--surface);
+  --el-border-radius-base: var(--radius-sm);
+  --el-border-radius-small: 4px;
+  --el-border-radius-round: var(--radius-pill);
+  --el-font-size-base: var(--text-base);
+  --el-font-size-small: var(--text-sm);
+  --el-font-size-extra-small: var(--text-xs);
+  --el-font-family: var(--font-body);
+  --el-box-shadow-light: var(--elev-raised);
+  --el-box-shadow: var(--elev-modal);
+  --el-mask-color: var(--mask);
+}
+/* EP 暗色覆盖（新基座 html.dark 生效；含 el-table 暗色已知坑的预防性覆盖） */
+html.dark {
+  --el-color-primary-light-3: var(--color-primary-400);
+  --el-color-primary-light-5: var(--color-primary-300);
+  --el-color-primary-light-7: var(--color-primary-200);
+  --el-color-primary-light-8: var(--color-primary-100);
+  --el-color-primary-light-9: var(--accent-soft);
+  --el-bg-color-overlay: var(--surface-3);
+  --el-border-color-extra-light: transparent;
+  --el-table-border-color: var(--border-soft);
+  --el-table-header-bg-color: var(--surface-2);
+  --el-table-tr-bg-color: var(--surface);
+  --el-table-row-hover-bg-color: var(--hover);
+}
+
+/* ---------- 基础规则 ---------- */
+body {
+  margin: 0;
+  font: var(--text-base)/1.6 var(--font-body);
+  color: var(--fg);
+  background: var(--bg);
+}
+.num, .dev-code, td.num, .kpi-val {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+:where(button, a, input, select, [tabindex]):focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    transition-duration: .01ms !important;
+  }
+}

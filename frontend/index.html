@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>知造 SIRP · AI 智慧工厂管理系统</title>
+  <script>
+    /* 主题先于渲染应用（防闪烁），与老页面共用 dh-theme 记忆：
+       dark = html.dark（Element Plus 暗色机制，默认）；light = html.light */
+    try {
+      if (localStorage.getItem('dh-theme') === 'light') {
+        document.documentElement.classList.add('light');
+      } else {
+        document.documentElement.classList.add('dark');
+      }
+    } catch (e) { document.documentElement.classList.add('dark'); }
+  </script>
+</head>
+<body>
+  <div id="app"></div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

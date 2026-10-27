@@ -1,0 +1,26 @@
+{
+  "name": "knowfab-sirp-web",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "vue-tsc --noEmit"
+  },
+  "dependencies": {
+    "vue": "^3.5.44",
+    "vue-router": "^5.4.0",
+    "pinia": "^4.1.0",
+    "element-plus": "^2.14.7",
+    "@element-plus/icons-vue": "^2.3.2",
+    "echarts": "^6.1.0"
+  },
+  "devDependencies": {
+    "vite": "^8.3.5",
+    "@vitejs/plugin-vue": "^6.0.10",
+    "typescript": "~5.9.3",
+    "vue-tsc": "^3.3.13",
+    "unplugin-vue-components": "^32.1.0"
+  }
+}
