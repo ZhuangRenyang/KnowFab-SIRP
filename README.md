@@ -26,7 +26,8 @@ ERP 管理企业的事务，知造 SIRP 知道每台机器的下一个动作：�
 ### 方式 A：Docker 一键部署（推荐，服务器只需装 Docker）
 
 ```bash
-git clone https://github.com/ZhuangRenyang/KnowFab-SIRP.git
+# 前提：客户服务器已配好只读 Deploy Key（见下文「版权与授权」）
+git clone git@github.com:ZhuangRenyang/KnowFab-SIRP.git
 cd KnowFab-SIRP
 sudo bash deploy.sh        # 国内服务器：sudo bash deploy-cn.sh
 ```
@@ -70,6 +71,34 @@ DEVICEHUB_DB_PASSWORD='你的密码' java -jar target/device-hub.jar
 ```
 
 日志在 `./logs/`，业务数据全在 MySQL 里（备份用 `mysqldump`，见 10.7）。
+
+### 版权与授权
+
+本仓库**私有**（2026-10-27 起），未放开源 License——代码与产品名「知造 SIRP / KnowFab SIRP」
+的权利归版权人所有，使用授权以销售合同为准：授权客户内部部署使用，禁止复制、修改后
+再分发或对外提供部署服务。客户侧拿代码走**只读 Deploy Key**：
+
+```bash
+# ① 客户服务器上生成部署钥匙（无口令）
+ssh-keygen -t ed25519 -C "deploy-客户名" -f ~/.ssh/knowfab_deploy -N ""
+
+# ② 公钥（.pub 文件内容）添加到 GitHub 仓库：
+#    Settings → Deploy keys → Add deploy key
+#    【不要】勾选 Allow write access —— 只读，可随时单独吊销
+
+# ③ 配置 SSH 别名（避免和服务器上其他 GitHub 钥匙冲突）并克隆
+cat >> ~/.ssh/config <<'SSH'
+Host github-knowfab
+  HostName github.com
+  User git
+  IdentityFile ~/.ssh/knowfab_deploy
+SSH
+git clone git@github-knowfab:ZhuangRenyang/KnowFab-SIRP.git
+cd KnowFab-SIRP && sudo bash deploy.sh
+```
+
+吊销：在仓库 Deploy keys 页删除那把钥匙，该客户立即无法再拉取；
+已交付副本按合同条款回收。交付记录（哪把 key 给了哪个客户、何时吊销）由实施方自行台账管理。
 
 ---
 

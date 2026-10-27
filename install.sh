@@ -75,6 +75,8 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # ---------- 1.5 联网取包（可选） ----------
 # 更新源地址：国内默认 Gitee，海外默认 GitHub raw。仓库还没建就把地址换成你自己的。
 REPO_CN="${DH_REPO_CN:-https://gitee.com/your-account/KnowFab-SIRP/raw/master/dist}"
+# 注意：仓库已转私有（2026-10-27）。私有仓库的 raw 地址需带令牌才能访问，
+# --online 仅在仓库公开或客户侧配置只读令牌时可用；主交付路径是 Docker deploy.sh。
 REPO_GLOBAL="${DH_REPO_GLOBAL:-https://raw.githubusercontent.com/ZhuangRenyang/KnowFab-SIRP/main/dist}"
 if [ "$ONLINE" -eq 1 ]; then
   case "$SOURCE" in
