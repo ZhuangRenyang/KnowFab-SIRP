@@ -12,6 +12,7 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     AccountDialog: typeof import('./src/components/AccountDialog.vue')['default']
+    AiConfigDialog: typeof import('./src/components/ai/AiConfigDialog.vue')['default']
     DeviceDetail: typeof import('./src/components/DeviceDetail.vue')['default']
     DeviceFormDialog: typeof import('./src/components/DeviceFormDialog.vue')['default']
     ElAlert: typeof import('element-plus/es')['ElAlert']
@@ -22,6 +23,7 @@ declare module 'vue' {
     ElCheckbox: typeof import('element-plus/es')['ElCheckbox']
     ElConfigProvider: typeof import('element-plus/es')['ElConfigProvider']
     ElContainer: typeof import('element-plus/es')['ElContainer']
+    ElDatePicker: typeof import('element-plus/es')['ElDatePicker']
     ElDialog: typeof import('element-plus/es')['ElDialog']
     ElDivider: typeof import('element-plus/es')['ElDivider']
     ElDropdown: typeof import('element-plus/es')['ElDropdown']
@@ -53,6 +55,7 @@ declare module 'vue' {
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     RuleDialog: typeof import('./src/components/alarm/RuleDialog.vue')['default']
+    ShiftsDialog: typeof import('./src/components/report/ShiftsDialog.vue')['default']
     StatusBadge: typeof import('./src/components/StatusBadge.vue')['default']
   }
   export interface GlobalDirectives {
