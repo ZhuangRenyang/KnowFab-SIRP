@@ -86,7 +86,7 @@ import { useRoute, useRouter } from 'vue-router'
 import {
   Monitor, Bell, Lightning, DataLine, Sunrise,
   OfficeBuilding, Box, Sell, ChatDotRound, Setting,
-  Expand, Fold, Sunny, Moon, ArrowDown, User, Goods
+  Expand, Fold, Sunny, Moon, ArrowDown, User, Goods, ShoppingCart
 } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
@@ -146,6 +146,7 @@ const groups = computed(() => [
   ] },
   { title: 'ERP', items: [
     { path: '/erp/base', label: '基础资料', icon: Goods, disabled: false, tip: '' },
+    { path: '/erp/purchase', label: '采购管理', icon: ShoppingCart, disabled: false, tip: '' },
     { path: '/erp/stock', label: '库存管理', icon: Box, disabled: false, tip: '' },
     { path: '', label: '产线管理', icon: OfficeBuilding, disabled: true, tip: '阶段一（DH-40/41）' },
     { path: '', label: '销售查询', icon: Sell, disabled: true, tip: '阶段二（DH-45）' }

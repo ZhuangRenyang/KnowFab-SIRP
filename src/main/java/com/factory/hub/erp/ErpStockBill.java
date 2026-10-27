@@ -41,6 +41,8 @@ public class ErpStockBill {
     public static final String TYPE_PROD_IN = "PROD_IN";
     /** 采购入库 */
     public static final String TYPE_PO_IN = "PO_IN";
+    /** 采购退货：退回供应商，负数出库（DH-52） */
+    public static final String TYPE_PO_RETURN = "PO_RETURN";
     /** 销售出库 */
     public static final String TYPE_SO_OUT = "SO_OUT";
     /** 其他入库（盘盈调整、退料、赠品等） */
@@ -75,6 +77,13 @@ public class ErpStockBill {
     /** 来源设备（生产入库才有；采购/销售单为空） */
     @Column(name = "device_code", length = 64)
     private String deviceCode;
+
+    /**
+     * 来源采购订单号：冗余在行上，订单进度聚合（sum by order）不用回表单头。
+     * 单头也有一份（列表显示用），以单头为准，这里跟着写同一个值。
+     */
+    @Column(name = "src_order_no", length = 40)
+    private String srcOrderNo;
 
     @Column(name = "sku_id", nullable = false)
     private Long skuId;
@@ -114,6 +123,8 @@ public class ErpStockBill {
     public void setBillType(String billType) { this.billType = billType; }
     public String getDeviceCode() { return deviceCode; }
     public void setDeviceCode(String deviceCode) { this.deviceCode = deviceCode; }
+    public String getSrcOrderNo() { return srcOrderNo; }
+    public void setSrcOrderNo(String srcOrderNo) { this.srcOrderNo = srcOrderNo; }
     public Long getSkuId() { return skuId; }
     public void setSkuId(Long skuId) { this.skuId = skuId; }
     public Long getWarehouseId() { return warehouseId; }

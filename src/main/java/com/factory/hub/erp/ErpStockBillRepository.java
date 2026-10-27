@@ -73,4 +73,13 @@ public interface ErpStockBillRepository extends JpaRepository<ErpStockBill, Long
     @Query(value = "select distinct sku_id from erp_stock_bill " +
                    "where voided_at is null and warehouse_id = :whId", nativeQuery = true)
     List<Long> skuIdsWithStock(@Param("whId") Long whId);
+
+    /**
+     * 某张采购订单已发生的库存流水（按 SKU + 单据类型汇总）。
+     * 订单进度就靠它重算：PO_IN 正数、PO_RETURN 负数，作废行天然被排除。
+     */
+    @Query("select b.skuId, b.billType, sum(b.qty) from ErpStockBill b " +
+           "where b.voidedAt is null and b.srcOrderNo = :orderNo " +
+           "group by b.skuId, b.billType")
+    List<Object[]> sumByOrder(@Param("orderNo") String orderNo);
 }

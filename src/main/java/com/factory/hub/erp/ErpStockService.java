@@ -50,7 +50,17 @@ public class ErpStockService {
     public static final List<String> MANUAL_TYPES = List.of(
             ErpStockBill.TYPE_PO_IN, ErpStockBill.TYPE_SO_OUT,
             ErpStockBill.TYPE_OTHER_IN, ErpStockBill.TYPE_OTHER_OUT,
+            ErpStockBill.TYPE_TRANSFER, ErpStockBill.TYPE_PO_RETURN);
+
+    /**
+     * 库存页「新建单据」能选的类型：采购退货必须从采购订单发起（这样订单进度才对得上），
+     * 所以不出现在这里，但仍在 MANUAL_TYPES 里供采购服务内部生成。
+     */
+    public static final List<String> MANUAL_UI_TYPES = List.of(
+            ErpStockBill.TYPE_PO_IN, ErpStockBill.TYPE_SO_OUT,
+            ErpStockBill.TYPE_OTHER_IN, ErpStockBill.TYPE_OTHER_OUT,
             ErpStockBill.TYPE_TRANSFER);
+
 
     static {
         Map<String, String> m = new LinkedHashMap<>();
@@ -59,6 +69,7 @@ public class ErpStockService {
         m.put(ErpStockBill.TYPE_OTHER_IN, "其他入库");
         m.put(ErpStockBill.TYPE_OTHER_OUT, "其他出库");
         m.put(ErpStockBill.TYPE_TRANSFER, "调拨");
+        m.put(ErpStockBill.TYPE_PO_RETURN, "采购退货");
         m.put(ErpStockBill.TYPE_STOCKTAKE, "盘点调整");
         m.put(ErpStockBill.TYPE_PROD_IN, "生产入库");
         TYPE_LABELS = java.util.Collections.unmodifiableMap(m);
@@ -68,6 +79,7 @@ public class ErpStockService {
         TYPE_PREFIX.put(ErpStockBill.TYPE_OTHER_IN, "QTRK");
         TYPE_PREFIX.put(ErpStockBill.TYPE_OTHER_OUT, "QTCK");
         TYPE_PREFIX.put(ErpStockBill.TYPE_TRANSFER, "DBCK");
+        TYPE_PREFIX.put(ErpStockBill.TYPE_PO_RETURN, "POTH");
         TYPE_PREFIX.put(ErpStockBill.TYPE_STOCKTAKE, "PD");
         TYPE_PREFIX.put(ErpStockBill.TYPE_PROD_IN, "SCRK");
     }
@@ -77,15 +89,18 @@ public class ErpStockService {
     private final ErpSkuRepository skuRepo;
     private final ErpWarehouseRepository whRepo;
     private final ErpPartnerRepository partnerRepo;
+    private final org.springframework.context.ApplicationEventPublisher events;
 
     public ErpStockService(ErpStockBillRepository billRepo, ErpStockBillHdrRepository hdrRepo,
                            ErpSkuRepository skuRepo, ErpWarehouseRepository whRepo,
-                           ErpPartnerRepository partnerRepo) {
+                           ErpPartnerRepository partnerRepo,
+                           org.springframework.context.ApplicationEventPublisher events) {
         this.billRepo = billRepo;
         this.hdrRepo = hdrRepo;
         this.skuRepo = skuRepo;
         this.whRepo = whRepo;
         this.partnerRepo = partnerRepo;
+        this.events = events;
     }
 
     /** 一行录入：数量一律填正数，方向由单据类型决定 */
@@ -97,19 +112,22 @@ public class ErpStockService {
     /* ==================== 创建单据 ==================== */
 
     /**
-     * 手工建单（采购入库/销售出库/其他出入库/调拨）。
+     * 手工建单（采购入库/采购退货/销售出库/其他出入库/调拨）。
      *
-     * @param qtyList 行；数量必须为正，方向按 type 决定
+     * @param qtyList   行；数量必须为正，方向按 type 决定
+     * @param srcOrderNo 来源采购订单号，可为 null（非采购单据）
      * @throws IllegalArgumentException 校验不通过（消息直接给用户看）
      */
     @Transactional
     public synchronized Created createManual(String type, Long partnerId, Long whId, Long srcWhId,
-                                             String remark, String operator, List<LineReq> lines) {
+                                             String remark, String operator, List<LineReq> lines,
+                                             String srcOrderNo) {
         if (!MANUAL_TYPES.contains(type)) {
             throw new IllegalArgumentException("不支持的单据类型：" + type);
         }
         boolean transfer = ErpStockBill.TYPE_TRANSFER.equals(type);
-        boolean out = ErpStockBill.TYPE_SO_OUT.equals(type) || ErpStockBill.TYPE_OTHER_OUT.equals(type);
+        boolean out = ErpStockBill.TYPE_SO_OUT.equals(type) || ErpStockBill.TYPE_OTHER_OUT.equals(type)
+                || ErpStockBill.TYPE_PO_RETURN.equals(type);
 
         ErpWarehouse wh = whRepo.findById(whId == null ? -1L : whId)
                 .orElseThrow(() -> new IllegalArgumentException("请选择仓库"));
@@ -151,6 +169,7 @@ public class ErpStockService {
         hdr.setPartnerName(partnerName);
         hdr.setSrcWhId(srcWhId);
         hdr.setDstWhId(whId);
+        hdr.setSrcOrderNo(srcOrderNo);
 
         List<ErpStockBill> rows = new ArrayList<>();
         int lineNo = 1;
@@ -180,6 +199,7 @@ public class ErpStockService {
         hdr = hdrRepo.saveAndFlush(hdr);
         for (ErpStockBill r : rows) {
             r.setHeaderId(hdr.getId());
+            r.setSrcOrderNo(srcOrderNo);
         }
         billRepo.saveAll(rows);
         log.info("新建单据 {} {} 共 {} 行，合计 {}（操作人 {}）",
@@ -319,6 +339,10 @@ public class ErpStockService {
         hdrRepo.save(hdr);
         int n = billRepo.voidByBillNo(billNo, now, operator);
         log.info("作废单据 {}（{} 行，操作人 {}）", billNo, n, operator);
+        // 关联了采购订单的单据：通知采购重算进度（同步、同事务，作废行已被排除）
+        if (hdr.getSrcOrderNo() != null) {
+            events.publishEvent(new StockBillVoidedEvent(billNo, hdr.getBillType(), hdr.getSrcOrderNo()));
+        }
     }
 
     /* ==================== 查询 ==================== */
@@ -545,6 +569,7 @@ public class ErpStockService {
             m.put("srcWarehouseName", h.getSrcWhId() == null ? null : whNames.get(h.getSrcWhId()));
             m.put("warehouseName", h.getDstWhId() == null ? null : whNames.get(h.getDstWhId()));
             m.put("deviceCode", h.getDeviceCode());
+            m.put("srcOrderNo", h.getSrcOrderNo());
             m.put("qty", h.getTotalQty());
             m.put("amount", h.getTotalAmount());
             m.put("lineCount", h.getLineCount());
@@ -606,6 +631,7 @@ public class ErpStockService {
         head.put("warehouseName", h.getDstWhId() == null ? null
                 : whs.containsKey(h.getDstWhId()) ? whs.get(h.getDstWhId()).getName() : null);
         head.put("deviceCode", h.getDeviceCode());
+        head.put("srcOrderNo", h.getSrcOrderNo());
         head.put("operator", h.getOperator());
         head.put("remark", h.getRemark());
         head.put("totalQty", h.getTotalQty());

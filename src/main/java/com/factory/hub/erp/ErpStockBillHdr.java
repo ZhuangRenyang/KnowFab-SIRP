@@ -65,6 +65,13 @@ public class ErpStockBillHdr {
     @Column(name = "device_code", length = 64)
     private String deviceCode;
 
+    /**
+     * 来源采购订单号（DH-52）：从订单入库/退货生成的单据带上它，
+     * 订单进度就靠"按订单号汇总未作废单据"重算，不靠人工维护。
+     */
+    @Column(name = "src_order_no", length = 40)
+    private String srcOrderNo;
+
     /** 制单人（生产入库联动写 system） */
     @Column(name = "operator", length = 64)
     private String operator;
@@ -107,6 +114,8 @@ public class ErpStockBillHdr {
     public void setDstWhId(Long dstWhId) { this.dstWhId = dstWhId; }
     public String getDeviceCode() { return deviceCode; }
     public void setDeviceCode(String deviceCode) { this.deviceCode = deviceCode; }
+    public String getSrcOrderNo() { return srcOrderNo; }
+    public void setSrcOrderNo(String srcOrderNo) { this.srcOrderNo = srcOrderNo; }
     public String getOperator() { return operator; }
     public void setOperator(String operator) { this.operator = operator; }
     public String getRemark() { return remark; }

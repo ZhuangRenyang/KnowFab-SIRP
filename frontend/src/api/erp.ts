@@ -149,6 +149,7 @@ export interface StockBillRow {
   srcWarehouseName?: string | null
   warehouseName?: string | null
   deviceCode?: string | null
+  srcOrderNo?: string | null
   qty: number
   amount: number
   lineCount: number

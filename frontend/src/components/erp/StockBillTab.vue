@@ -123,6 +123,7 @@
           <div><span>仓库</span><b v-if="detail.bill.type === 'TRANSFER'">{{ detail.bill.srcWarehouseName }} → {{ detail.bill.warehouseName }}</b><b v-else>{{ detail.bill.warehouseName || '--' }}</b></div>
           <div><span>往来单位</span><b>{{ detail.bill.partnerName || '--' }}</b></div>
           <div><span>来源设备</span><b class="num">{{ detail.bill.deviceCode || '--' }}</b></div>
+          <div><span>来源订单</span><b class="num">{{ detail.bill.srcOrderNo || '--' }}</b></div>
           <div><span>制单人</span><b>{{ detail.bill.operator || '--' }}</b></div>
           <div v-if="detail.bill.voided"><span>作废人</span><b>{{ detail.bill.voidedBy || '--' }}</b></div>
           <div class="span2"><span>备注</span><b>{{ detail.bill.remark || '--' }}</b></div>

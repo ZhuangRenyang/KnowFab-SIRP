@@ -15,6 +15,7 @@ export const router = createRouter({
     { path: '/system', component: () => import('@/views/SystemView.vue'), meta: { title: '系统', roles: ['ADMIN'] } },
     { path: '/users', component: () => import('@/views/UserManageView.vue'), meta: { title: '用户管理', roles: ['ADMIN'] } },
     { path: '/erp/base', component: () => import('@/views/ErpBaseView.vue'), meta: { title: '基础资料' } },
+    { path: '/erp/purchase', component: () => import('@/views/ErpPurchaseView.vue'), meta: { title: '采购管理' } },
     { path: '/erp/stock', component: () => import('@/views/ErpStockView.vue'), meta: { title: '库存管理' } },
     { path: '/discovery', component: () => import('@/views/DiscoveryView.vue'), meta: { title: '设备发现', roles: ['ADMIN'] } },
     { path: '/:pathMatch(.*)*', redirect: '/' }

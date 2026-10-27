@@ -52,4 +52,7 @@ public interface ErpStockBillHdrRepository extends JpaRepository<ErpStockBillHdr
 
     /** 作废 / 红冲审计：按类型倒序列最近 N 张 */
     List<ErpStockBillHdr> findTop20ByOrderByCreatedAtDesc();
+
+    /** 某张采购订单关联的入库/退货单据（订单详情页「收货记录」） */
+    List<ErpStockBillHdr> findBySrcOrderNoOrderByCreatedAtDesc(String srcOrderNo);
 }

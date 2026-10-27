@@ -43,7 +43,7 @@ public class ErpStockController {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("ok", true);
         out.put("all", ErpStockService.typeOptions());
-        out.put("manual", ErpStockService.MANUAL_TYPES);
+        out.put("manual", ErpStockService.MANUAL_UI_TYPES);
         return out;
     }
 
@@ -120,7 +120,8 @@ public class ErpStockController {
                     asLong(body.get("srcWarehouseId")),
                     str(body.get("remark")),
                     operator(),
-                    lines);
+                    lines,
+                    null);
             Map<String, Object> m = ok("单据已生成：" + c.billNo());
             m.put("billNo", c.billNo());
             m.put("lineCount", c.lineCount());
