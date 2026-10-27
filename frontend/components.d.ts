@@ -14,6 +14,7 @@ declare module 'vue' {
     AccountDialog: typeof import('./src/components/AccountDialog.vue')['default']
     DeviceDetail: typeof import('./src/components/DeviceDetail.vue')['default']
     DeviceFormDialog: typeof import('./src/components/DeviceFormDialog.vue')['default']
+    ElAlert: typeof import('element-plus/es')['ElAlert']
     ElAside: typeof import('element-plus/es')['ElAside']
     ElBadge: typeof import('element-plus/es')['ElBadge']
     ElButton: typeof import('element-plus/es')['ElButton']
@@ -46,10 +47,12 @@ declare module 'vue' {
     ErpPartnerTab: typeof import('./src/components/erp/ErpPartnerTab.vue')['default']
     ErpSkuTab: typeof import('./src/components/erp/ErpSkuTab.vue')['default']
     ErpWarehouseTab: typeof import('./src/components/erp/ErpWarehouseTab.vue')['default']
+    NotifyDialog: typeof import('./src/components/alarm/NotifyDialog.vue')['default']
     PointTrend: typeof import('./src/components/PointTrend.vue')['default']
     ProdStats: typeof import('./src/components/ProdStats.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    RuleDialog: typeof import('./src/components/alarm/RuleDialog.vue')['default']
     StatusBadge: typeof import('./src/components/StatusBadge.vue')['default']
   }
   export interface GlobalDirectives {

@@ -9,7 +9,7 @@ export const router = createRouter({
   routes: [
     { path: '/login', component: () => import('@/views/LoginView.vue'), meta: { public: true, title: '登录' } },
     { path: '/', component: () => import('@/views/MonitorView.vue'), meta: { title: '设备监控' } },
-    { path: '/alarm', component: ComingSoon, meta: { title: '报警' } },
+    { path: '/alarm', component: () => import('@/views/AlarmView.vue'), meta: { title: '报警' } },
     { path: '/energy', component: ComingSoon, meta: { title: '能耗分析' } },
     { path: '/report', component: ComingSoon, meta: { title: '报表' } },
     { path: '/digest', component: ComingSoon, meta: { title: 'AI 早报' } },
