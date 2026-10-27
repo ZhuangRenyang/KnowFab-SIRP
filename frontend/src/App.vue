@@ -56,6 +56,7 @@
           <el-badge :value="alarmsOpen > 99 ? '99+' : alarmsOpen" :hidden="alarmsOpen <= 0" :max="99">
             <el-icon class="hd-icon" title="报警记录" @click="router.push('/alarm')"><Bell /></el-icon>
           </el-badge>
+          <el-button v-if="auth.isAdmin" size="small" text @click="router.push('/discovery')">发现</el-button>
           <el-button v-if="auth.canWrite" type="primary" size="small" @click="addDevice">+ 新增设备</el-button>
           <el-dropdown trigger="click" @command="onUserCmd">
             <span class="user-pill">

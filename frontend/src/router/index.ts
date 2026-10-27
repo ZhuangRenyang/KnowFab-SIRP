@@ -1,6 +1,5 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import ComingSoon from '@/views/ComingSoon.vue'
 
 /* hash 路由（ADR：零后端改动，/app/ 落入 anyRequest().authenticated() 默认保护）
    视图全部懒加载：入口只留壳，ECharts 等重组件随路由 chunk 分割（体积预算 R3） */
@@ -13,10 +12,10 @@ export const router = createRouter({
     { path: '/energy', component: () => import('@/views/EnergyView.vue'), meta: { title: '能耗分析' } },
     { path: '/report', component: () => import('@/views/ReportView.vue'), meta: { title: '报表' } },
     { path: '/digest', component: () => import('@/views/DigestView.vue'), meta: { title: 'AI 早报' } },
-    { path: '/system', component: ComingSoon, meta: { title: '系统', roles: ['ADMIN'] } },
+    { path: '/system', component: () => import('@/views/SystemView.vue'), meta: { title: '系统', roles: ['ADMIN'] } },
     { path: '/users', component: () => import('@/views/UserManageView.vue'), meta: { title: '用户管理', roles: ['ADMIN'] } },
     { path: '/erp/base', component: () => import('@/views/ErpBaseView.vue'), meta: { title: '基础资料' } },
-    { path: '/discovery', component: ComingSoon, meta: { title: '设备发现', roles: ['ADMIN'] } },
+    { path: '/discovery', component: () => import('@/views/DiscoveryView.vue'), meta: { title: '设备发现', roles: ['ADMIN'] } },
     { path: '/:pathMatch(.*)*', redirect: '/' }
   ]
 })
