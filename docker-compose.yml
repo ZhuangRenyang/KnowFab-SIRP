@@ -1,0 +1,56 @@
+# 知造 SIRP · Docker Compose 一键部署
+# 快速开始：bash deploy.sh   （自动生成 .env + 拉镜像/本地构建 + 起 MySQL 和应用 + 健康检查）
+# MySQL 在容器里自动建库（MYSQL_DATABASE），数据存卷里，无需任何数据库配置
+# 手动等价：cp .env.example .env && docker compose up -d
+
+services:
+  mysql:
+    image: ${MYSQL_IMAGE:-mysql:8.4}
+    container_name: knowfab-sirp-mysql
+    # 业务时间统一东八区；utf8mb4 覆盖生僻字与全字符集
+    command: >
+      --default-time-zone=+08:00
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-knowfab2026}
+      # 首次启动自动创建 devicehub 库——这就是"零数据库配置"的实现
+      MYSQL_DATABASE: devicehub
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-p${DB_PASSWORD:-knowfab2026}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  app:
+    # 优先使用 GHCR 预构建镜像（CI 推 tag 后自动发布）；拉不到时 deploy.sh 回退本地构建
+    image: ${APP_IMAGE:-ghcr.io/zhuangrenyang/knowfab-sirp:latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        MAVEN_MIRROR: ${MAVEN_MIRROR:-}
+    container_name: knowfab-sirp-app
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      TZ: Asia/Shanghai
+      # 容器网络里数据库主机名是服务名 mysql，不是 127.0.0.1
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/devicehub?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true&rewriteBatchedStatements=true
+      DEVICEHUB_DB_PASSWORD: ${DB_PASSWORD:-knowfab2026}
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    volumes:
+      - app-data:/app/data
+      - app-logs:/app/logs
+    restart: unless-stopped
+
+volumes:
+  mysql-data:
+  app-data:
+  app-logs:

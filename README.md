@@ -23,6 +23,22 @@ ERP 管理企业的事务，知造 SIRP 知道每台机器的下一个动作：�
 
 ## 一、跑起来
 
+### 方式 A：Docker 一键部署（推荐，服务器只需装 Docker）
+
+```bash
+git clone https://github.com/ZhuangRenyang/KnowFab-SIRP.git
+cd KnowFab-SIRP
+sudo bash deploy.sh        # 国内服务器：sudo bash deploy-cn.sh
+```
+
+就这三行。deploy.sh 做四件事：生成 .env（随机数据库密码）→ 拉镜像（拉不到自动本地构建）→
+**MySQL 在容器里自动建库**（数据存卷，无需任何数据库配置）→ 等健康后打印访问地址和管理员初始密码。
+数据在 docker volume 里，重启/崩溃自动拉起；备份用 `docker compose exec mysql mysqldump ...`（见 10.7）。
+
+国内服务器用 `deploy-cn.sh`：不走 GHCR 拉取，直接本地构建，Maven 依赖走阿里云仓。
+
+### 方式 B：源码/裸机运行（本机开发或不用 Docker 的现场）
+
 **前置：MySQL 8**（H2 已于 2026-10-27 废弃——项目要并 ERP，长期数据和备份都要求真数据库）：
 
 ```sql
@@ -44,7 +60,7 @@ mvn spring-boot:run
 # 或者用 IDE：直接运行 DeviceHubApplication
 ```
 
-打开 http://localhost:8080 —— 会看到 3 台模拟设备（加工中心 / 注塑机 / 冲压机）实时刷数据。
+打开 http://localhost:8080 —— 会看到模拟设备（加工中心 / 注塑机 / 冲压机 / 电表）实时刷数据。
 
 打包成单文件 jar（部署到客户工控机用这个）：
 

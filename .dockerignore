@@ -1,0 +1,12 @@
+target/
+data/
+logs/
+.git/
+dist/
+docs/
+tools/
+*.log
+run*.log
+.env
+.idea/
+.vscode/
