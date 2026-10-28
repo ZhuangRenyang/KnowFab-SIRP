@@ -18,6 +18,7 @@ export const router = createRouter({
     { path: '/erp/purchase', component: () => import('@/views/ErpPurchaseView.vue'), meta: { title: '采购管理' } },
     { path: '/erp/sales', component: () => import('@/views/ErpSalesView.vue'), meta: { title: '销售管理' } },
     { path: '/erp/stock', component: () => import('@/views/ErpStockView.vue'), meta: { title: '库存管理' } },
+    { path: '/erp/finance', component: () => import('@/views/ErpFinanceView.vue'), meta: { title: '财务管理' } },
     { path: '/discovery', component: () => import('@/views/DiscoveryView.vue'), meta: { title: '设备发现', roles: ['ADMIN'] } },
     { path: '/:pathMatch(.*)*', redirect: '/' }
   ]

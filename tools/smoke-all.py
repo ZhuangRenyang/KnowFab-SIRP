@@ -256,6 +256,25 @@ def sec_sales():
         check(s, "销售订单详情", True, "还没有销售单，先跑 seed-demo.py", skip=True)
 
 
+def sec_finance():
+    s = "财务"
+    st, r = req("GET", "/api/erp/finance/summary")
+    check(s, "财务 KPI", st == 200 and has(r, "arOutstanding", "apOutstanding", "arAging"), st)
+    st, r = req("GET", "/api/erp/finance/receivables?page=1&size=5")
+    check(s, "应收明细", st == 200 and has(r, "rows", "total", "aging"),
+          "%s 单" % (r.get("total") if isinstance(r, dict) else "?"))
+    st, r = req("GET", "/api/erp/finance/payables?page=1&size=5")
+    check(s, "应付明细", st == 200 and has(r, "rows", "total", "aging"),
+          "%s 单" % (r.get("total") if isinstance(r, dict) else "?"))
+    st, r = req("GET", "/api/erp/finance/payments?page=1&size=5")
+    check(s, "收付款记录", st == 200 and has(r, "rows", "total"),
+          "%s 笔" % (r.get("total") if isinstance(r, dict) else "?"))
+    st, r = req("GET", "/api/erp/finance/partners?type=CUSTOMER")
+    check(s, "客户往来对账", st == 200 and isinstance(r, list), st)
+    st, r = req("GET", "/api/erp/finance/partners?type=SUPPLIER")
+    check(s, "供应商往来对账", st == 200 and isinstance(r, list), st)
+
+
 def sec_write(skus, whs):
     """写路径冒烟：建单→取消、建单→作废，验证完顺手把数据清干净。"""
     s = "写路径"
@@ -302,8 +321,19 @@ def sec_write(skus, whs):
             ok = bool(r2.get("ok"))
         check(s, "销售建单 → 取消", ok, no or r)
 
+    if cus_id:
+        st, r = req("POST", "/api/erp/finance/payments", {
+            "direction": "IN", "partnerId": cus_id, "amount": 1,
+            "method": "现金", "remark": "【冒烟】预收并作废"})
+        ok = isinstance(r, dict) and r.get("ok")
+        no = r.get("payNo") if ok else None
+        if ok:
+            st2, r2 = req("POST", "/api/erp/finance/payments/%s/void" % urllib.parse.quote(no), {})
+            ok = bool(r2.get("ok"))
+        check(s, "预收登记 → 作废", ok, no or r)
+
     st, r = req("POST", "/api/erp/stock/bills", {
-        "type": "OTHER_IN", "warehouseId": wh_id, "remark": "【冒烟】入库并作废",
+        "type": "OTHER_IN", "warehouse_id": wh_id, "remark": "【冒烟】入库并作废",
         "lines": [{"skuId": sku_id, "qty": 1}]})
     ok = isinstance(r, dict) and r.get("ok")
     no = r.get("billNo") if ok else None
@@ -368,6 +398,7 @@ def main():
     sec_purchase(skus, whs)
     sec_stock()
     sec_sales()
+    sec_finance()
     sec_write(skus, whs)
     sec_auth_negative()
 

@@ -27,7 +27,7 @@ PASS = "123456"
 
 cj = http.cookiejar.CookieJar()
 opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
-created = {"sku": 0, "warehouse": 0, "partner": 0, "purchase": 0, "sales": 0, "bill": 0}
+created = {"sku": 0, "warehouse": 0, "partner": 0, "purchase": 0, "sales": 0, "bill": 0, "payment": 0}
 skipped = 0
 
 
@@ -289,7 +289,25 @@ def purchase_flow(s, w, p):
         created["purchase"] += 1
         ok("逾期未到 %s（预计 %s）" % (no, day(-3)))
 
-    # 6 已取消
+    # 6 账龄单（50 天前，已入库未付款 → 应付账龄 31-60 档）
+    tag = "演示-PO-账龄"
+    if order_exists("purchase", tag):
+        skipped += 1
+    else:
+        st, r = call("POST", "/api/erp/purchase/orders", {
+            "supplierId": p["GYS-02"], "orderDate": day(-50),
+            "lines": [{"skuId": s["M-002"], "qty": 100, "unitPrice": 5.8}],
+            "remark": "【%s】上月到货未结" % tag,
+        })
+        if not r.get("ok"):
+            fail("账龄采购单创建失败：%s" % r.get("message"))
+        no = r["orderNo"]
+        confirm("purchase", no)
+        receive(no, w["WH-03"], [{"skuId": s["M-002"], "qty": 100}])
+        created["purchase"] += 1
+        ok("账龄单 %s（50 天前，应付未付）" % no)
+
+    # 7 已取消
     tag = "演示-PO-取消"
     if order_exists("purchase", tag):
         skipped += 1
@@ -376,7 +394,25 @@ def sales_flow(s, w, p):
         created["sales"] += 1
         ok("草稿 %s（P-103 5 件）" % no)
 
-    # 6 已取消
+    # 6 账龄单（45 天前发货未收款 → 应收账龄 31-60 档）
+    tag = "演示-SO-账龄"
+    if order_exists("sales", tag):
+        skipped += 1
+    else:
+        st, r = call("POST", "/api/erp/sales/orders", {
+            "customerId": p["KH-01"], "orderDate": day(-45),
+            "lines": [{"skuId": s["P-101"], "qty": 10, "unitPrice": 580}],
+            "remark": "【%s】上月发货未结" % tag,
+        })
+        if not r.get("ok"):
+            fail("账龄销售单创建失败：%s" % r.get("message"))
+        no = r["orderNo"]
+        confirm("sales", no)
+        ship(no, w["WH-01"], [{"skuId": s["P-101"], "qty": 10}])
+        created["sales"] += 1
+        ok("账龄单 %s（45 天前，应收未收）" % no)
+
+    # 7 已取消
     tag = "演示-SO-取消"
     if order_exists("sales", tag):
         skipped += 1
@@ -458,6 +494,97 @@ def stock_flow(s, w):
         ok("调拨 %s（P-101 5 件 成品一仓→半成品仓）" % r["billNo"])
 
 
+def payment_exists(tag):
+    st, r = call("GET", "/api/erp/finance/payments?kw=%s&withVoided=true&page=1&size=1"
+                 % urllib.parse.quote(tag))
+    return st == 200 and r.get("total", 0) > 0
+
+
+def order_no_of(kind, tag):
+    st, r = call("GET", "/api/erp/%s/orders?kw=%s&page=1&size=1" % (kind, urllib.parse.quote(tag)))
+    rows = r.get("rows") or []
+    return rows[0]["orderNo"] if rows else None
+
+
+def finance_row(kind, order_no):
+    """取该订单的未收/未付（receivables=应收，payables=应付）"""
+    st, r = call("GET", "/api/erp/finance/%s?kw=%s&onlyOpen=false&size=20" %
+                 ("receivables" if kind == "sales" else "payables", urllib.parse.quote(order_no)))
+    for row in r.get("rows") or []:
+        if row["orderNo"] == order_no:
+            return row
+    return None
+
+
+def finance_flow(s, w, p):
+    global skipped
+    print("\n[财务：收付款与账龄]")
+    scenarios = [
+        ("sales", "演示-SO-已完成", "演示-收款-已完成", 0.6, "IN"),
+        ("sales", "演示-SO-部分发货", "演示-收款-部分", 0.5, "IN"),
+        ("purchase", "演示-PO-已完成", "演示-付款-已完成", 0.5, "OUT"),
+        ("purchase", "演示-PO-部分入库", "演示-付款-部分", 1.0, "OUT"),
+    ]
+    for kind, order_tag, pay_tag, ratio, direction in scenarios:
+        if payment_exists(pay_tag):
+            skipped += 1
+            continue
+        no = order_no_of(kind, order_tag)
+        if not no:
+            skipped += 1
+            continue
+        row = finance_row(kind, no)
+        if not row or float(row["outstanding"]) <= 0:
+            skipped += 1
+            continue
+        amt = round(float(row["outstanding"]) * ratio, 2)
+        body = {
+            "direction": direction, "partnerId": row["partnerId"], "orderNo": no,
+            "amount": amt, "method": "银行转账", "payDate": day(0),
+            "remark": "【%s】%s" % (pay_tag, "按比例收" if direction == "IN" else "按比例付"),
+        }
+        st, r = call("POST", "/api/erp/finance/payments", body)
+        if not r.get("ok"):
+            fail("登记收付款失败：%s" % r.get("message"))
+        created["payment"] = created.get("payment", 0) + 1
+        ok("%s %s：%s %s 元（订单未收/未付 %s）" %
+           ("收款" if direction == "IN" else "付款", no, direction, amt, row["outstanding"]))
+
+    # 预收 / 预付
+    for tag, direction, partner_code, amt, word in [
+        ("演示-预收", "IN", "KH-02", 1000, "预收"),
+        ("演示-预付", "OUT", "GYS-02", 2000, "预付"),
+    ]:
+        if payment_exists(tag):
+            skipped += 1
+            continue
+        st, r = call("POST", "/api/erp/finance/payments", {
+            "direction": direction, "partnerId": p[partner_code], "amount": amt,
+            "method": "银行转账", "payDate": day(0), "remark": "【%s】%s货款" % (tag, word),
+        })
+        if not r.get("ok"):
+            fail("%s登记失败：%s" % (word, r.get("message")))
+        created["payment"] = created.get("payment", 0) + 1
+        ok("%s %s 元（%s，未关联订单）" % (word, amt, partner_code))
+
+    # 作废演示
+    if payment_exists("演示-作废"):
+        skipped += 1
+    else:
+        st, r = call("POST", "/api/erp/finance/payments", {
+            "direction": "IN", "partnerId": p["KH-03"], "amount": 500,
+            "method": "现金", "payDate": day(0), "remark": "【演示-作废】录错金额，待作废",
+        })
+        if not r.get("ok"):
+            fail("作废演示单创建失败：%s" % r.get("message"))
+        no = r["payNo"]
+        st, r2 = call("POST", "/api/erp/finance/payments/%s/void" % urllib.parse.quote(no), {})
+        if not r2.get("ok"):
+            fail("作废失败：%s" % r2.get("message"))
+        created["payment"] = created.get("payment", 0) + 1
+        ok("作废演示：%s 已作废" % no)
+
+
 def report(s, w):
     print("\n[当前库存概览]")
     st, bal = call("GET", "/api/erp/stock/balances")
@@ -476,6 +603,12 @@ def report(s, w):
         print("  本月采购额 ¥%s / 本月销售额 ¥%s" % (ps["monthAmount"], ss["monthAmount"]))
         print("  待到货 %d 单 / 待发货 %d 单 / 采购逾期 %d / 销售逾期 %d" % (
             ps["openCount"], ss["openCount"], ps["overdueCount"], ss["overdueCount"]))
+    st, fs = call("GET", "/api/erp/finance/summary")
+    if fs.get("ok"):
+        print("  应收未收 ¥%s（逾期 ¥%s） / 应付未付 ¥%s（逾期 ¥%s）" % (
+            fs["arOutstanding"], fs["arOverdue"], fs["apOutstanding"], fs["apOverdue"]))
+        print("  预收 ¥%s / 预付 ¥%s · 本月收款 ¥%s / 付款 ¥%s" % (
+            fs["arPre"], fs["apPre"], fs["monthIn"], fs["monthOut"]))
 
 
 def main():
@@ -494,11 +627,13 @@ def main():
     purchase_flow(s, w, p)
     sales_flow(s, w, p)
     stock_flow(s, w)
+    finance_flow(s, w, p)
     report(s, w)
 
-    print("\n======== 播种完成：新增 商品 %d / 仓库 %d / 单位 %d / 采购单 %d / 销售单 %d / 库存单 %d，跳过已存在 %d ========"
+    print("\n======== 播种完成：新增 商品 %d / 仓库 %d / 单位 %d / 采购单 %d / 销售单 %d / 库存单 %d / 收付款 %d，跳过已存在 %d ========"
           % (created["sku"], created["warehouse"], created["partner"],
-             created["purchase"], created["sales"], created["bill"], skipped))
+             created["purchase"], created["sales"], created["bill"],
+             created.get("payment", 0), skipped))
 
 
 if __name__ == "__main__":

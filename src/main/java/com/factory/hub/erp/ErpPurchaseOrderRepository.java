@@ -44,6 +44,9 @@ public interface ErpPurchaseOrderRepository extends JpaRepository<ErpPurchaseOrd
 
     long countByStatus(String status);
 
+    /** 财务要用：所有"已经发生业务"的订单（已确认及以后） */
+    List<ErpPurchaseOrder> findByStatusIn(java.util.Collection<String> statuses);
+
     /** 逾期未到：确认/部分入库、且有预计到货日、已过今天零点 */
     @Query("select count(o) from ErpPurchaseOrder o where o.status in ('CONFIRMED', 'PARTIAL') " +
            "and o.expectDate is not null and o.expectDate < :todayStart")

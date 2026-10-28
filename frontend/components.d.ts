@@ -59,6 +59,7 @@ declare module 'vue' {
     ErpWarehouseTab: typeof import('./src/components/erp/ErpWarehouseTab.vue')['default']
     MigrationsPanel: typeof import('./src/components/system/MigrationsPanel.vue')['default']
     NotifyDialog: typeof import('./src/components/alarm/NotifyDialog.vue')['default']
+    PaymentDialog: typeof import('./src/components/erp/PaymentDialog.vue')['default']
     PointTrend: typeof import('./src/components/PointTrend.vue')['default']
     ProdStats: typeof import('./src/components/ProdStats.vue')['default']
     PurchaseOrderDialog: typeof import('./src/components/erp/PurchaseOrderDialog.vue')['default']

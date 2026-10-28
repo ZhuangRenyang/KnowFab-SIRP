@@ -23,6 +23,15 @@ public interface ErpPurchaseOrderItemRepository extends JpaRepository<ErpPurchas
            "where i.orderId in :orderIds group by i.orderId")
     List<Object[]> sumReceivedByOrderIds(@Param("orderIds") List<Long> orderIds);
 
+    /** 单张订单的已入库金额 */
+    @Query("select coalesce(sum(i.receivedQty * i.unitPrice), 0) from ErpPurchaseOrderItem i where i.orderId = :orderId")
+    BigDecimal receivedAmountOfOrder(@Param("orderId") Long orderId);
+
+    /** 一批订单各自的已入库金额（应付的来源） */
+    @Query("select i.orderId, coalesce(sum(i.receivedQty * i.unitPrice), 0) from ErpPurchaseOrderItem i " +
+           "where i.orderId in :orderIds group by i.orderId")
+    List<Object[]> sumReceivedAmountByOrderIds(@Param("orderIds") List<Long> orderIds);
+
     @Modifying
     @Query("update ErpPurchaseOrderItem i set i.receivedQty = :qty where i.orderId = :orderId and i.skuId = :skuId")
     int updateReceived(@Param("orderId") Long orderId, @Param("skuId") Long skuId,
