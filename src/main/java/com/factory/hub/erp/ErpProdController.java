@@ -137,39 +137,6 @@ public class ErpProdController {
         return out;
     }
 
-    /** 近 N 天每日产量折线（按设备清零时刻切日），当前统计日也会带出来并继续涨 */
-    @GetMapping("/daily")
-    public List<Map<String, Object>> daily(@RequestParam String code,
-                                           @RequestParam(defaultValue = "30") int days) {
-        DeviceEntity d = deviceService.byCode(code);
-        List<Map<String, Object>> out = new ArrayList<>();
-        if (d == null) {
-            return out;
-        }
-        int n = Math.max(1, Math.min(400, days));
-        long now = System.currentTimeMillis();
-        int rh = d.getProdResetHour();
-        long todayKey = ProdDay.dayKey(now, rh);
-        long from = ProdDay.startOfDayKey(todayKey - n + 1, rh);
-
-        List<ProdHourly> rows = prodRepo.findByDeviceCodeAndHourStartBetween(code, from, now);
-        Map<Long, Double> byDay = new LinkedHashMap<>();
-        for (long k = todayKey - n + 1; k <= todayKey; k++) {
-            byDay.put(k, 0d);
-        }
-        for (ProdHourly p : rows) {
-            byDay.merge(ProdDay.dayKey(p.getHourStart(), rh), p.getOutput(), Double::sum);
-        }
-        var fmt = java.time.format.DateTimeFormatter.ofPattern("MM-dd");
-        for (Map.Entry<Long, Double> e : byDay.entrySet()) {
-            Map<String, Object> m = new LinkedHashMap<>();
-            m.put("date", LocalDate.ofEpochDay(e.getKey()).format(fmt));
-            m.put("qty", round2(e.getValue()));
-            out.add(m);
-        }
-        return out;
-    }
-
     /**
      * 产量图表（DH-47.1，用户口径：日表/月表/年表/综合表）。
      * <ul>
