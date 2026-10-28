@@ -2,6 +2,8 @@ package com.factory.hub.web;
 
 import com.factory.hub.collect.CollectScheduler;
 import com.factory.hub.collect.SnapshotStore;
+import com.factory.hub.erp.ErpProdLine;
+import com.factory.hub.erp.ErpProdLineRepository;
 import com.factory.hub.model.DeviceEntity;
 import com.factory.hub.model.PointDef;
 import com.factory.hub.model.PointValue;
@@ -23,6 +25,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,16 +42,20 @@ public class DeviceController {
     private final SnapshotStore store;
     private final CollectScheduler scheduler;
     private final ObjectMapper mapper;
+    /** 设备列表要带"属于哪条产线、第几工位"，产线名从这张表查（只读，不反向依赖产线服务） */
+    private final ErpProdLineRepository lineRepo;
 
     public DeviceController(DeviceService deviceService,
                             SnapshotStore store,
                             CollectScheduler scheduler,
-                            ObjectMapper mapper
+                            ObjectMapper mapper,
+                            ErpProdLineRepository lineRepo
                             ) {
         this.deviceService = deviceService;
         this.store = store;
         this.scheduler = scheduler;
         this.mapper = mapper;
+        this.lineRepo = lineRepo;
     }
 
     @GetMapping("/devices")
@@ -310,6 +317,11 @@ public class DeviceController {
             points.add(v != null ? v : PointValue.bad(d.getCode(), p, System.currentTimeMillis()));
         }
 
+        String lineName = null;
+        if (d.getProdLineId() != null) {
+            lineName = lineRepo.findById(d.getProdLineId()).map(ErpProdLine::getName).orElse(null);
+        }
+
         return new DeviceView(
                 d.getId(), d.getCode(), d.getName(), d.getLocation(), d.getProtocol(),
                 d.getEnabled(), d.getHost(), d.getPort(), d.getSerialPort(), d.getBaudRate(),
@@ -317,6 +329,7 @@ public class DeviceController {
                 d.getServoBrand(),
                 d.getApiKey(), d.isApiKeyEnabled(),
                 rt.online, rt.lastOkTs == 0 ? null : rt.lastOkTs, rt.lastError,
-                rt.successCount, rt.failCount, rt.lastCostMs, points);
+                rt.successCount, rt.failCount, rt.lastCostMs,
+                d.getProdLineId(), lineName, d.getLineSeq(), points);
     }
 }

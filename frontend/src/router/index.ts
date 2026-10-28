@@ -14,6 +14,7 @@ export const router = createRouter({
     { path: '/digest', component: () => import('@/views/DigestView.vue'), meta: { title: 'AI 早报' } },
     { path: '/system', component: () => import('@/views/SystemView.vue'), meta: { title: '系统', roles: ['ADMIN'] } },
     { path: '/users', component: () => import('@/views/UserManageView.vue'), meta: { title: '用户管理', roles: ['ADMIN'] } },
+    { path: '/erp/lines', component: () => import('@/views/ErpLineView.vue'), meta: { title: '产线管理' } },
     { path: '/erp/base', component: () => import('@/views/ErpBaseView.vue'), meta: { title: '基础资料' } },
     { path: '/erp/purchase', component: () => import('@/views/ErpPurchaseView.vue'), meta: { title: '采购管理' } },
     { path: '/erp/sales', component: () => import('@/views/ErpSalesView.vue'), meta: { title: '销售管理' } },

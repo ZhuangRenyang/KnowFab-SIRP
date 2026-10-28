@@ -37,13 +37,41 @@ public class OpenApiController {
     private final SnapshotStore store;
     private final AlarmEventRepository alarmRepo;
     private final AlarmCodeDict alarmDict;
+    private final com.factory.hub.erp.ErpLineService lineService;
 
     public OpenApiController(DeviceService deviceService, SnapshotStore store,
-                             AlarmEventRepository alarmRepo, AlarmCodeDict alarmDict) {
+                             AlarmEventRepository alarmRepo, AlarmCodeDict alarmDict,
+                             com.factory.hub.erp.ErpLineService lineService) {
         this.deviceService = deviceService;
         this.store = store;
         this.alarmRepo = alarmRepo;
         this.alarmDict = alarmDict;
+        this.lineService = lineService;
+    }
+
+    /**
+     * 产线维度产量：MES/看板最常问的"这条线今天出了多少"。
+     * <p>
+     * 鉴权用任一设备的 API Key 通过即可——产线本身不是设备，没有自己的 Key，
+     * 但也不能因此裸奔：客户给 MES 的 key 本来就是"厂内集成凭证"。
+     */
+    @GetMapping("/lines")
+    public ResponseEntity<Map<String, Object>> lines(
+            @RequestParam(required = false) String key,
+            @RequestParam(required = false) String apiKey,
+            @RequestHeader(value = "X-Api-Key", required = false) String headerKey) {
+        String k = firstOf(key, apiKey, headerKey);
+        boolean authed = k != null && !k.isBlank()
+                && deviceService.all().stream().anyMatch(d -> auth(d, k));
+        if (!authed) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("ok", false, "message", "API Key 无效"));
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("ok", true);
+        out.put("generatedAt", System.currentTimeMillis());
+        out.put("lines", lineService.brief());
+        return ResponseEntity.ok(out);
     }
 
     /**

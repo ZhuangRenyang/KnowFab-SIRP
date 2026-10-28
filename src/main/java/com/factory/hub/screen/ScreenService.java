@@ -54,15 +54,19 @@ public class ScreenService {
     private volatile Map<String, Object> cache;
     private volatile long cacheAt;
 
+    private final com.factory.hub.erp.ErpLineService lineService;
+
     public ScreenService(DeviceService deviceService, SnapshotStore snapshot,
                          ReportService reportService, AlarmEventRepository alarmRepo,
-                         FaultAdvisor advisor, AlarmCodeDict alarmDict) {
+                         FaultAdvisor advisor, AlarmCodeDict alarmDict,
+                         com.factory.hub.erp.ErpLineService lineService) {
         this.deviceService = deviceService;
         this.snapshot = snapshot;
         this.reportService = reportService;
         this.alarmRepo = alarmRepo;
         this.advisor = advisor;
         this.alarmDict = alarmDict;
+        this.lineService = lineService;
     }
 
     public Map<String, Object> snapshot() {
@@ -89,6 +93,13 @@ public class ScreenService {
         out.put("deviceList", dev.rows);
 
         out.put("prod", production());
+        // 产线产量：没有配产线时返回空数组，大屏对应的一条不显示（不能为了新功能把老屏幕顶乱）
+        try {
+            out.put("lines", lineService.brief());
+        } catch (Exception e) {
+            log.warn("大屏读取产线失败：{}", e.getMessage());
+            out.put("lines", List.of());
+        }
         out.put("hours", hours());
         out.put("stopReasons", stopReasons());
 

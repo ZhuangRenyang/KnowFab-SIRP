@@ -325,6 +325,50 @@ def sec_reports():
               "%s 字节" % size)
 
 
+def sec_lines():
+    s = "产线"
+    st, r = req("GET", "/api/erp/lines")
+    rows = (r.get("rows") or []) if isinstance(r, dict) else []
+    ok = st == 200 and isinstance(rows, list) and has(r.get("summary") or {}, "lines", "devices", "today")
+    check(s, "产线列表", ok, "%d 条产线 / %d 台设备" % (len(rows), (r.get("summary") or {}).get("devices", 0)))
+    if not rows:
+        check(s, "产线详情", False, "没有产线，先跑 seed-demo.py")
+        return
+
+    code = rows[0]["code"]
+    st, d = req("GET", "/api/erp/lines/%s?days=30" % code)
+    devices = (d.get("devices") or []) if isinstance(d, dict) else []
+    check(s, "产线详情", st == 200 and isinstance(devices, list) and has(d.get("totals") or {}, "today", "month"),
+          "%s %d 台设备" % (code, len(devices)))
+    seqs = [x["seq"] for x in devices]
+    check(s, "设备按工位排序", seqs == sorted(seqs), seqs)
+    check(s, "产量曲线 30 天", len(d.get("daily") or []) == 30, len(d.get("daily") or []))
+
+    # 核心口径：产线产量 = 成品计数设备今日产量（不是所有设备相加）
+    fin = [x for x in devices if x.get("finished")]
+    if fin:
+        same = abs(float(fin[0]["today"]) - float((d.get("totals") or {}).get("today", -1))) < 0.01
+        check(s, "产线产量=成品设备产量", same,
+              "成品 %s %s / 产线 %s" % (fin[0]["code"], fin[0]["today"], d["totals"]["today"]))
+        # 再和"设备详情页"那条独立链路对一次：两边口径必须一模一样（曾经都漏 0-8 点）
+        st2, ps = req("GET", "/api/erp/prod/status?code=%s" % fin[0]["code"])
+        dev_today = ps.get("today") if isinstance(ps, dict) else None
+        check(s, "与设备自身今日产量一致",
+              dev_today is not None and abs(float(dev_today) - float(fin[0]["today"])) < 0.01,
+              "设备 %s / 产线 %s" % (dev_today, fin[0]["today"]))
+    else:
+        check(s, "产线产量=成品设备产量", False, "没有解析出成品计数设备")
+
+    # 有设备的产线不许删（保护客户编排）
+    st, r2 = req("DELETE", "/api/erp/lines/%s" % code)
+    check(s, "非空产线禁止删除", isinstance(r2, dict) and r2.get("ok") is False,
+          (r2 or {}).get("message") if isinstance(r2, dict) else st)
+
+    # 对外接口必须带 Key
+    st, _ = req("GET", "/open/v1/lines", anon=True)
+    check(s, "开放接口未带 Key 401", st == 401, st)
+
+
 def sec_write(skus, whs):
     """写路径冒烟：建单→取消、建单→作废，验证完顺手把数据清干净。"""
     s = "写路径"
@@ -450,6 +494,7 @@ def main():
     sec_sales()
     sec_finance()
     sec_reports()
+    sec_lines()
     sec_write(skus, whs)
     sec_auth_negative()
 

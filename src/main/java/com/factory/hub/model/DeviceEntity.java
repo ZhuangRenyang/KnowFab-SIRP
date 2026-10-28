@@ -120,6 +120,14 @@ public class DeviceEntity {
     @Column(name = "prod_auto_stockin", nullable = false)
     private boolean prodAutoStockin = false;
 
+    /** 所属产线（DH-40）；null = 未分配 */
+    @Column(name = "prod_line_id")
+    private Long prodLineId;
+
+    /** 工位序号：产线内从 1 开始，最大的那台默认是成品计数点 */
+    @Column(name = "line_seq", nullable = false)
+    private int lineSeq = 0;
+
     public Long getId() {
         return id;
     }
@@ -294,6 +302,10 @@ public class DeviceEntity {
     public void setProdWhId(Long prodWhId) { this.prodWhId = prodWhId; }
     public int getProdResetHour() { return prodResetHour; }
     public void setProdResetHour(int prodResetHour) { this.prodResetHour = prodResetHour; }
+    public Long getProdLineId() { return prodLineId; }
+    public void setProdLineId(Long prodLineId) { this.prodLineId = prodLineId; }
+    public int getLineSeq() { return lineSeq; }
+    public void setLineSeq(int lineSeq) { this.lineSeq = lineSeq; }
     public boolean isProdAutoStockin() { return prodAutoStockin; }
     public void setProdAutoStockin(boolean prodAutoStockin) { this.prodAutoStockin = prodAutoStockin; }
 }

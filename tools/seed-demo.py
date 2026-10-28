@@ -27,7 +27,8 @@ PASS = "123456"
 
 cj = http.cookiejar.CookieJar()
 opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
-created = {"sku": 0, "warehouse": 0, "partner": 0, "purchase": 0, "sales": 0, "bill": 0, "payment": 0}
+created = {"sku": 0, "warehouse": 0, "partner": 0, "purchase": 0, "sales": 0, "bill": 0,
+           "payment": 0, "line": 0}
 skipped = 0
 
 
@@ -534,6 +535,39 @@ def history_flow(s, w, p):
             ok("历史销售出库 %s（%d 天前，M-003 150 套）" % (r["billNo"], back))
 
 
+def line_flow(s, w, p):
+    """产线：两条线各挂设备。已经有设备就不动，避免覆盖客户手工排好的顺序。"""
+    global skipped
+    print("\n[产线：装配一线 / 冲压二线]")
+    specs = [
+        ("LINE-01", "装配一线", "总装车间", 10, ["CNC-01", "INJ-01"]),
+        ("LINE-02", "冲压二线", "冲压车间", 20, ["PRESS-01"]),
+    ]
+    for code, name, ws, sort, devices in specs:
+        st, r = call("GET", "/api/erp/lines")
+        exists = any(x["code"] == code for x in (r.get("rows") or []))
+        if exists:
+            skipped += 1
+        else:
+            st, r2 = call("POST", "/api/erp/lines", {
+                "code": code, "name": name, "workshop": ws, "sortOrder": sort,
+                "remark": "【演示】产线示例",
+            })
+            if not r2.get("ok"):
+                fail("产线创建失败：%s" % r2.get("message"))
+            created["line"] += 1
+            ok("产线 %s %s（%s）" % (code, name, ws))
+
+        st, d = call("GET", "/api/erp/lines/%s" % code)
+        if (d.get("devices") or []):
+            skipped += 1
+            continue
+        st, r3 = call("POST", "/api/erp/lines/%s/devices" % code, {"codes": devices})
+        if not r3.get("ok"):
+            fail("产线编排失败：%s" % r3.get("message"))
+        ok("编排 %s：%s（成品计数点取最后一台）" % (code, " → ".join(devices)))
+
+
 def payment_exists(tag):
     st, r = call("GET", "/api/erp/finance/payments?kw=%s&withVoided=true&page=1&size=1"
                  % urllib.parse.quote(tag))
@@ -672,13 +706,14 @@ def main():
     sales_flow(s, w, p)
     stock_flow(s, w)
     history_flow(s, w, p)
+    line_flow(s, w, p)
     finance_flow(s, w, p)
     report(s, w)
 
-    print("\n======== 播种完成：新增 商品 %d / 仓库 %d / 单位 %d / 采购单 %d / 销售单 %d / 库存单 %d / 收付款 %d，跳过已存在 %d ========"
+    print("\n======== 播种完成：新增 商品 %d / 仓库 %d / 单位 %d / 采购单 %d / 销售单 %d / 库存单 %d / 收付款 %d / 产线 %d，跳过已存在 %d ========"
           % (created["sku"], created["warehouse"], created["partner"],
              created["purchase"], created["sales"], created["bill"],
-             created.get("payment", 0), skipped))
+             created.get("payment", 0), created.get("line", 0), skipped))
 
 
 if __name__ == "__main__":

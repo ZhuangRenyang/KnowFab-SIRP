@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collection;
 import java.util.List;
 
 public interface ProdHourlyRepository extends JpaRepository<ProdHourly, Long> {
@@ -13,6 +14,9 @@ public interface ProdHourlyRepository extends JpaRepository<ProdHourly, Long> {
     List<ProdHourly> findByHourStartBetween(long from, long to);
 
     List<ProdHourly> findByDeviceCodeAndHourStartBetween(String deviceCode, long from, long to);
+
+    /** 多条产线一次取完（避免每条产线各查一次库） */
+    List<ProdHourly> findByDeviceCodeInAndHourStartBetween(Collection<String> codes, long from, long to);
 
     List<ProdHourly> findByHourStart(long hourStart);
 

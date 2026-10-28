@@ -93,11 +93,10 @@ public class ErpProdController {
 
         int resetHour = d.getProdResetHour();
         long now = System.currentTimeMillis();
-        long offset = resetHour * HOUR_MS;
 
-        // 统计日窗口：以清零时刻为界。今天 = (now - offset) 所在的自然日，再从它的 resetHour 起算
-        long todayKey = floorDay(now - offset);
-        long todayStart = todayKey * DAY_MS + offset;
+        // 统计日窗口：以清零时刻为界（本地时区），今天 = 从今天（或昨天）的 resetHour 点起
+        long todayKey = ProdDay.dayKey(now, resetHour);
+        long todayStart = ProdDay.dayStart(now, resetHour);
 
         // 取今年 1 月 1 日（往前多留一个统计日，处理清零时刻跨年边界）到现在的所有小时行
         long yearStart = LocalDate.now(ZoneId.systemDefault()).withDayOfYear(1)
@@ -118,8 +117,8 @@ public class ErpProdController {
                 month += o;
                 months[monthOf(p.getHourStart())] += o;
             }
-            long pk = floorDay(p.getHourStart() - offset);
-            if (pk == todayKey && p.getHourStart() >= todayStart) {
+            if (p.getHourStart() >= todayStart
+                    && ProdDay.dayKey(p.getHourStart(), resetHour) == todayKey) {
                 today += o;
             }
         }
@@ -148,9 +147,9 @@ public class ErpProdController {
         }
         int n = Math.max(1, Math.min(400, days));
         long now = System.currentTimeMillis();
-        long offset = d.getProdResetHour() * HOUR_MS;
-        long todayKey = floorDay(now - offset);
-        long from = (todayKey - n + 1) * DAY_MS + offset;
+        int rh = d.getProdResetHour();
+        long todayKey = ProdDay.dayKey(now, rh);
+        long from = ProdDay.startOfDayKey(todayKey - n + 1, rh);
 
         List<ProdHourly> rows = prodRepo.findByDeviceCodeAndHourStartBetween(code, from, now);
         Map<Long, Double> byDay = new LinkedHashMap<>();
@@ -158,8 +157,7 @@ public class ErpProdController {
             byDay.put(k, 0d);
         }
         for (ProdHourly p : rows) {
-            long k = floorDay(p.getHourStart() - offset);
-            byDay.merge(k, p.getOutput(), Double::sum);
+            byDay.merge(ProdDay.dayKey(p.getHourStart(), rh), p.getOutput(), Double::sum);
         }
         var fmt = java.time.format.DateTimeFormatter.ofPattern("MM-dd");
         for (Map.Entry<Long, Double> e : byDay.entrySet()) {
@@ -198,10 +196,6 @@ public class ErpProdController {
     }
 
     /* ==================== 工具 ==================== */
-
-    private static long floorDay(long ts) {
-        return Math.floorDiv(ts, DAY_MS);
-    }
 
     private static long floorMonth(long ts) {
         LocalDate d = LocalDate.ofInstant(java.time.Instant.ofEpochMilli(ts),

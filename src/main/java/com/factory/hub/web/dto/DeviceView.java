@@ -30,6 +30,9 @@ public record DeviceView(
         long successCount,
         long failCount,
         long costMs,
+        Long lineId,
+        String lineName,
+        int lineSeq,
         List<PointValue> points
 ) {
 }
