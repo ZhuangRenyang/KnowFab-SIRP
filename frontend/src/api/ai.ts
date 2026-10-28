@@ -103,7 +103,20 @@ export interface ChatResult {
   message?: string
 }
 
+export interface InterpretResult {
+  ok: boolean
+  content?: string
+  tokens?: number
+  code?: string
+  message?: string
+}
+
 export const chatApi = {
   tools: () => http.get<ChatToolsResult>('/api/ai/chat/tools'),
-  send: (messages: ChatMessage[]) => http.post<ChatResult>('/api/ai/chat', { messages })
+  send: (messages: ChatMessage[]) => http.post<ChatResult>('/api/ai/chat', { messages }),
+  history: (limit = 30) =>
+    http.get<{ ok: boolean; messages: ChatMessage[] }>(`/api/ai/chat/history?limit=${limit}`),
+  clearHistory: () => http.del<{ ok: boolean; message?: string }>('/api/ai/chat/history'),
+  interpret: (from: string, to: string) =>
+    http.post<InterpretResult>('/api/ai/chat/interpret', { from, to })
 }

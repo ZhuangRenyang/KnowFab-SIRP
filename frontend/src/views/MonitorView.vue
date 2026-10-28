@@ -26,7 +26,10 @@
         <div class="card-top">
           <div class="card-id">
             <div class="dev-name">{{ d.name }}</div>
-            <div class="dev-code num">{{ d.code }}<template v-if="d.location"> · {{ d.location }}</template></div>
+            <div class="dev-code num">
+              {{ d.code }}<template v-if="d.location"> · {{ d.location }}</template>
+              <span v-if="d.lineName" class="line-tag">{{ d.lineName }} #{{ d.lineSeq }}</span>
+            </div>
           </div>
           <StatusBadge :type="statusOf(d).type" :label="statusOf(d).label" :dot="statusOf(d).type === 'run'" />
         </div>

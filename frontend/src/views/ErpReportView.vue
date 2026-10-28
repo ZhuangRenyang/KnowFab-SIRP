@@ -103,6 +103,22 @@
             </el-table>
           </div>
         </div>
+        <div class="panel">
+          <div class="p-head">
+            <h3>AI 经营解读</h3>
+            <span>事实数据本地算好给模型，AI 只负责组织语言与提示风险</span>
+            <span class="spacer" />
+            <el-button v-if="auth.canWrite" size="small" type="primary" :loading="aiLoading"
+              :disabled="!(ov && ov.trend)" @click="aiInterpret">生成解读</el-button>
+          </div>
+          <div v-if="aiLoading" class="ai-loading">正在结合本期采购/销售/应收/库存数据生成解读…</div>
+          <div v-else-if="aiText" class="ai-text">{{ aiText }}</div>
+          <div v-else-if="aiErr" class="ai-err">{{ aiErr }}</div>
+          <div v-else class="ai-empty">
+            点「生成解读」，AI 会基于上方数据给出经营状态总结、风险提示与建议。
+            <template v-if="!auth.canWrite">（经营解读含财务数据，仅管理员/车间主任可用）</template>
+          </div>
+        </div>
       </el-tab-pane>
 
       <!-- ==================== 库存状况 ==================== -->
@@ -328,7 +344,10 @@ import {
 } from '@/api/erpReport'
 import { warehouseApi, type ErpWarehouse } from '@/api/erp'
 import { useEcharts } from '@/composables/useEcharts'
+import { useAuthStore } from '@/stores/auth'
 import { dayText, money, qty } from '@/utils/format'
+
+const auth = useAuthStore()
 
 const pad = (n: number) => String(n).padStart(2, '0')
 const fmt = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
@@ -357,6 +376,29 @@ const trendEl = ref<HTMLElement | null>(null)
 const flowEl = ref<HTMLElement | null>(null)
 const trendChart = useEcharts()
 const flowChart = useEcharts()
+
+/* AI 经营解读 */
+const aiLoading = ref(false)
+const aiText = ref('')
+const aiErr = ref('')
+
+async function aiInterpret() {
+  aiLoading.value = true
+  aiErr.value = ''
+  aiText.value = ''
+  try {
+    const r = await chatApi.interpret(fromDate.value, toDate.value)
+    if (r.ok && r.content) {
+      aiText.value = r.content
+    } else {
+      aiErr.value = r.message || 'AI 解读失败'
+    }
+  } catch (e: any) {
+    aiErr.value = e?.message || 'AI 解读失败'
+  } finally {
+    aiLoading.value = false
+  }
+}
 
 const maxCustomer = computed(() =>
   Math.max(1, ...(ov.value?.topCustomers || []).map((c) => Number(c.amount) || 0)))
@@ -545,6 +587,11 @@ onMounted(async () => {
 .prog { display: flex; align-items: center; gap: 8px; }
 .prog :deep(.el-progress) { flex: 1; min-width: 0; }
 .prog-text { font-size: var(--text-2xs); color: var(--muted); white-space: nowrap; }
+.p-head .spacer { flex: 1; }
+.ai-text { font-size: var(--text-xs); line-height: 1.9; white-space: pre-wrap; }
+.ai-empty, .ai-loading, .ai-err { font-size: var(--text-xs); color: var(--meta); padding: var(--space-2) 0; }
+.ai-err { color: var(--alarm); }
+.ai-loading { color: var(--muted); }
 @media (max-width: 1200px) {
   .kpis, .kpis.six { grid-template-columns: repeat(2, 1fr); }
   .grid-2 { grid-template-columns: 1fr; }

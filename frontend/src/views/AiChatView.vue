@@ -10,6 +10,7 @@
           {{ info?.model || '已启用' }}
         </el-tag>
         <el-tag v-else size="small" type="info" effect="plain">AI 未启用</el-tag>
+        <el-button v-if="messages.length" size="small" text @click="clearConv">清空对话</el-button>
         <el-button v-if="auth.isAdmin" size="small" text @click="cfgOpen = true">AI 设置</el-button>
       </div>
     </div>
@@ -141,8 +142,33 @@ const stepsFor: Record<string, string> = {
 async function loadTools() {
   try {
     info.value = await chatApi.tools()
-  } catch (e: any) {
+  } catch {
     info.value = null
+  }
+}
+
+/** 启动时接续本人最近的对话（存库，刷新/换设备不丢） */
+async function loadHistory() {
+  try {
+    const r = await chatApi.history(30)
+    if (r.ok && r.messages?.length && !messages.value.length) {
+      messages.value = r.messages
+      scrollBottom()
+    }
+  } catch {
+    /* 历史拿不到就当新会话 */
+  }
+}
+
+async function clearConv() {
+  try {
+    const r = await chatApi.clearHistory()
+    if (r.ok) {
+      messages.value = []
+      ElMessage.success(r.message || '已清空')
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || '清空失败')
   }
 }
 
@@ -181,7 +207,10 @@ async function send() {
   }
 }
 
-onMounted(loadTools)
+onMounted(() => {
+  loadTools()
+  loadHistory()
+})
 </script>
 
 <style scoped>

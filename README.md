@@ -995,14 +995,17 @@ spring:
    旧数据用 H2 的 `SCRIPT TO 'dump.sql'` 导出，但 SQL 方言要手工改
    （自增主键、`CLOB`、`IDENTITY` 都不一样），量小才值得干，量大部分靠重灌。
 
-备份（MySQL 是唯一路径，装完就该配）：
+备份（MySQL 是唯一路径，装完就该配）。**直接用自带脚本**，凭据自动从 `application.yml` 读取：
 
 ```bash
-# 每天 2 点，留 14 天
-0 2 * * * mysqldump -h10.0.0.5 -udh -p'***' --single-transaction device_hub | gzip > /backup/dh-$(date +\%F).sql.gz
-# PostgreSQL
-0 2 * * * pg_dump -h 10.0.0.5 -U dh device_hub | gzip > /backup/dh-$(date +\%F).sql.gz
+sudo ./bin/backup.sh            # 手工跑一次：backups/库名-时间.sql.gz，默认保留 14 天
+sudo ./bin/backup.sh 30         # 保留 30 天
+# 每天 02:30 自动备份（加进 crontab）：
+#   30 2 * * * /opt/device-hub/bin/backup.sh >> /opt/device-hub/logs/backup.log 2>&1
 ```
+
+恢复（先停服务或确认低峰）：`gunzip < backups/xxx.sql.gz | mysql -u<user> -p <库名>`。
+Docker 部署的用 `docker compose exec mysql mysqldump ...`，volume 记得一并备份。
 
 ### 10.8 联网一键安装（国内 / 国外镜像）
 
@@ -1533,7 +1536,8 @@ python tools/smoke-all.py     # 每个页面背后的接口跑一遍，输出 �
 | 产线：设备按工位编排、指定成品计数点、产线今日/本月产量 | ERP → 产线管理 |
 | 产线产量进大屏（KPI 下方一条）与 `/open/v1/lines`（MES 取数） | 大屏 / 对外接口 |
 | 销售查询：现存/订单占用/可承诺量（不含成本），无成本 Excel 导出 | ERP → 销售查询 |
-| AI 助手：自然语言查库存/产量/设备/订单/财务（按角色收口，工具调用不生成 SQL） | 分析 → AI 助手 |
+| AI 助手：自然语言查库存/产量/设备/订单/财务（按角色收口，工具调用不生成 SQL），对话留痕可回看 | 分析 → AI 助手 |
+| AI 经营解读：本期经营事实数据 → 状态总结/风险提示/建议（仅管理员/车间主任） | 经营报表 → 经营概况 → 生成解读 |
 | AI 开关：本地 Ollama 或 DeepSeek/通义/智谱等云端接口，可整体关闭 | AI 设置（管理员） |
 | 多协议采集（Modbus TCP / RTU / RTU over TCP / 模拟） | `driver/` |
 | 实时看板 + 状态徽章 | 设备监控 |

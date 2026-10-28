@@ -4,6 +4,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -47,6 +48,30 @@ public class AiChatController {
         out.put("model", cfg.getModel());
         out.put("tools", service.toolsFor(role));
         return out;
+    }
+
+    /** 本人最近对话（刷新/换设备后接续） */
+    @GetMapping("/history")
+    public Map<String, Object> history(@RequestParam(defaultValue = "30") int limit) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("ok", true);
+        out.put("messages", service.history(operator(), limit));
+        return out;
+    }
+
+    /** 只清本人的记录 */
+    @org.springframework.web.bind.annotation.DeleteMapping("/history")
+    public Map<String, Object> clearHistory() {
+        return service.clearHistory(operator());
+    }
+
+    /** 经营解读（DH-48）：事实本地算，AI 只组织语言；服务层限管理员/车间主任 */
+    @PostMapping("/interpret")
+    public Map<String, Object> interpret(@RequestBody(required = false) Map<String, Object> body) {
+        Map<String, Object> b = body == null ? Map.of() : body;
+        return service.interpret(role(),
+                b.get("from") == null ? null : String.valueOf(b.get("from")),
+                b.get("to") == null ? null : String.valueOf(b.get("to")));
     }
 
     @PostMapping

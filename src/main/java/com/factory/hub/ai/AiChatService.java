@@ -2,6 +2,7 @@ package com.factory.hub.ai;
 
 import com.factory.hub.alarm.AlarmService;
 import com.factory.hub.erp.ErpFinanceService;
+import com.factory.hub.erp.ErpReportService;
 import com.factory.hub.erp.ErpLineService;
 import com.factory.hub.erp.ErpPurchaseService;
 import com.factory.hub.erp.ErpSalesQueryService;
@@ -16,6 +17,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayDeque;
@@ -67,6 +69,8 @@ public class AiChatService {
     private final ErpSalesService salesService;
     private final ErpFinanceService financeService;
     private final AlarmService alarmService;
+    private final AiChatLogRepository chatRepo;
+    private final ErpReportService reportService;
 
     /** 每用户滑动窗口限流 */
     private final Map<String, Deque<Long>> rate = new HashMap<>();
@@ -75,7 +79,8 @@ public class AiChatService {
                          DeviceService deviceService, SnapshotStore store,
                          ErpLineService lineService, ErpSalesQueryService salesQueryService,
                          ErpPurchaseService purchaseService, ErpSalesService salesService,
-                         ErpFinanceService financeService, AlarmService alarmService) {
+                         ErpFinanceService financeService, AlarmService alarmService,
+                         AiChatLogRepository chatRepo, ErpReportService reportService) {
         this.configStore = configStore;
         this.client = client;
         this.mapper = mapper;
@@ -87,6 +92,8 @@ public class AiChatService {
         this.salesService = salesService;
         this.financeService = financeService;
         this.alarmService = alarmService;
+        this.chatRepo = chatRepo;
+        this.reportService = reportService;
     }
 
     /* ==================== 工具定义 ==================== */
@@ -210,6 +217,7 @@ public class AiChatService {
                     out.put("tools", trace);
                     out.put("tokens", tokens);
                     out.put("rounds", round + 1);
+                    saveLog(userKey, role, history, r.content(), trace, tokens);
                     return out;
                 }
                 // 记录 assistant 的工具调用请求，随后把结果一条条喂回去
@@ -392,6 +400,159 @@ public class AiChatService {
     }
 
     /* ==================== 杂项 ==================== */
+
+    /* ==================== 对话留痕（本人可查可删） ==================== */
+
+    /** 只回本人的最近 N 条（时间正序），换设备/刷新后对话还在 */
+    public List<Map<String, Object>> history(String username, int limit) {
+        int n = Math.max(1, Math.min(100, limit));
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (AiChatLog c : chatRepo.findByUsernameOrderByCreatedAtAsc(username,
+                org.springframework.data.domain.PageRequest.of(0, n))) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("role", "user");
+            m.put("content", c.getQuestion());
+            out.add(m);
+            Map<String, Object> a = new LinkedHashMap<>();
+            a.put("role", "assistant");
+            a.put("content", c.getAnswer());
+            out.add(a);
+        }
+        return out;
+    }
+
+    public Map<String, Object> clearHistory(String username) {
+        int n = chatRepo.deleteByUsername(username);
+        return Map.of("ok", true, "message", "已清空 " + n + " 条对话记录");
+    }
+
+    private void saveLog(String username, String role, List<Map<String, Object>> history,
+                         String answer, List<Map<String, Object>> trace, long tokens) {
+        try {
+            String question = "";
+            for (int i = history.size() - 1; i >= 0; i--) {
+                Map<String, Object> m = history.get(i);
+                if ("user".equals(String.valueOf(m.get("role")))) {
+                    question = String.valueOf(m.get("content"));
+                    break;
+                }
+            }
+            AiChatLog logRow = new AiChatLog();
+            logRow.setUsername(username);
+            logRow.setRole(role);
+            logRow.setQuestion(question.length() > 4000 ? question.substring(0, 4000) : question);
+            logRow.setAnswer(answer.length() > 8000 ? answer.substring(0, 8000) : answer);
+            logRow.setToolsJson(mapper.writeValueAsString(trace));
+            logRow.setTokens((int) Math.min(Integer.MAX_VALUE, tokens));
+            chatRepo.save(logRow);
+        } catch (Exception e) {
+            log.warn("AI 对话留痕失败（不影响回答）：{}", e.getMessage());
+        }
+    }
+
+    /** 每天 03:40 清理 180 天前的对话留痕 */
+    @org.springframework.scheduling.annotation.Scheduled(cron = "0 40 3 * * *")
+    public void cleanupLogs() {
+        try {
+            int n = chatRepo.deleteOlderThan(
+                    System.currentTimeMillis() - 180L * 86_400_000L);
+            if (n > 0) {
+                log.info("AI 对话留痕清理 {} 条", n);
+            }
+        } catch (Exception e) {
+            log.warn("AI 对话留痕清理失败：{}", e.getMessage());
+        }
+    }
+
+    /* ==================== AI 经营解读（DH-48 第一块） ==================== */
+
+    /**
+     * 把经营概况的事实数据交给模型组织语言：风险点、异常、建议。
+     * 数字全部本地算好塞进提示词，模型只负责"说人话"——延续"事实本地算，AI 只润色"的红线。
+     */
+    public synchronized Map<String, Object> interpret(String role, String from, String to) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        if (!Set.of("ADMIN", "MANAGER").contains(role)) {
+            out.put("ok", false);
+            out.put("message", "经营解读包含财务数据，仅管理员与车间主任可用");
+            return out;
+        }
+        AiConfig cfg = configStore.current();
+        if (!cfg.isEnabled() || cfg.getApiKey() == null || cfg.getApiKey().isBlank()) {
+            out.put("ok", false);
+            out.put("code", "AI_DISABLED");
+            out.put("message", "AI 未启用或未配置 Key，请管理员在「AI 设置」里开启");
+            return out;
+        }
+        long[] r = reportRange(from, to);
+        Map<String, Object> d = reportService.overview(r[0], r[1]);
+
+        // 只挑模型用得上的字段：数字已经很密了，别把整个 JSON 灌进去
+        Map<String, Object> facts = new LinkedHashMap<>();
+        facts.put("区间", d.get("fromDate") + " ~ " + d.get("toDate"));
+        facts.put("采购入库额", d.get("purchaseAmount"));
+        facts.put("销售出库额", d.get("salesAmount"));
+        facts.put("生产入库量", d.get("prodInQty"));
+        facts.put("当前库存金额", d.get("stockValue"));
+        facts.put("采购订单数", d.get("poCount"));
+        facts.put("销售订单数", d.get("soCount"));
+        facts.put("应收未收", d.get("arOutstanding"));
+        facts.put("应收逾期", d.get("arOverdue"));
+        facts.put("应付未付", d.get("apOutstanding"));
+        facts.put("应付逾期", d.get("apOverdue"));
+        facts.put("每日趋势", d.get("trend"));
+        facts.put("客户排行", d.get("topCustomers"));
+        facts.put("供应商排行", d.get("topSuppliers"));
+        facts.put("商品动销", d.get("topSkus"));
+
+        String system = """
+                你是工厂经营分析助手。用户会给一段时期的生产经营事实数据（JSON），
+                请写一份给老板看的简短解读（350 字以内）：
+                1. 先一句话总结本期经营状态；
+                2. 指出 2~3 个值得注意的风险或异常（例如销售高采购低库存降、应收逾期占比、动销集中度），
+                   每条都要引用数据里的具体数字；
+                3. 给 1~2 条可执行的建议；
+                4. 只使用给定的数字，禁止编造或自行计算新数字；单位：数量见字段、金额为元。
+                用简体中文，直接输出正文，不要标题和客套。
+                """;
+        try {
+            String factsJson = mapper.writerWithDefaultPrettyPrinter().writeValueAsString(facts);
+            AiClient.Reply reply = client.chat(cfg, system, factsJson);
+            out.put("ok", true);
+            out.put("content", reply.text());
+            out.put("tokens", reply.tokens());
+        } catch (Exception e) {
+            out.put("ok", false);
+            out.put("message", "AI 解读失败：" + e.getMessage());
+        }
+        return out;
+    }
+
+    /** [fromTs, toTsExclusive]；默认本月 1 号到今天 */
+    private static long[] reportRange(String from, String to) {
+        LocalDate today = LocalDate.now(ZONE);
+        LocalDate f = parseDay(from, today.withDayOfMonth(1));
+        LocalDate t = parseDay(to, today);
+        if (t.isBefore(f)) {
+            LocalDate tmp = f;
+            f = t;
+            t = tmp;
+        }
+        return new long[]{
+                f.atStartOfDay(ZONE).toInstant().toEpochMilli(),
+                t.plusDays(1).atStartOfDay(ZONE).toInstant().toEpochMilli()};
+    }
+
+    private static LocalDate parseDay(String raw, LocalDate fallback) {
+        if (raw == null || raw.isBlank()) {
+            return fallback;
+        }
+        try {
+            return LocalDate.parse(raw.trim().substring(0, 10));
+        } catch (Exception e) {
+            return fallback;
+        }
+    }
 
     private String systemPrompt(String role) {
         String now = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")

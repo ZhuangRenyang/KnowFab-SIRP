@@ -473,6 +473,27 @@ def sec_ai_chat():
         if u.get("username") == uname:
             req("DELETE", "/api/users/%s" % u["id"])
 
+    # 对话留痕：本人历史可读（未启用时为空列表也是 200）
+    st, r = req("GET", "/api/ai/chat/history?limit=5")
+    check(s, "对话历史接口", st == 200 and isinstance(r.get("messages"), list), st)
+
+    # 经营解读：未启用给引导；班组长无权
+    st, r = req("POST", "/api/ai/chat/interpret", {"from": "2026-10-01", "to": "2026-10-28"})
+    check(s, "解读未启用有提示", isinstance(r, dict) and r.get("code") == "AI_DISABLED",
+          str(r.get("code")) if isinstance(r, dict) else st)
+    uname2 = "t_smoke_ail"
+    req("POST", "/api/users", {"username": uname2, "password": "Smoke123456",
+                               "displayName": "冒烟班组长", "role": "LEADER"})
+    call2 = as_user(uname2, "Smoke123456")
+    st2, r2 = call2("POST", "/api/ai/chat/interpret", {})
+    check(s, "班组长无经营解读", isinstance(r2, dict) and r2.get("ok") is False
+          and "车间主任" in str(r2.get("message")), str(r2.get("message")) if isinstance(r2, dict) else st2)
+    _, users = req("GET", "/api/users")
+    users = users if isinstance(users, list) else (users.get("rows") or [])
+    for u in users:
+        if u.get("username") == uname2:
+            req("DELETE", "/api/users/%s" % u["id"])
+
 
 def sec_write(skus, whs):
     """写路径冒烟：建单→取消、建单→作废，验证完顺手把数据清干净。"""
