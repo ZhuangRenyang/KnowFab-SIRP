@@ -169,8 +169,12 @@ watch(f, reload)
 
 /* 7 天趋势：红色系柱状，末柱实色（与旧 canvas 版同语义） */
 const css = (n: string) => getComputedStyle(document.documentElement).getPropertyValue(n).trim()
+/* 趋势图容器常驻，但 init 必须拿到 el 后调一次——之前从未调用，图一直是空的 */
+let trendInited = false
 watch(() => s.value?.trend, (trend) => {
   const t = trend || []
+  if (!trendEl.value) return
+  if (!trendInited) { init(trendEl.value); trendInited = true }
   setOption({
     grid: { left: 6, right: 10, top: 22, bottom: 4, containLabel: true },
     xAxis: { type: 'category', data: t.map((x) => String(x.date).slice(5)) },

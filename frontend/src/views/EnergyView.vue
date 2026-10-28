@@ -97,7 +97,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, reactive} from 'vue'
 import { energyApi, SEG_COLOR, type EnergyOverview, type EnergyRankItem, type DemandData, type TariffSegment } from '@/api/energy'
 import { num } from '@/api/reports'
 import { useAuthStore } from '@/stores/auth'
@@ -110,6 +110,10 @@ const auth = useAuthStore()
 const { init: initDemand, setOption: setDemand } = useEcharts()
 const { init: initTrend, setOption: setTrend } = useEcharts()
 const { init: initHourly, setOption: setHourly } = useEcharts()
+/* 图表容器是常驻 DOM，但 init 必须在拿到 el 之后调一次。
+   之前三个 init 从未被调用 → setOption 全部静默丢弃，页面上三张图都是空的。
+   setOption 会缓存 option 并在 init 时重放，所以"数据先到、init 后到"也没问题。 */
+const chartInited = reactive({ demand: false, trend: false, hourly: false })
 
 const range = ref('today')
 const ov = ref<EnergyOverview | null>(null)
@@ -181,6 +185,7 @@ watch([demandEl, () => dm.value?.today?.series], () => {
   const s = dm.value?.today?.series || []
   const contract = dm.value?.config?.contractDemandKw || 0
   if (!s.length || !demandEl.value) return
+  if (!chartInited.demand) { initDemand(demandEl.value); chartInited.demand = true }
   setDemand({
     grid: { left: 6, right: 10, top: 20, bottom: 4, containLabel: true },
     xAxis: { type: 'category', data: s.map((x) => x.t), axisLabel: { interval: (i: number) => i % 12 === 0 } },
@@ -209,6 +214,7 @@ watch([demandEl, () => dm.value?.today?.series], () => {
 watch([trendEl, () => ov.value?.trend], () => {
   const t = ov.value?.trend || []
   if (!t.length || !trendEl.value) return
+  if (!chartInited.trend) { initTrend(trendEl.value); chartInited.trend = true }
   setTrend({
     grid: { left: 6, right: 10, top: 20, bottom: 4, containLabel: true },
     xAxis: { type: 'category', data: t.map((x) => String(x.date).slice(5)) },
@@ -231,6 +237,7 @@ watch([trendEl, () => ov.value?.trend], () => {
 watch([hourlyEl, () => detail.value?.hourly], () => {
   const h = detail.value?.hourly || []
   if (!h.length || !hourlyEl.value) return
+  if (!chartInited.hourly) { initHourly(hourlyEl.value); chartInited.hourly = true }
   setHourly({
     grid: { left: 6, right: 10, top: 14, bottom: 4, containLabel: true },
     xAxis: { type: 'category', data: h.map((x: any) => x.label), axisLabel: { interval: (i: number) => i % 3 === 0 } },
