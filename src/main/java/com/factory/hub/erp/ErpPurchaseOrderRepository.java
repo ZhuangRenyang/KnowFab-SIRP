@@ -56,4 +56,9 @@ public interface ErpPurchaseOrderRepository extends JpaRepository<ErpPurchaseOrd
     @Query("select o from ErpPurchaseOrder o where o.status in ('CONFIRMED', 'PARTIAL') " +
            "order by case when o.expectDate is null then 1 else 0 end, o.expectDate asc, o.id asc")
     List<ErpPurchaseOrder> findOpenOrders(Pageable pageable);
+
+    /** 报表用：某段时间内下单、且未取消的订单（按日期倒序） */
+    @Query("select o from ErpPurchaseOrder o where o.status <> 'CANCELLED' " +
+           "and o.orderDate >= :fromTs and o.orderDate < :toTs order by o.orderDate desc")
+    List<ErpPurchaseOrder> inPeriod(@Param("fromTs") long fromTs, @Param("toTs") long toTs);
 }

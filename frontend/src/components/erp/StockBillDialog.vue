@@ -40,6 +40,12 @@
       </label>
 
       <label class="fld">
+        <span>单据日期</span>
+        <el-date-picker v-model="bizDate" type="date" value-format="YYYY-MM-DD" :clearable="false"
+          style="width:100%" />
+      </label>
+
+      <label class="fld">
         <span>备注</span>
         <el-input v-model="remark" placeholder="选填，如送货单号 / 用途" />
       </label>
@@ -129,6 +135,7 @@ const whId = ref<number | null>(null)
 const srcWhId = ref<number | null>(null)
 const partnerId = ref<number | null>(null)
 const remark = ref('')
+const bizDate = ref(today())
 const saving = ref(false)
 
 const skus = ref<ErpSku[]>([])
@@ -137,6 +144,12 @@ const partners = ref<ErpPartner[]>([])
 
 interface Line { skuId: number | null; qty: number | string; unitPrice: number | string | null }
 const lines = ref<Line[]>([{ skuId: null, qty: 1, unitPrice: null }])
+
+function today(): string {
+  const d = new Date()
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
 
 const isTransfer = computed(() => type.value === 'TRANSFER')
 const needPartner = computed(() => type.value === 'PO_IN' || type.value === 'SO_OUT')
@@ -187,6 +200,7 @@ async function onOpen() {
   type.value = props.defaultType && TYPE_LABELS[props.defaultType] ? props.defaultType : 'PO_IN'
   lines.value = [{ skuId: null, qty: 1, unitPrice: null }]
   remark.value = ''
+  bizDate.value = today()
   partnerId.value = null
   try {
     const [s, w] = await Promise.all([skuApi.list(), warehouseApi.list()])
@@ -228,6 +242,7 @@ async function submit() {
       srcWarehouseId: isTransfer.value ? srcWhId.value : null,
       partnerId: needPartner.value ? partnerId.value : null,
       remark: remark.value,
+      date: bizDate.value,
       lines: lines.value
         .filter((l) => l.skuId && Number(l.qty) > 0)
         .map((l) => ({

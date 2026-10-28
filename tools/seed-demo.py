@@ -494,6 +494,46 @@ def stock_flow(s, w):
         ok("调拨 %s（P-101 5 件 成品一仓→半成品仓）" % r["billNo"])
 
 
+def history_flow(s, w, p):
+    """历史流水：给报表的"趋势 / 期初库存"铺内容。
+
+    为什么要 backdate：报表按业务日期统计，没有历史单据的话
+    "库存状况"的期初永远是 0、"每日趋势"只有今天一根柱子，验收时看不出对错。
+    这里补 45 天、每 5 天一对采购入库 + 销售出库（带供应商/客户），
+    这样经营概况的"采购/销售趋势"和账龄都能看出形状。
+    """
+    global skipped
+    print("\n[历史流水：给报表铺 45 天动账]")
+    for back in range(5, 50, 5):
+        tag_in = "演示-历史采购-D%d" % back
+        if bill_exists(tag_in):
+            skipped += 1
+        else:
+            st, r = call("POST", "/api/erp/stock/bills", {
+                "type": "PO_IN", "warehouseId": w["WH-03"], "partnerId": p["GYS-01"],
+                "date": day(-back), "remark": "【%s】历史采购入库补录" % tag_in,
+                "lines": [{"skuId": s["M-003"], "qty": 400, "unitPrice": 12}],
+            })
+            if not r.get("ok"):
+                fail("历史采购入库失败：%s" % r.get("message"))
+            created["bill"] += 1
+            ok("历史采购入库 %s（%d 天前，M-003 400 套）" % (r["billNo"], back))
+
+        tag_out = "演示-历史销售-D%d" % back
+        if bill_exists(tag_out):
+            skipped += 1
+        else:
+            st, r = call("POST", "/api/erp/stock/bills", {
+                "type": "SO_OUT", "warehouseId": w["WH-03"], "partnerId": p["KH-01"],
+                "date": day(-back), "remark": "【%s】历史销售出库补录" % tag_out,
+                "lines": [{"skuId": s["M-003"], "qty": 150, "unitPrice": 22}],
+            })
+            if not r.get("ok"):
+                fail("历史销售出库失败：%s" % r.get("message"))
+            created["bill"] += 1
+            ok("历史销售出库 %s（%d 天前，M-003 150 套）" % (r["billNo"], back))
+
+
 def payment_exists(tag):
     st, r = call("GET", "/api/erp/finance/payments?kw=%s&withVoided=true&page=1&size=1"
                  % urllib.parse.quote(tag))
@@ -603,6 +643,10 @@ def report(s, w):
         print("  本月采购额 ¥%s / 本月销售额 ¥%s" % (ps["monthAmount"], ss["monthAmount"]))
         print("  待到货 %d 单 / 待发货 %d 单 / 采购逾期 %d / 销售逾期 %d" % (
             ps["openCount"], ss["openCount"], ps["overdueCount"], ss["overdueCount"]))
+    st, rv = call("GET", "/api/erp/reports/overview?from=%s&to=%s" % (day(-30), day(0)))
+    if rv.get("ok"):
+        print("  报表近 30 天：采购入库 ¥%s / 销售出库 ¥%s / 生产入库 %s / 库存金额 ¥%s" % (
+            rv["purchaseAmount"], rv["salesAmount"], rv["prodInQty"], rv["stockValue"]))
     st, fs = call("GET", "/api/erp/finance/summary")
     if fs.get("ok"):
         print("  应收未收 ¥%s（逾期 ¥%s） / 应付未付 ¥%s（逾期 ¥%s）" % (
@@ -627,6 +671,7 @@ def main():
     purchase_flow(s, w, p)
     sales_flow(s, w, p)
     stock_flow(s, w)
+    history_flow(s, w, p)
     finance_flow(s, w, p)
     report(s, w)
 

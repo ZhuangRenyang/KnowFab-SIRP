@@ -11,6 +11,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -121,7 +123,8 @@ public class ErpStockController {
                     str(body.get("remark")),
                     operator(),
                     lines,
-                    null);
+                    null,
+                    dayTs(body.get("date")));
             Map<String, Object> m = ok("单据已生成：" + c.billNo());
             m.put("billNo", c.billNo());
             m.put("lineCount", c.lineCount());
@@ -224,6 +227,26 @@ public class ErpStockController {
 
     private static String str(Object o) {
         return o == null ? "" : String.valueOf(o).trim();
+    }
+
+    /** 单据业务日期：接受 yyyy-MM-dd 或毫秒时间戳；空 = 按录入时间 */
+    private static Long dayTs(Object v) {
+        if (v == null) {
+            return null;
+        }
+        if (v instanceof Number n) {
+            return n.longValue();
+        }
+        String s = String.valueOf(v).trim();
+        if (s.isEmpty() || "null".equalsIgnoreCase(s)) {
+            return null;
+        }
+        try {
+            String day = s.length() > 10 ? s.substring(0, 10) : s;
+            return LocalDate.parse(day).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli();
+        } catch (Exception e) {
+            return null;             // 日期写错就当"今天录的"，不要把单据挡在这里
+        }
     }
 
     private static String operator() {

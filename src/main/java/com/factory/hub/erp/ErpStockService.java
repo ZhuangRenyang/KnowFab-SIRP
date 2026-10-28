@@ -120,10 +120,20 @@ public class ErpStockService {
      * @param srcOrderNo 来源采购订单号，可为 null（非采购单据）
      * @throws IllegalArgumentException 校验不通过（消息直接给用户看）
      */
+    public Created createManual(String type, Long partnerId, Long whId, Long srcWhId,
+                                String remark, String operator, List<LineReq> lines,
+                                String srcOrderNo) {
+        return createManual(type, partnerId, whId, srcWhId, remark, operator, lines, srcOrderNo, null);
+    }
+
+    /**
+     * 同上，额外允许指定<b>业务日期</b>（补录历史单据用）。
+     * 报表按 {@code coalesce(biz_date, created_at)} 统计，所以补录不会把数字算到今天。
+     */
     @Transactional
     public synchronized Created createManual(String type, Long partnerId, Long whId, Long srcWhId,
                                              String remark, String operator, List<LineReq> lines,
-                                             String srcOrderNo) {
+                                             String srcOrderNo, Long bizDate) {
         if (!MANUAL_TYPES.contains(type)) {
             throw new IllegalArgumentException("不支持的单据类型：" + type);
         }
@@ -202,6 +212,7 @@ public class ErpStockService {
         for (ErpStockBill r : rows) {
             r.setHeaderId(hdr.getId());
             r.setSrcOrderNo(srcOrderNo);
+            r.setBizDate(bizDate);
         }
         billRepo.saveAll(rows);
         log.info("新建单据 {} {} 共 {} 行，合计 {}（操作人 {}）",

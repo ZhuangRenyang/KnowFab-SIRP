@@ -275,6 +275,56 @@ def sec_finance():
     check(s, "供应商往来对账", st == 200 and isinstance(r, list), st)
 
 
+def req_blob(path, timeout=40):
+    """取二进制响应（导出 xlsx 用）：只回状态码/类型/长度/前两字节，别把 table 解码成文本。"""
+    r = urllib.request.Request(BASE + path)
+    try:
+        with opener.open(r, timeout=timeout) as resp:
+            b = resp.read()
+            return resp.status, resp.headers.get("content-type", ""), len(b), b[:2]
+    except urllib.error.HTTPError as e:
+        return e.code, e.headers.get("content-type", ""), 0, b""
+
+
+def sec_reports():
+    s = "报表"
+    today = datetime.date.today()
+    frm = today.replace(day=1).isoformat()
+    q = "from=%s&to=%s" % (frm, today.isoformat())
+
+    st, r = req("GET", "/api/erp/reports/overview?" + q)
+    check(s, "经营概况", st == 200 and has(r, "purchaseAmount", "salesAmount", "trend", "topSkus"),
+          "采购 ¥%s / 销售 ¥%s" % (r.get("purchaseAmount"), r.get("salesAmount")) if isinstance(r, dict) else st)
+
+    st, r = req("GET", "/api/erp/reports/stock?" + q)
+    rows = (r.get("rows") or []) if isinstance(r, dict) else []
+    ok = st == 200 and isinstance(rows, list) and has(r.get("totals") or {}, "amount", "skuCount")
+    check(s, "库存状况（进销存）", ok, "%d 行" % len(rows))
+    # 恒等式：期初 + 本期入 − 本期出 = 期末（报表的核心承诺，不能只对一屏好看）
+    bad = [x for x in rows
+           if abs((x["opening"] + x["inQty"] - x["outQty"]) - x["closing"]) > 0.001]
+    check(s, "期初+入-出=期末", not bad, "全部 %d 行闭合" % len(rows) if not bad else bad[0])
+
+    st, r = req("GET", "/api/erp/reports/flows?" + q)
+    ok = st == 200 and isinstance(r.get("byType"), list) and isinstance(r.get("daily"), list) \
+        and isinstance(r.get("byWarehouse"), list)
+    check(s, "出入库统计", ok, "%d 类 / %d 天" % (len(r.get("byType") or []), len(r.get("daily") or []))
+          if isinstance(r, dict) else st)
+
+    st, r = req("GET", "/api/erp/reports/trade?side=purchase&" + q)
+    check(s, "采购执行", st == 200 and isinstance(r.get("orders"), list) and isinstance(r.get("partners"), list),
+          "%d 单" % len(r.get("orders") or []))
+    st, r = req("GET", "/api/erp/reports/trade?side=sales&" + q)
+    check(s, "销售执行", st == 200 and isinstance(r.get("orders"), list),
+          "%d 单" % len(r.get("orders") or []))
+
+    for t in ("overview", "stock", "flows", "trade"):
+        st, ctype, size, magic = req_blob("/api/erp/reports/export?type=%s&%s&side=sales" % (t, q))
+        check(s, "导出 %s.xlsx" % t,
+              st == 200 and "spreadsheetml" in (ctype or "") and size > 3000 and magic == b"PK",
+              "%s 字节" % size)
+
+
 def sec_write(skus, whs):
     """写路径冒烟：建单→取消、建单→作废，验证完顺手把数据清干净。"""
     s = "写路径"
@@ -399,6 +449,7 @@ def main():
     sec_stock()
     sec_sales()
     sec_finance()
+    sec_reports()
     sec_write(skus, whs)
     sec_auth_negative()
 

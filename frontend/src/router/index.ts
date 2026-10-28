@@ -19,6 +19,7 @@ export const router = createRouter({
     { path: '/erp/sales', component: () => import('@/views/ErpSalesView.vue'), meta: { title: '销售管理' } },
     { path: '/erp/stock', component: () => import('@/views/ErpStockView.vue'), meta: { title: '库存管理' } },
     { path: '/erp/finance', component: () => import('@/views/ErpFinanceView.vue'), meta: { title: '财务管理' } },
+    { path: '/erp/reports', component: () => import('@/views/ErpReportView.vue'), meta: { title: '经营报表' } },
     { path: '/discovery', component: () => import('@/views/DiscoveryView.vue'), meta: { title: '设备发现', roles: ['ADMIN'] } },
     { path: '/:pathMatch(.*)*', redirect: '/' }
   ]

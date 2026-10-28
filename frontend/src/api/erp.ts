@@ -240,7 +240,7 @@ export const stockApi = {
       `/api/erp/stock/bills/${encodeURIComponent(billNo)}`),
   createBill: (b: {
     type: string; partnerId?: number | null; warehouseId: number
-    srcWarehouseId?: number | null; remark?: string; lines: BillLineInput[]
+    srcWarehouseId?: number | null; remark?: string; date?: string; lines: BillLineInput[]
   }) => http.post<{ ok: boolean; message?: string; billNo?: string; lineCount?: number }>('/api/erp/stock/bills', b),
   stocktake: (b: { warehouseId: number; remark?: string; lines: BillLineInput[] }) =>
     http.post<{ ok: boolean; message?: string; billNo?: string; noDiff?: boolean }>('/api/erp/stock/stocktake', b),

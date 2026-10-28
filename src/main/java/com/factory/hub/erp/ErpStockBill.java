@@ -107,6 +107,16 @@ public class ErpStockBill {
     @Column(name = "created_at", nullable = false)
     private long createdAt = System.currentTimeMillis();
 
+    /**
+     * 单据业务日期（补录用）。null = 按 {@link #createdAt} 算。
+     * <p>
+     * 为什么必须有这一列：月底补录 25 号的领料单，录入时间是 30 号，
+     * 如果报表按录入时间统计，这个月的出库就会凭空多出来、上个月少一笔。
+     * 报表统一取 {@code coalesce(biz_date, created_at)}，录入时间继续只做审计。
+     */
+    @Column(name = "biz_date")
+    private Long bizDate;
+
     /** 作废时间戳；null = 有效。历史行升级后为 null，库存聚合照常算进去 */
     @Column(name = "voided_at")
     private Long voidedAt;
@@ -139,6 +149,8 @@ public class ErpStockBill {
     public void setRemark(String remark) { this.remark = remark; }
     public long getCreatedAt() { return createdAt; }
     public void setCreatedAt(long createdAt) { this.createdAt = createdAt; }
+    public Long getBizDate() { return bizDate; }
+    public void setBizDate(Long bizDate) { this.bizDate = bizDate; }
     public Long getVoidedAt() { return voidedAt; }
     public void setVoidedAt(Long voidedAt) { this.voidedAt = voidedAt; }
     public String getVoidedBy() { return voidedBy; }
