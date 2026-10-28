@@ -13,11 +13,14 @@ export const useAuthStore = defineStore('auth', () => {
   const user = ref<MeInfo | null>(null)
   const ready = ref(false)
   const isAdmin = computed(() => user.value?.role === 'ADMIN')
+  /** 销售角色：只有「销售查询」一个只读页 */
+  const isSales = computed(() => user.value?.role === 'SALES')
   const canWrite = computed(() => user.value?.role === 'ADMIN' || user.value?.role === 'MANAGER')
   const displayName = computed(() => user.value?.displayName || user.value?.username || '--')
   const roleLabel = computed(() => {
     const r = user.value?.role
-    return r === 'ADMIN' ? '管理员' : r === 'MANAGER' ? '车间主任' : r === 'LEADER' ? '班组长' : (r || '--')
+    return r === 'ADMIN' ? '管理员' : r === 'MANAGER' ? '车间主任'
+      : r === 'LEADER' ? '班组长' : r === 'SALES' ? '销售' : (r || '--')
   })
 
   async function ensure(): Promise<boolean> {
@@ -51,5 +54,5 @@ export const useAuthStore = defineStore('auth', () => {
     return http.post<{ ok: boolean; message?: string }>('/api/auth/password', { oldPassword, newPassword })
   }
 
-  return { user, ready, isAdmin, canWrite, displayName, roleLabel, ensure, login, logout, changePassword }
+  return { user, ready, isAdmin, isSales, canWrite, displayName, roleLabel, ensure, login, logout, changePassword }
 })

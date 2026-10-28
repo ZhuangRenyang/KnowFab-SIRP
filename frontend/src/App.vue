@@ -43,17 +43,18 @@
     <el-container class="body-col">
       <el-header class="hd" height="52px">
         <div class="hd-title">知造 SIRP <span>AI 智慧工厂管理系统</span></div>
-        <div class="hd-stats num">
+        <div v-if="!auth.isSales" class="hd-stats num">
           <span>设备 <b>{{ devices.stats.total }}</b></span>
           <span>在线 <b class="c-run">{{ devices.stats.online }}</b></span>
           <span>运行 <b class="c-run">{{ devices.stats.running }}</b></span>
           <span>报警 <b class="c-alarm">{{ devices.stats.alarm }}</b></span>
         </div>
         <div class="hd-right">
-          <span class="ws-pill" :class="ws.connected ? 'on' : 'off'">
+          <span v-if="!auth.isSales" class="ws-pill" :class="ws.connected ? 'on' : 'off'">
             <i class="dot" />{{ ws.connected ? '实时连接' : '已断开，重连中' }}
           </span>
-          <el-badge :value="alarmsOpen > 99 ? '99+' : alarmsOpen" :hidden="alarmsOpen <= 0" :max="99">
+          <el-badge v-if="!auth.isSales" :value="alarmsOpen > 99 ? '99+' : alarmsOpen"
+            :hidden="alarmsOpen <= 0" :max="99">
             <el-icon class="hd-icon" title="报警记录" @click="router.push('/alarm')"><Bell /></el-icon>
           </el-badge>
           <el-button v-if="auth.isAdmin" size="small" text @click="router.push('/discovery')">发现</el-button>
@@ -129,12 +130,14 @@ watch(() => auth.ready, (r) => {
 /* 铃铛：ws 事件节流触发 + 20s 兜底轮询（PRD §0.1） */
 const alarmsOpen = ref(0)
 async function loadAlarmSummary() {
+  // 销售角色没有报警权限，别每 20 秒去撞一次 403
+  if (auth.isSales) return
   try { alarmsOpen.value = (await alarmsApi.summary()).open ?? 0 } catch { /* 静默，下一轮兜底 */ }
 }
 usePolling(loadAlarmSummary, 20000, { immediate: false })
 onScopeDispose(ws.on('alarms:dirty', () => loadAlarmSummary()))
 
-const groups = computed(() => [
+const baseGroups = computed(() => [
   { title: '生产监控', items: [
     { path: '/', label: '设备监控', icon: Monitor },
     { path: '/alarm', label: '报警', icon: Bell }
@@ -152,7 +155,7 @@ const groups = computed(() => [
     { path: '/erp/stock', label: '库存管理', icon: Box, disabled: false, tip: '' },
     { path: '/erp/finance', label: '财务管理', icon: Money, disabled: false, tip: '' },
     { path: '/erp/reports', label: '经营报表', icon: TrendCharts, disabled: false, tip: '' },
-    { path: '', label: '销售查询', icon: Search, disabled: true, tip: '阶段二（DH-45，销售角色只读）' }
+    { path: '/erp/sales-query', label: '销售查询', icon: Search, disabled: false, tip: '' }
   ] },
   { title: '智能 · 规划中', items: [
     { path: '', label: 'AI 助手', icon: ChatDotRound, disabled: true, tip: '阶段三（DH-47）' }
@@ -164,6 +167,16 @@ const groups = computed(() => [
       ] }]
     : [])
 ])
+
+const groups = computed(() => {
+  // 销售角色只给一个只读页：菜单是权限的第一道说明，别让他点进去再吃 403
+  if (auth.isSales) {
+    return [{ title: '销售', items: [
+      { path: '/erp/sales-query', label: '销售查询', icon: Search, disabled: false, tip: '' }
+    ] }]
+  }
+  return baseGroups.value
+})
 
 function onUserCmd(cmd: string) {
   if (cmd === 'account') acctVisible.value = true

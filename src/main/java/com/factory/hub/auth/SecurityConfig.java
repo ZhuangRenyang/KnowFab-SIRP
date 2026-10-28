@@ -109,6 +109,13 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/erp/**").hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.PUT, "/api/erp/**").hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.DELETE, "/api/erp/**").hasAnyRole("ADMIN", "MANAGER")
+                        // 销售角色：只放行「销售查询」这一个只读接口（必须排在下面那条收紧规则之前）
+                        .requestMatchers("/api/erp/sales-query/**").authenticated()
+                        // 车间数据（设备/报警/能耗/报表/AI/ERP 明细）不给销售看：
+                        // 销售要的是"能不能交货、还有多少可卖"，不是设备参数和成本
+                        .requestMatchers(HttpMethod.GET, "/api/erp/**", "/api/devices/**",
+                                "/api/alarms/**", "/api/energy/**", "/api/reports/**", "/api/ai/**")
+                        .hasAnyRole("ADMIN", "MANAGER", "LEADER")
                         .requestMatchers(HttpMethod.POST, "/api/alarms/rules", "/api/alarms/rules/**")
                         .hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.DELETE, "/api/alarms/rules/**")

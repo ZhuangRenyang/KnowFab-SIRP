@@ -369,6 +369,81 @@ def sec_lines():
     check(s, "开放接口未带 Key 401", st == 401, st)
 
 
+def as_user(username, password):
+    """用独立会话登录一个账号，返回 callable(method, path)"""
+    jar = http.cookiejar.CookieJar()
+    op = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
+
+    def inner(method, path, body=None):
+        data = json.dumps(body).encode() if body is not None else None
+        r = urllib.request.Request(BASE + path, data=data, method=method)
+        if data:
+            r.add_header("Content-Type", "application/json")
+        try:
+            with op.open(r, timeout=25) as resp:
+                raw = resp.read()
+                return resp.status, raw
+        except urllib.error.HTTPError as e:
+            return e.code, e.read()
+
+    inner("POST", "/api/auth/login", {"username": username, "password": password})
+    return inner
+
+
+def sec_sales_query():
+    s = "销售查询"
+    st, r = req("GET", "/api/erp/sales-query/stock")
+    rows = (r.get("rows") or []) if isinstance(r, dict) else []
+    check(s, "库存查询", st == 200 and isinstance(rows, list) and has(r.get("totals") or {}, "available"),
+          "%d 个商品" % len(rows))
+    # 可承诺 = max(0, 现存 − 占用)：超卖时截到 0，缺口记在 shortage 里
+    bad = [x for x in rows
+           if abs(max(0.0, float(x["onHand"]) - float(x["allocated"])) - float(x["available"])) > 0.001
+           or abs(max(0.0, float(x["allocated"]) - float(x["onHand"])) - float(x["shortage"])) > 0.001]
+    check(s, "可承诺/欠交口径", not bad, "全部 %d 行闭合" % len(rows) if not bad else bad[0])
+    # 成本字段绝不能出现（销售查询是要发给客户的）
+    leaked = [k for x in rows for k in x.keys()
+              if k.lower() in ("purchaseprice", "cost", "amount", "stockvalue")]
+    check(s, "不含成本字段", not leaked, leaked[:3])
+
+    st, ctype, size, magic = req_blob("/api/erp/sales-query/export")
+    check(s, "导出 xlsx", st == 200 and "spreadsheetml" in (ctype or "") and size > 3000 and magic == b"PK",
+          "%s 字节" % size)
+
+    # 销售角色只能查这一页：建临时账号实测，跑完删掉
+    uname = "t_smoke_sales"
+    st, _ = req("POST", "/api/users", {
+        "username": uname, "password": "Smoke123456", "displayName": "冒烟销售", "role": "SALES"})
+    created = isinstance(st, int) and st == 200
+    if not created:
+        # 上次异常退出可能残留，先删再建
+        _, users = req("GET", "/api/users")
+        for u in (users.get("rows") or [] if isinstance(users, dict) else []):
+            if u.get("username") == uname:
+                req("DELETE", "/api/users/%s" % u["id"])
+        st, _ = req("POST", "/api/users", {
+            "username": uname, "password": "Smoke123456", "displayName": "冒烟销售", "role": "SALES"})
+        created = isinstance(st, int) and st == 200
+
+    if created:
+        call = as_user(uname, "Smoke123456")
+        code, _ = call("GET", "/api/erp/sales-query/stock")
+        check(s, "销售可查库存(200)", code == 200, code)
+        denied = []
+        for path in ("/api/erp/stock/balances", "/api/devices", "/api/reports/daily",
+                     "/api/erp/finance/summary", "/api/alarms/summary"):
+            c, _ = call("GET", path)
+            if c != 403:
+                denied.append("%s=%s" % (path, c))
+        check(s, "销售读车间数据被拒(403)", not denied, denied[:2] or "5 项全拒")
+        _, users = req("GET", "/api/users")
+        for u in (users.get("rows") or [] if isinstance(users, dict) else []):
+            if u.get("username") == uname:
+                req("DELETE", "/api/users/%s" % u["id"])
+    else:
+        check(s, "销售角色账号", False, "创建临时销售账号失败")
+
+
 def sec_write(skus, whs):
     """写路径冒烟：建单→取消、建单→作废，验证完顺手把数据清干净。"""
     s = "写路径"
@@ -495,6 +570,7 @@ def main():
     sec_finance()
     sec_reports()
     sec_lines()
+    sec_sales_query()
     sec_write(skus, whs)
     sec_auth_negative()
 

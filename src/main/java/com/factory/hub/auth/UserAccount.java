@@ -16,6 +16,7 @@ import jakarta.persistence.Table;
  *   <li><b>ADMIN</b> 管理员——设备、电价、班次、用户、升级，全都能动。通常是你或客户的信息主管</li>
  *   <li><b>MANAGER</b> 车间主任——能改设备和报警规则、能确认告警，但碰不到电价和系统升级</li>
  *   <li><b>LEADER</b> 班组长——只能看和确认告警。让一线能用，但改不了配置</li>
+ *   <li><b>SALES</b> 销售——只能查「销售查询」里的库存与可承诺量，看不到成本、设备与车间数据</li>
  * </ul>
  * 密码只存 BCrypt 哈希。这个库会被客户 DBA 备份走，明文密码等于送人。
  */
@@ -28,6 +29,7 @@ public class UserAccount {
     public static final String ROLE_ADMIN = "ADMIN";
     public static final String ROLE_MANAGER = "MANAGER";
     public static final String ROLE_LEADER = "LEADER";
+    public static final String ROLE_SALES = "SALES";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -75,6 +77,7 @@ public class UserAccount {
             case ROLE_ADMIN -> "管理员";
             case ROLE_MANAGER -> "车间主任";
             case ROLE_LEADER -> "班组长";
+            case ROLE_SALES -> "销售";
             default -> role;
         };
     }

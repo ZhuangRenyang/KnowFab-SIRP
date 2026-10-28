@@ -128,7 +128,7 @@ public class UserService {
         }
         String r = normalizeRole(role);
         if (r == null) {
-            return err("角色只能是 ADMIN / MANAGER / LEADER");
+            return err("角色只能是 ADMIN / MANAGER / LEADER / SALES");
         }
         UserAccount u = new UserAccount(name,
                 displayName == null || displayName.isBlank() ? name : displayName.trim(),
@@ -231,7 +231,7 @@ public class UserService {
         }
         String r = role.trim().toUpperCase();
         return switch (r) {
-            case "ADMIN", "MANAGER", "LEADER" -> r;
+            case "ADMIN", "MANAGER", "LEADER", "SALES" -> r;
             default -> null;
         };
     }

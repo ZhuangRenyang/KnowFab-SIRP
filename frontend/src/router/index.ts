@@ -21,6 +21,9 @@ export const router = createRouter({
     { path: '/erp/stock', component: () => import('@/views/ErpStockView.vue'), meta: { title: '库存管理' } },
     { path: '/erp/finance', component: () => import('@/views/ErpFinanceView.vue'), meta: { title: '财务管理' } },
     { path: '/erp/reports', component: () => import('@/views/ErpReportView.vue'), meta: { title: '经营报表' } },
+    // 销售角色唯一可进的页面
+    { path: '/erp/sales-query', component: () => import('@/views/SalesQueryView.vue'),
+      meta: { title: '销售查询', roles: ['ADMIN', 'MANAGER', 'LEADER', 'SALES'] } },
     { path: '/discovery', component: () => import('@/views/DiscoveryView.vue'), meta: { title: '设备发现', roles: ['ADMIN'] } },
     { path: '/:pathMatch(.*)*', redirect: '/' }
   ]
@@ -34,8 +37,10 @@ router.beforeEach(async (to) => {
   }
   const ok = await auth.ensure()
   if (!ok) return '/login'
+  // 销售角色只有「销售查询」一个页面：别的路径一律送回去，避免点进来看到 403 空页
+  if (auth.isSales && to.path !== '/erp/sales-query') return '/erp/sales-query'
   const roles = to.meta.roles as string[] | undefined
-  if (roles && !roles.includes(auth.user?.role || '')) return '/'
+  if (roles && !roles.includes(auth.user?.role || '')) return auth.isSales ? '/erp/sales-query' : '/'
   return true
 })
 

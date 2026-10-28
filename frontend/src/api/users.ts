@@ -14,7 +14,8 @@ export interface UserRow {
 export const ROLES = [
   { value: 'ADMIN', label: '管理员' },
   { value: 'MANAGER', label: '车间主任' },
-  { value: 'LEADER', label: '班组长' }
+  { value: 'LEADER', label: '班组长' },
+  { value: 'SALES', label: '销售' }
 ]
 
 export const roleLabel = (r: string) => ROLES.find((x) => x.value === r)?.label || r

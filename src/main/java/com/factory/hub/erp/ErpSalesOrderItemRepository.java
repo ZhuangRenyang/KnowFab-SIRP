@@ -33,4 +33,13 @@ public interface ErpSalesOrderItemRepository extends JpaRepository<ErpSalesOrder
     @Query("update ErpSalesOrderItem i set i.shippedQty = :qty where i.orderId = :orderId and i.skuId = :skuId")
     int updateShipped(@Param("orderId") Long orderId, @Param("skuId") Long skuId,
                       @Param("qty") BigDecimal qty);
+
+    /**
+     * 已确认/部分发货订单里还没发出去的数量（按 SKU）。
+     * 销售查询的"可承诺量" = 现存量 − 这个数：销售最怕答应了客户却发不出货。
+     */
+    @Query(value = "select i.sku_id, cast(coalesce(sum(i.qty - i.shipped_qty), 0) as decimal(20,4)) " +
+                   "from erp_sales_order_item i join erp_sales_order o on o.id = i.order_id " +
+                   "where o.status in ('CONFIRMED', 'PARTIAL') group by i.sku_id", nativeQuery = true)
+    List<Object[]> openOrderQtyBySku();
 }

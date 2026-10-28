@@ -16,6 +16,7 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -237,6 +238,58 @@ public final class ErpReportExcel {
                             Col.m("未执行金额", "openAmount", 16), Col.p("执行率%", "rate", 12)),
                     (List<Map<String, Object>>) d.get("orders"), null, null);
 
+            return bytes(wb);
+        }
+    }
+
+    /* ==================== 销售查询（DH-45，无成本列） ==================== */
+
+    /**
+     * 销售查询导出。列是刻意挑的：只给"能卖多少"，<b>没有采购价与库存金额</b>。
+     * 这张表会通过微信发给客户或销售，成本列一旦在里面就等于把底价送出去。
+     */
+    @SuppressWarnings("unchecked")
+    public static byte[] salesStock(Map<String, Object> d) throws IOException {
+        try (Workbook wb = new XSSFWorkbook()) {
+            Styles st = new Styles(wb);
+            String day = LocalDate.now(ZONE).format(DAY);
+            Map<String, Object> totals = (Map<String, Object>) d.get("totals");
+            List<Map<String, Object>> rows = (List<Map<String, Object>>) d.get("rows");
+
+            Sheet sh = wb.createSheet("库存查询");
+            int r = title(sh, st, 0, "销售库存查询 " + day, 9);
+            r = note(sh, st, r, "可承诺量 = 现存量 − 已确认订单未发货数量。"
+                    + "数量单位见每行「单位」列，不同商品之间不要直接相加。", 9);
+
+            List<Col> cols = List.of(
+                    Col.t("商品编码", "code", 14), Col.t("商品名称", "name", 24),
+                    Col.t("规格", "spec", 18), Col.t("单位", "unit", 8),
+                    Col.t("类别", "category", 12),
+                    Col.q("现存量", "onHand", 12), Col.q("订单占用", "allocated", 12),
+                    Col.q("可承诺", "available", 12), Col.t("所在仓库", "warehouseText", 30));
+            r = header(sh, st, r, cols.stream().map(Col::head).toList());
+            if (rows != null) {
+                for (Map<String, Object> row : rows) {
+                    r = bodyRow(sh, st, r, cols, row);
+                }
+            }
+            if (rows == null || rows.isEmpty()) {
+                Row empty = sh.createRow(r++);
+                cell(empty, 0, "没有符合条件的商品", st.text);
+            }
+            if (totals != null) {
+                Map<String, Object> tot = new java.util.LinkedHashMap<>();
+                tot.put("code", "合计");
+                tot.put("name", (totals.get("skuCount") == null ? "0" : totals.get("skuCount")) + " 个商品");
+                tot.put("onHand", totals.get("onHand"));
+                tot.put("allocated", totals.get("allocated"));
+                tot.put("available", totals.get("available"));
+                totalRow(sh, st, r, cols, tot);
+            }
+            for (int i = 0; i < cols.size(); i++) {
+                sh.setColumnWidth(i, cols.get(i).width() * 256);
+            }
+            sh.createFreezePane(0, 3);
             return bytes(wb);
         }
     }
