@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -167,6 +168,118 @@ public class ErpProdController {
             out.add(m);
         }
         return out;
+    }
+
+    /**
+     * 产量图表（DH-47.1，用户口径：日表/月表/年表/综合表）。
+     * <ul>
+     *   <li><b>day</b>：当前统计日的 24 个小时，从清零时刻起算（填 8 就是 8时→次日7时），
+     *       还没到的小时为 0</li>
+     *   <li><b>month</b>：当月 1 号到今天，每个统计日一个点</li>
+     *   <li><b>year</b>：今年 1-12 月，每月一个点（小时表保留 400 天，够算全年）</li>
+     *   <li><b>all</b>：近 365 个统计日的每日产量，前端做缩放（年→月→日）</li>
+     * </ul>
+     * 全部走 ProdDay 统计日口径，与「今日/本月/今年」三个 KPI 严格一致——
+     * 日表各点之和 = 今日，月表各点之和 = 本月，年表各点之和 = 今年。
+     */
+    @GetMapping("/chart")
+    public Map<String, Object> chart(@RequestParam String code,
+                                     @RequestParam(defaultValue = "day") String mode) {
+        DeviceEntity d = deviceService.byCode(code);
+        Map<String, Object> out = new LinkedHashMap<>();
+        List<Map<String, Object>> points = new ArrayList<>();
+        out.put("ok", d != null);
+        out.put("mode", mode);
+        if (d == null) {
+            out.put("message", "设备不存在");
+            out.put("points", points);
+            return out;
+        }
+        long now = System.currentTimeMillis();
+        int rh = d.getProdResetHour();
+        out.put("resetHour", rh);
+        ZoneId Z = ZoneId.systemDefault();
+
+        switch (mode) {
+            case "month" -> {
+                LocalDate biz = ProdDay.bizDate(now, rh);
+                long k0 = biz.withDayOfMonth(1).toEpochDay();
+                Map<Long, Double> byDay = new LinkedHashMap<>();
+                for (long k = k0; k <= biz.toEpochDay(); k++) {
+                    byDay.put(k, 0d);
+                }
+                for (ProdHourly p : prodRepo.findByDeviceCodeAndHourStartBetween(
+                        code, ProdDay.startOfDayKey(k0, rh), now)) {
+                    long k = ProdDay.dayKey(p.getHourStart(), rh);
+                    if (byDay.containsKey(k)) {
+                        byDay.merge(k, p.getOutput(), Double::sum);
+                    }
+                }
+                for (Map.Entry<Long, Double> e : byDay.entrySet()) {
+                    points.add(point(LocalDate.ofEpochDay(e.getKey()).getDayOfMonth() + "日",
+                            e.getValue()));
+                }
+            }
+            case "year" -> {
+                LocalDate biz = ProdDay.bizDate(now, rh);
+                double[] months = new double[12];
+                long from = ProdDay.startOfDayKey(
+                        LocalDate.of(biz.getYear(), 1, 1).toEpochDay(), rh);
+                for (ProdHourly p : prodRepo.findByDeviceCodeAndHourStartBetween(code, from, now)) {
+                    months[ProdDay.bizDate(p.getHourStart(), rh).getMonthValue() - 1] += p.getOutput();
+                }
+                for (int i = 0; i < 12; i++) {
+                    points.add(point((i + 1) + "月", months[i]));
+                }
+            }
+            case "all" -> {
+                long todayKey = ProdDay.dayKey(now, rh);
+                long k0 = todayKey - 364;
+                Map<Long, Double> byDay = new LinkedHashMap<>();
+                for (long k = k0; k <= todayKey; k++) {
+                    byDay.put(k, 0d);
+                }
+                for (ProdHourly p : prodRepo.findByDeviceCodeAndHourStartBetween(
+                        code, ProdDay.startOfDayKey(k0, rh), now)) {
+                    long k = ProdDay.dayKey(p.getHourStart(), rh);
+                    if (byDay.containsKey(k)) {
+                        byDay.merge(k, p.getOutput(), Double::sum);
+                    }
+                }
+                var fmt = java.time.format.DateTimeFormatter.ofPattern("MM-dd");
+                for (Map.Entry<Long, Double> e : byDay.entrySet()) {
+                    points.add(point(LocalDate.ofEpochDay(e.getKey()).format(fmt), e.getValue()));
+                }
+            }
+            default -> {
+                long start = ProdDay.dayStart(now, rh);
+                Map<Long, Double> byHour = new LinkedHashMap<>();
+                for (long b = start; b < start + 24 * HOUR_MS; b += HOUR_MS) {
+                    byHour.put(b, 0d);
+                }
+                for (ProdHourly p : prodRepo.findByDeviceCodeAndHourStartBetween(
+                        code, start, start + 24 * HOUR_MS)) {
+                    long hb = (p.getHourStart() / HOUR_MS) * HOUR_MS;
+                    if (byHour.containsKey(hb)) {
+                        byHour.merge(hb, p.getOutput(), Double::sum);
+                    }
+                }
+                for (Map.Entry<Long, Double> e : byHour.entrySet()) {
+                    points.add(point(
+                            Instant.ofEpochMilli(e.getKey()).atZone(Z).getHour() + "时",
+                            e.getValue()));
+                }
+            }
+        }
+        out.put("points", points);
+        return out;
+    }
+
+    private static Map<String, Object> point(String label, double qty) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("label", label);
+        m.put("qty", round2(qty));
+        return m;
     }
 
     /** 保存生产入库联动配置 */

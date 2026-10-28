@@ -105,6 +105,10 @@ export const prodApi = {
     http.get<ProdStatus>(`/api/erp/prod/status?code=${encodeURIComponent(code)}`),
   daily: (code: string, days = 30) =>
     http.get<{ date: string; qty: number }[]>(`/api/erp/prod/daily?code=${encodeURIComponent(code)}&days=${days}`),
+  /** 产量图表：day=当日24小时 / month=当月每天 / year=今年12个月 / all=近365天（前端缩放） */
+  chart: (code: string, mode: 'day' | 'month' | 'year' | 'all') =>
+    http.get<{ ok: boolean; mode: string; resetHour: number; points: { label: string; qty: number }[] }>(
+      `/api/erp/prod/chart?code=${encodeURIComponent(code)}&mode=${mode}`),
   saveConfig: (b: { code: string; skuId?: number | null; warehouseId?: number | null; resetHour: number; auto: boolean }) =>
     http.post<{ ok: boolean; message?: string }>('/api/erp/prod/config', b)
 }

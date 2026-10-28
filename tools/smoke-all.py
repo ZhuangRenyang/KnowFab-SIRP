@@ -119,6 +119,26 @@ def sec_devices():
     else:
         check(s, "点位历史", True, "设备没有点位", skip=True)
 
+    # 产量统计四张表（日/月/年/综合）：各点之和必须等于对应 KPI——口径不能各算各的
+    st, ps = req("GET", "/api/erp/prod/status?code=%s" % urllib.parse.quote(code))
+    if st == 200 and (ps.get("hasCount") or ps.get("auto")):
+        st, day = req("GET", "/api/erp/prod/chart?code=%s&mode=day" % urllib.parse.quote(code))
+        pts = day.get("points") or []
+        dsum = round(sum(float(x["qty"]) for x in pts), 2)
+        check(s, "日表24小时=今日", st == 200 and len(pts) == 24
+              and abs(dsum - float(ps.get("today", -1))) < 0.01,
+              "24点 和%s / 今日%s" % (dsum, ps.get("today")))
+        st, yr = req("GET", "/api/erp/prod/chart?code=%s&mode=year" % urllib.parse.quote(code))
+        ysum = round(sum(float(x["qty"]) for x in (yr.get("points") or [])), 2)
+        check(s, "年表12月=今年", st == 200 and len(yr.get("points") or []) == 12
+              and abs(ysum - float(ps.get("year", -1))) < 0.01,
+              "和%s / 今年%s" % (ysum, ps.get("year")))
+        st, al = req("GET", "/api/erp/prod/chart?code=%s&mode=all" % urllib.parse.quote(code))
+        check(s, "综合表365点", st == 200 and len(al.get("points") or []) == 365,
+              "%s 点" % len(al.get("points") or []))
+    else:
+        check(s, "日表24小时=今日", True, "设备未启用产量统计", skip=True)
+
 
 def sec_alarms():
     s = "报警"
