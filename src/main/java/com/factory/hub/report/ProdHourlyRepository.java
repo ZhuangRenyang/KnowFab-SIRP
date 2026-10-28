@@ -20,6 +20,10 @@ public interface ProdHourlyRepository extends JpaRepository<ProdHourly, Long> {
 
     List<ProdHourly> findByHourStart(long hourStart);
 
+    /** 该设备最早的一条小时产量（综合表"从系统运行时算起"的起点）；无数据返回 null */
+    @Query("select min(p.hourStart) from ProdHourly p where p.deviceCode = :code")
+    Long minHourStart(@Param("code") String code);
+
     @Modifying
     @Transactional
     @Query("delete from ProdHourly p where p.hourStart < :before")

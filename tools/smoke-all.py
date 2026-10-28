@@ -128,14 +128,24 @@ def sec_devices():
         check(s, "日表24小时=今日", st == 200 and len(pts) == 24
               and abs(dsum - float(ps.get("today", -1))) < 0.01,
               "24点 和%s / 今日%s" % (dsum, ps.get("today")))
+        # 月表按当月实际天数铺满（28/29/30/31），未到的天为 0
+        st, mon = req("GET", "/api/erp/prod/chart?code=%s&mode=month" % urllib.parse.quote(code))
+        mpts = mon.get("points") or []
+        msum = round(sum(float(x["qty"]) for x in mpts), 2)
+        import calendar as _cal
+        today = datetime.date.today()
+        ndays = _cal.monthrange(today.year, today.month)[1]
+        check(s, "月表=当月整月天数", st == 200 and len(mpts) == ndays
+              and abs(msum - float(ps.get("month", -1))) < 0.01,
+              "%d点(本月%d天) 和%s / 本月%s" % (len(mpts), ndays, msum, ps.get("month")))
         st, yr = req("GET", "/api/erp/prod/chart?code=%s&mode=year" % urllib.parse.quote(code))
         ysum = round(sum(float(x["qty"]) for x in (yr.get("points") or [])), 2)
         check(s, "年表12月=今年", st == 200 and len(yr.get("points") or []) == 12
               and abs(ysum - float(ps.get("year", -1))) < 0.01,
               "和%s / 今年%s" % (ysum, ps.get("year")))
         st, al = req("GET", "/api/erp/prod/chart?code=%s&mode=all" % urllib.parse.quote(code))
-        check(s, "综合表365点", st == 200 and len(al.get("points") or []) == 365,
-              "%s 点" % len(al.get("points") or []))
+        n_all = len(al.get("points") or [])
+        check(s, "综合表=全历史(1~400点)", st == 200 and 1 <= n_all <= 400, "%s 点" % n_all)
     else:
         check(s, "日表24小时=今日", True, "设备未启用产量统计", skip=True)
 

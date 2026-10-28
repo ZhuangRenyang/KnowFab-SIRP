@@ -27,13 +27,13 @@
           从今日 {{ st.resetHour }} 点（清零时刻）起算的 24 小时，还没到的小时为 0；各小时之和 = 今日
         </template>
         <template v-else-if="mode === 'month'">
-          本月 1 日到今天，按每日 {{ st.resetHour }} 点清零切日；各点之和 = 本月
+          本月整月（{{ st.resetHour }} 点清零切日，未到的天为 0）；各点之和 = 本月
         </template>
         <template v-else-if="mode === 'year'">
           今年 1-12 月合计；各月之和 = 今年
         </template>
         <template v-else>
-          近一年每日产量：滚轮或拖动下方滑块缩放，年 → 月 → 日；虚线是 7 日均值
+          自系统记录这台设备产量以来的全部每日产量：滚轮或拖动下方滑块缩放，年 → 月 → 日；虚线是 7 日均值
         </template>
       </div>
     </template>
@@ -51,7 +51,8 @@ import { useEcharts } from '@/composables/useEcharts'
 import { prodApi, type ProdStatus } from '@/api/erp'
 
 /* 机器级产量统计四张表（用户口径）：
-   日表=当日 24 小时（从清零时刻起算） / 月表=当月每天 / 年表=今年 12 个月 / 综合=近一年可缩放曲线。
+   日表=当日 24 小时（从清零时刻起算） / 月表=当月整月（天数随月份） / 年表=今年 12 个月 /
+   综合=自系统记录该设备产量以来的全部每日曲线（上限 400 天=数据保留期）。
    数据源 prod_hourly.output（增量已处理计数器清零与断线补记）。
    四张表与「今日/本月/今年」KPI 同一口径：日表各点之和=今日，月表=本月，年表=今年。 */
 const props = defineProps<{ code: string }>()
@@ -139,7 +140,7 @@ function render(points: { label: string; qty: number }[]) {
     })
     return
   }
-  // 综合：近一年每日产量 + 7 日均线，滚轮 / 滑块缩放 年 → 月 → 日
+  // 综合：自系统记录产量以来的每日曲线 + 7 日均线，滚轮 / 滑块缩放 年 → 月 → 日
   const ma = data.map((_, i) => {
     const s = Math.max(0, i - 6)
     const seg = data.slice(s, i + 1)

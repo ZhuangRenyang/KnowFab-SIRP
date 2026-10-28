@@ -142,9 +142,11 @@ public class ErpProdController {
      * <ul>
      *   <li><b>day</b>：当前统计日的 24 个小时，从清零时刻起算（填 8 就是 8时→次日7时），
      *       还没到的小时为 0</li>
-     *   <li><b>month</b>：当月 1 号到今天，每个统计日一个点</li>
-     *   <li><b>year</b>：今年 1-12 月，每月一个点（小时表保留 400 天，够算全年）</li>
-     *   <li><b>all</b>：近 365 个统计日的每日产量，前端做缩放（年→月→日）</li>
+     *   <li><b>month</b>：当前月份<b>整月</b>——每个月天数不同（28/29/30/31），
+     *       横轴始终铺满当月实际天数，还没到的天为 0</li>
+     *   <li><b>year</b>：当前年份 1-12 月，每月一个点（小时表保留 400 天，够算全年）</li>
+     *   <li><b>all</b>：<b>从系统开始记录该设备产量算起</b>的全部每日产量
+     *       （受数据保留期约束，上限 400 天），前端做缩放（年→月→日）</li>
      * </ul>
      * 全部走 ProdDay 统计日口径，与「今日/本月/今年」三个 KPI 严格一致——
      * 日表各点之和 = 今日，月表各点之和 = 本月，年表各点之和 = 今年。
@@ -169,10 +171,12 @@ public class ErpProdController {
 
         switch (mode) {
             case "month" -> {
+                // 整月铺满：10 月就 31 个点（29-31 日未到，为 0），2 月 28/29 天自动区分
                 LocalDate biz = ProdDay.bizDate(now, rh);
+                int days = biz.lengthOfMonth();
                 long k0 = biz.withDayOfMonth(1).toEpochDay();
                 Map<Long, Double> byDay = new LinkedHashMap<>();
-                for (long k = k0; k <= biz.toEpochDay(); k++) {
+                for (long k = k0; k < k0 + days; k++) {
                     byDay.put(k, 0d);
                 }
                 for (ProdHourly p : prodRepo.findByDeviceCodeAndHourStartBetween(
@@ -200,22 +204,29 @@ public class ErpProdController {
                 }
             }
             case "all" -> {
+                // 从系统开始记录这台设备产量算起（不是固定近一年）。
+                // 小时表只保留 400 天：更早的已被清理，起点最多回溯到 399 天前
                 long todayKey = ProdDay.dayKey(now, rh);
-                long k0 = todayKey - 364;
-                Map<Long, Double> byDay = new LinkedHashMap<>();
-                for (long k = k0; k <= todayKey; k++) {
-                    byDay.put(k, 0d);
-                }
-                for (ProdHourly p : prodRepo.findByDeviceCodeAndHourStartBetween(
-                        code, ProdDay.startOfDayKey(k0, rh), now)) {
-                    long k = ProdDay.dayKey(p.getHourStart(), rh);
-                    if (byDay.containsKey(k)) {
-                        byDay.merge(k, p.getOutput(), Double::sum);
+                Long first = prodRepo.minHourStart(code);
+                if (first == null) {
+                    out.put("message", "暂无产量数据");
+                } else {
+                    long k0 = Math.max(ProdDay.dayKey(first, rh), todayKey - 399);
+                    Map<Long, Double> byDay = new LinkedHashMap<>();
+                    for (long k = k0; k <= todayKey; k++) {
+                        byDay.put(k, 0d);
                     }
-                }
-                var fmt = java.time.format.DateTimeFormatter.ofPattern("MM-dd");
-                for (Map.Entry<Long, Double> e : byDay.entrySet()) {
-                    points.add(point(LocalDate.ofEpochDay(e.getKey()).format(fmt), e.getValue()));
+                    for (ProdHourly p : prodRepo.findByDeviceCodeAndHourStartBetween(
+                            code, ProdDay.startOfDayKey(k0, rh), now)) {
+                        long k = ProdDay.dayKey(p.getHourStart(), rh);
+                        if (byDay.containsKey(k)) {
+                            byDay.merge(k, p.getOutput(), Double::sum);
+                        }
+                    }
+                    var fmt = java.time.format.DateTimeFormatter.ofPattern("MM-dd");
+                    for (Map.Entry<Long, Double> e : byDay.entrySet()) {
+                        points.add(point(LocalDate.ofEpochDay(e.getKey()).format(fmt), e.getValue()));
+                    }
                 }
             }
             default -> {
