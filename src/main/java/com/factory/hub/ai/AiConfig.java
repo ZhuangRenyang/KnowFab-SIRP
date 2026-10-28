@@ -44,6 +44,21 @@ public class AiConfig {
     /** 自定义提示词，留空用内置的 */
     private String systemPrompt = "";
 
+    /** 给非管理员回显用：其它字段照给，Key 清空（页面只展示"已配置/未配置"） */
+    public AiConfig copyWithoutKey() {
+        AiConfig c = new AiConfig();
+        c.setEnabled(enabled);
+        c.setBaseUrl(baseUrl);
+        c.setModel(model);
+        c.setMaxTokens(maxTokens);
+        c.setTemperature(temperature);
+        c.setHour(hour);
+        c.setMinute(minute);
+        c.setPushToWechat(pushToWechat);
+        c.setSystemPrompt(systemPrompt);
+        return c;
+    }
+
     public List<String> validate() {
         List<String> out = new ArrayList<>();
         if (!enabled) {

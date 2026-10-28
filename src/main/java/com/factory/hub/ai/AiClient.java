@@ -12,6 +12,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -52,12 +53,61 @@ public class AiClient {
                 Map.of("role", "system", "content", systemPrompt),
                 Map.of("role", "user", "content", userContent)));
 
+        JsonNode root = post(cfg, body);
+        JsonNode choice = root.path("choices").path(0).path("message").path("content");
+        String text = choice.asText("");
+        if (text.isBlank()) {
+            throw new IllegalStateException("接口返回里没有内容，检查模型名是否正确");
+        }
+        int tokens = root.path("usage").path("total_tokens").asInt(0);
+        log.info("AI 调用成功：模型 {}", cfg.getModel());
+        return new Reply(text.trim(), tokens);
+    }
+
+    /** 模型要求调用的一个工具 */
+    public record ToolCall(String id, String name, String arguments) {
+    }
+
+    /** 带工具的回复：content 为空且 toolCalls 非空 = 模型要先把活交给工具干 */
+    public record ToolReply(String content, List<ToolCall> toolCalls, int tokens) {
+    }
+
+    /**
+     * 助手专用：带 tools 的对话。messages 直接透传前端历史 + 工具结果，
+     * 返回原始 assistant message（content + tool_calls），循环由 AiChatService 控制。
+     */
+    public ToolReply chatWithTools(AiConfig cfg, List<Map<String, Object>> messages,
+                                   List<Map<String, Object>> tools) throws Exception {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("model", cfg.getModel());
+        body.put("temperature", Math.min(0.5, cfg.getTemperature()));
+        // 助手要引用一串数字，700 太紧；但也不给天价
+        body.put("max_tokens", Math.max(600, Math.min(2000, cfg.getMaxTokens())));
+        body.put("stream", false);
+        body.put("messages", messages);
+        if (tools != null && !tools.isEmpty()) {
+            body.put("tools", tools);
+            body.put("tool_choice", "auto");
+        }
+        JsonNode root = post(cfg, body);
+        JsonNode msg = root.path("choices").path(0).path("message");
+        List<ToolCall> calls = new ArrayList<>();
+        for (JsonNode c : msg.path("tool_calls")) {
+            calls.add(new ToolCall(c.path("id").asText(""), c.path("function").path("name").asText(""),
+                    c.path("function").path("arguments").asText("{}")));
+        }
+        return new ToolReply(msg.path("content").asText(""), calls,
+                root.path("usage").path("total_tokens").asInt(0));
+    }
+
+    /** 公共 HTTP：超时/错误处理只有这一份，错误信息截短给用户看得懂 */
+    private JsonNode post(AiConfig cfg, Map<String, Object> body) throws Exception {
         String json = mapper.writeValueAsString(body);
         HttpClient client = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(8))
                 .build();
         HttpRequest req = HttpRequest.newBuilder(URI.create(cfg.endpoint()))
-                .timeout(Duration.ofSeconds(40))
+                .timeout(Duration.ofSeconds(45))
                 .header("Content-Type", "application/json")
                 .header("Authorization", "Bearer " + safeKey(cfg.getApiKey()))
                 .POST(HttpRequest.BodyPublishers.ofString(json, StandardCharsets.UTF_8))
@@ -76,16 +126,8 @@ public class AiClient {
             }
             throw new IllegalStateException("HTTP " + resp.statusCode() + "：" + snippet);
         }
-
-        JsonNode root = mapper.readTree(resp.body());
-        JsonNode choice = root.path("choices").path(0).path("message").path("content");
-        String text = choice.asText("");
-        if (text.isBlank()) {
-            throw new IllegalStateException("接口返回里没有内容，检查模型名是否正确");
-        }
-        int tokens = root.path("usage").path("total_tokens").asInt(0);
-        log.info("AI 早报调用成功：{} ms，{} tokens，模型 {}", cost, tokens, cfg.getModel());
-        return new Reply(text.trim(), tokens);
+        log.info("AI 接口耗时 {} ms（模型 {}）", cost, cfg.getModel());
+        return mapper.readTree(resp.body());
     }
 
     /** 连通性测试：一句话往返，页面「测试」按钮用 */

@@ -1,5 +1,5 @@
 <template>
-  <el-dialog :model-value="modelValue" title="AI 早报设置" width="640px"
+  <el-dialog :model-value="modelValue" title="AI 设置（早报与助手共用）" width="640px"
              :close-on-click-modal="false" @update:model-value="emit('update:modelValue', $event)"
              @open="open">
     <div class="hint lead">

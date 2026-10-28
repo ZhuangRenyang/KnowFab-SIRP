@@ -145,7 +145,8 @@ const baseGroups = computed(() => [
   { title: '分析', items: [
     { path: '/energy', label: '能耗分析', icon: Lightning },
     { path: '/report', label: '报表', icon: DataLine },
-    { path: '/digest', label: 'AI 早报', icon: Sunrise }
+    { path: '/digest', label: 'AI 早报', icon: Sunrise },
+    { path: '/ai/chat', label: 'AI 助手', icon: ChatDotRound }
   ] },
   { title: 'ERP', items: [
     { path: '/erp/lines', label: '产线管理', icon: OfficeBuilding, disabled: false, tip: '' },
@@ -156,9 +157,6 @@ const baseGroups = computed(() => [
     { path: '/erp/finance', label: '财务管理', icon: Money, disabled: false, tip: '' },
     { path: '/erp/reports', label: '经营报表', icon: TrendCharts, disabled: false, tip: '' },
     { path: '/erp/sales-query', label: '销售查询', icon: Search, disabled: false, tip: '' }
-  ] },
-  { title: '智能 · 规划中', items: [
-    { path: '', label: 'AI 助手', icon: ChatDotRound, disabled: true, tip: '阶段三（DH-47）' }
   ] },
   ...(auth.isAdmin
     ? [{ title: '系统管理', items: [
@@ -172,7 +170,8 @@ const groups = computed(() => {
   // 销售角色只给一个只读页：菜单是权限的第一道说明，别让他点进去再吃 403
   if (auth.isSales) {
     return [{ title: '销售', items: [
-      { path: '/erp/sales-query', label: '销售查询', icon: Search, disabled: false, tip: '' }
+      { path: '/erp/sales-query', label: '销售查询', icon: Search, disabled: false, tip: '' },
+      { path: '/ai/chat', label: 'AI 助手', icon: ChatDotRound, disabled: false, tip: '' }
     ] }]
   }
   return baseGroups.value

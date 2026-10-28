@@ -381,10 +381,14 @@ def as_user(username, password):
             r.add_header("Content-Type", "application/json")
         try:
             with op.open(r, timeout=25) as resp:
-                raw = resp.read()
-                return resp.status, raw
+                raw = resp.read().decode()
+                return resp.status, (json.loads(raw) if raw else {})
         except urllib.error.HTTPError as e:
-            return e.code, e.read()
+            raw = e.read().decode()
+            try:
+                return e.code, (json.loads(raw) if raw else {})
+            except json.JSONDecodeError:
+                return e.code, raw
 
     inner("POST", "/api/auth/login", {"username": username, "password": password})
     return inner
@@ -442,6 +446,32 @@ def sec_sales_query():
                 req("DELETE", "/api/users/%s" % u["id"])
     else:
         check(s, "销售角色账号", False, "创建临时销售账号失败")
+
+
+def sec_ai_chat():
+    s = "AI助手"
+    st, r = req("GET", "/api/ai/chat/tools")
+    tools = [t.get("name") for t in (r.get("tools") or [])] if isinstance(r, dict) else []
+    check(s, "工具清单(管理员)", st == 200 and "query_stock" in tools and "query_finance" in tools,
+          "%d 个工具" % len(tools))
+    st, r = req("POST", "/api/ai/chat", {"messages": [{"role": "user", "content": "今天产量"}]})
+    # 未启用时必须给可操作的提示，而不是 500 或空答复
+    check(s, "未启用有引导提示", isinstance(r, dict) and r.get("code") == "AI_DISABLED"
+          and "AI 设置" in str(r.get("message")), str(r.get("code")) if isinstance(r, dict) else st)
+
+    # 临时销售：工具只剩库存查询
+    uname = "t_smoke_aisales"
+    req("POST", "/api/users", {"username": uname, "password": "Smoke123456",
+                               "displayName": "冒烟AI", "role": "SALES"})
+    call = as_user(uname, "Smoke123456")
+    st, r = call("GET", "/api/ai/chat/tools")
+    tools = [t.get("name") for t in (r.get("tools") or [])] if isinstance(r, dict) else []
+    check(s, "销售只有库存工具", st == 200 and tools == ["query_stock"], tools)
+    _, users = req("GET", "/api/users")
+    users = users if isinstance(users, list) else (users.get("rows") or [])
+    for u in users:
+        if u.get("username") == uname:
+            req("DELETE", "/api/users/%s" % u["id"])
 
 
 def sec_write(skus, whs):
@@ -571,6 +601,7 @@ def main():
     sec_reports()
     sec_lines()
     sec_sales_query()
+    sec_ai_chat()
     sec_write(skus, whs)
     sec_auth_negative()
 

@@ -65,3 +65,45 @@ export const aiApi = {
     http.post<{ ok: boolean; message?: string; warnings?: string[] }>('/api/ai/config', c),
   test: () => http.post<{ ok: boolean; message?: string; tokens?: number }>('/api/ai/test')
 }
+
+/* ==================== AI 助手（DH-47） ==================== */
+
+export interface ChatTool {
+  name: string
+  desc: string
+}
+
+export interface ChatToolsResult {
+  ok: boolean
+  role: string
+  enabled: boolean
+  configured: boolean
+  model: string
+  tools: ChatTool[]
+}
+
+export interface ChatMessage {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+export interface ChatTrace {
+  name: string
+  args: string
+  ms: number
+}
+
+export interface ChatResult {
+  ok: boolean
+  content?: string
+  tools?: ChatTrace[]
+  tokens?: number
+  rounds?: number
+  code?: string
+  message?: string
+}
+
+export const chatApi = {
+  tools: () => http.get<ChatToolsResult>('/api/ai/chat/tools'),
+  send: (messages: ChatMessage[]) => http.post<ChatResult>('/api/ai/chat', { messages })
+}

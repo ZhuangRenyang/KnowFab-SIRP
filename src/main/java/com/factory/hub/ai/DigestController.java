@@ -1,5 +1,7 @@
 package com.factory.hub.ai;
 
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -54,9 +56,22 @@ public class DigestController {
         AiConfig c = store.current();
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("ok", true);
-        out.put("config", c);
+        if (isAdmin()) {
+            out.put("config", c);
+        } else {
+            // 非管理员只回"有没有配 Key"，绝不回明文——否则任何登录用户都能把 Key 偷走
+            AiConfig masked = c.copyWithoutKey();
+            out.put("config", masked);
+            out.put("hasKey", c.getApiKey() != null && !c.getApiKey().isBlank());
+        }
         out.put("warnings", c.validate());
         return out;
+    }
+
+    private boolean isAdmin() {
+        Authentication a = SecurityContextHolder.getContext().getAuthentication();
+        return a != null && a.getAuthorities().stream()
+                .anyMatch(x -> "ROLE_ADMIN".equals(x.getAuthority()));
     }
 
     @PostMapping("/config")

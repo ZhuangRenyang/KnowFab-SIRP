@@ -12,6 +12,7 @@ export const router = createRouter({
     { path: '/energy', component: () => import('@/views/EnergyView.vue'), meta: { title: '能耗分析' } },
     { path: '/report', component: () => import('@/views/ReportView.vue'), meta: { title: '报表' } },
     { path: '/digest', component: () => import('@/views/DigestView.vue'), meta: { title: 'AI 早报' } },
+    { path: '/ai/chat', component: () => import('@/views/AiChatView.vue'), meta: { title: 'AI 助手' } },
     { path: '/system', component: () => import('@/views/SystemView.vue'), meta: { title: '系统', roles: ['ADMIN'] } },
     { path: '/users', component: () => import('@/views/UserManageView.vue'), meta: { title: '用户管理', roles: ['ADMIN'] } },
     { path: '/erp/lines', component: () => import('@/views/ErpLineView.vue'), meta: { title: '产线管理' } },
@@ -38,7 +39,8 @@ router.beforeEach(async (to) => {
   const ok = await auth.ensure()
   if (!ok) return '/login'
   // 销售角色只有「销售查询」一个页面：别的路径一律送回去，避免点进来看到 403 空页
-  if (auth.isSales && to.path !== '/erp/sales-query') return '/erp/sales-query'
+  // 销售角色只有两页：销售查询 + AI 助手（AI 侧工具已按角色收口）
+  if (auth.isSales && to.path !== '/erp/sales-query' && to.path !== '/ai/chat') return '/erp/sales-query'
   const roles = to.meta.roles as string[] | undefined
   if (roles && !roles.includes(auth.user?.role || '')) return auth.isSales ? '/erp/sales-query' : '/'
   return true

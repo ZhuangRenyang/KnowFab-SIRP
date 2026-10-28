@@ -111,6 +111,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.DELETE, "/api/erp/**").hasAnyRole("ADMIN", "MANAGER")
                         // 销售角色：只放行「销售查询」这一个只读接口（必须排在下面那条收紧规则之前）
                         .requestMatchers("/api/erp/sales-query/**").authenticated()
+                        // AI 助手：登录即可问（工具已按角色收口，销售只能查库存）
+                        .requestMatchers("/api/ai/chat/**").authenticated()
                         // 车间数据（设备/报警/能耗/报表/AI/ERP 明细）不给销售看：
                         // 销售要的是"能不能交货、还有多少可卖"，不是设备参数和成本
                         .requestMatchers(HttpMethod.GET, "/api/erp/**", "/api/devices/**",
