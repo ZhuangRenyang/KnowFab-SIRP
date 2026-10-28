@@ -39,9 +39,16 @@ async function load() {
     noData.value = hist.length < 2
     const title = p.name + (p.unit ? ` (${p.unit})` : '')
     setOption({
-      title: { text: title, left: 4, top: 2, textStyle: { fontSize: 11, color: cssv('--muted'), fontWeight: 400 } },
+      /* 两个标题：左边说明这是"点位原始值"，右边提示产量看下方统计——
+         这张图曾被当成产量曲线（后端字段是 ts，前端读 t 导致横轴全是序号，更像了） */
+      title: [
+        { text: `点位原始值 · ${title}`, left: 4, top: 2,
+          textStyle: { fontSize: 11, color: cssv('--muted'), fontWeight: 400 } },
+        { text: '检查采集质量用 · 产量统计见下方', right: 8, top: 3,
+          textStyle: { fontSize: 10, color: cssv('--meta'), fontWeight: 400 } }
+      ],
       grid: { left: 44, right: 12, top: 26, bottom: 22 },
-      xAxis: { type: 'category', data: hist.map((x: any, i: number) => fmtT(x.t) || String(i + 1)) },
+      xAxis: { type: 'category', data: hist.map((x: any, i: number) => fmtT(x.ts) || String(i + 1)) },
       yAxis: { type: 'value', scale: true },
       series: [{ type: 'line', showSymbol: false, smooth: true, data: hist.map((x: any) => x.v) }]
     })
