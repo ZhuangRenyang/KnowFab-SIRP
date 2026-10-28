@@ -45,6 +45,8 @@ public class ErpStockBill {
     public static final String TYPE_PO_RETURN = "PO_RETURN";
     /** 销售出库 */
     public static final String TYPE_SO_OUT = "SO_OUT";
+    /** 销售退货：客户退回，正数入库（DH-45b） */
+    public static final String TYPE_SO_RETURN = "SO_RETURN";
     /** 其他入库（盘盈调整、退料、赠品等） */
     public static final String TYPE_OTHER_IN = "OTHER_IN";
     /** 其他出库（领用、报废、盘亏调整等） */

@@ -50,7 +50,7 @@ public class ErpStockService {
     public static final List<String> MANUAL_TYPES = List.of(
             ErpStockBill.TYPE_PO_IN, ErpStockBill.TYPE_SO_OUT,
             ErpStockBill.TYPE_OTHER_IN, ErpStockBill.TYPE_OTHER_OUT,
-            ErpStockBill.TYPE_TRANSFER, ErpStockBill.TYPE_PO_RETURN);
+            ErpStockBill.TYPE_TRANSFER, ErpStockBill.TYPE_PO_RETURN, ErpStockBill.TYPE_SO_RETURN);
 
     /**
      * 库存页「新建单据」能选的类型：采购退货必须从采购订单发起（这样订单进度才对得上），
@@ -66,6 +66,7 @@ public class ErpStockService {
         Map<String, String> m = new LinkedHashMap<>();
         m.put(ErpStockBill.TYPE_PO_IN, "采购入库");
         m.put(ErpStockBill.TYPE_SO_OUT, "销售出库");
+        m.put(ErpStockBill.TYPE_SO_RETURN, "销售退货");
         m.put(ErpStockBill.TYPE_OTHER_IN, "其他入库");
         m.put(ErpStockBill.TYPE_OTHER_OUT, "其他出库");
         m.put(ErpStockBill.TYPE_TRANSFER, "调拨");
@@ -76,6 +77,7 @@ public class ErpStockService {
 
         TYPE_PREFIX.put(ErpStockBill.TYPE_PO_IN, "CGRK");
         TYPE_PREFIX.put(ErpStockBill.TYPE_SO_OUT, "XSCK");
+        TYPE_PREFIX.put(ErpStockBill.TYPE_SO_RETURN, "XSTH");
         TYPE_PREFIX.put(ErpStockBill.TYPE_OTHER_IN, "QTRK");
         TYPE_PREFIX.put(ErpStockBill.TYPE_OTHER_OUT, "QTCK");
         TYPE_PREFIX.put(ErpStockBill.TYPE_TRANSFER, "DBCK");

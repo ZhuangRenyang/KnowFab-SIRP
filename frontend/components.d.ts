@@ -66,6 +66,8 @@ declare module 'vue' {
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     RuleDialog: typeof import('./src/components/alarm/RuleDialog.vue')['default']
+    SalesOrderDialog: typeof import('./src/components/erp/SalesOrderDialog.vue')['default']
+    SalesShipDialog: typeof import('./src/components/erp/SalesShipDialog.vue')['default']
     SettingsPanel: typeof import('./src/components/system/SettingsPanel.vue')['default']
     ShiftsDialog: typeof import('./src/components/report/ShiftsDialog.vue')['default']
     StatusBadge: typeof import('./src/components/StatusBadge.vue')['default']

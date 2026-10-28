@@ -293,7 +293,10 @@ public class ErpPurchaseService {
     /** 库存页把入库/退货单作废后，订单进度要跟着退回 */
     @EventListener
     public void onBillVoided(StockBillVoidedEvent e) {
-        if (e.srcOrderNo() == null) {
+        // 销售单据也走同一个事件，这里只认采购的两种，别去查销售订单
+        if (e.srcOrderNo() == null
+                || !(ErpStockBill.TYPE_PO_IN.equals(e.billType())
+                     || ErpStockBill.TYPE_PO_RETURN.equals(e.billType()))) {
             return;
         }
         try {
