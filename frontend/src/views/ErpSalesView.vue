@@ -84,7 +84,7 @@
         <el-table-column label="操作" width="196" align="right" class-name="op-col">
           <template #default="{ row }">
             <el-button size="small" text type="primary" @click="openDetail(row)">详情</el-button>
-            <el-button v-if="auth.canWrite && row.status !== 'DONE' && row.status !== 'CANCELLED'" size="small" text
+            <el-button v-if="auth.canWrite && canShip(row)" size="small" text
               @click="openShip(row, 'ship')">发货</el-button>
             <el-dropdown v-if="auth.canWrite && row.status !== 'CANCELLED'" trigger="click" @command="(c: string) => onCommand(c, row)">
               <el-button size="small" text>更多<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
@@ -240,6 +240,8 @@ const detailOpen = ref(false)
 const detail = ref<{ order: SalesOrderHead; lines: SalesOrderLine[]; bills: SalesBillRow[] } | null>(null)
 
 const tagOf = (s: string) => (SALES_STATUS_TAG[s] || 'info') as any
+/** 只有"已确认/部分发货"能发货 */
+const canShip = (r: { status: string }) => r.status === 'CONFIRMED' || r.status === 'PARTIAL'
 
 function toTs(day: string, end = false): number {
   const [y, m, d] = day.split('-').map(Number)

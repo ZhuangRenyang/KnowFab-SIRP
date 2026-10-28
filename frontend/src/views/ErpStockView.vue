@@ -2,9 +2,9 @@
   <div class="stock">
     <div class="kpis">
       <div class="kpi">
-        <span>库存总量</span>
-        <b class="num">{{ qty(summary?.totalQty) }}<i>件</i></b>
-        <em>{{ summary?.skuCount || 0 }} 个商品 · {{ summary?.whCount || 0 }} 个仓库</em>
+        <span>库存品种</span>
+        <b class="num">{{ summary?.skuCount || 0 }}<i>种</i></b>
+        <em>{{ summary?.stockRowCount || 0 }} 个库位 · {{ summary?.whCount || 0 }} 个仓库</em>
       </div>
       <div class="kpi">
         <span>库存成本</span>

@@ -84,7 +84,7 @@
         <el-table-column label="操作" width="196" align="right" class-name="op-col">
           <template #default="{ row }">
             <el-button size="small" text type="primary" @click="openDetail(row)">详情</el-button>
-            <el-button v-if="auth.canWrite && row.status !== 'DONE' && row.status !== 'CANCELLED'" size="small" text
+            <el-button v-if="auth.canWrite && canReceive(row)" size="small" text
               @click="openReceive(row, 'receive')">入库</el-button>
             <el-dropdown v-if="auth.canWrite && row.status !== 'CANCELLED'" trigger="click" @command="(c: string) => onCommand(c, row)">
               <el-button size="small" text>更多<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
@@ -228,6 +228,8 @@ const detailOpen = ref(false)
 const detail = ref<{ order: PurchaseOrderHead; lines: PurchaseOrderLine[]; bills: PurchaseBillRow[] } | null>(null)
 
 const tagOf = (s: string) => (PURCHASE_STATUS_TAG[s] || 'info') as any
+/** 只有"已确认/部分入库"能收货；草稿和已完成都不该出现入库按钮（后端也会拦，但按钮不该骗人） */
+const canReceive = (r: { status: string }) => r.status === 'CONFIRMED' || r.status === 'PARTIAL'
 
 function toTs(day: string, end = false): number {
   const [y, m, d] = day.split('-').map(Number)
