@@ -1,6 +1,6 @@
 # KnowFab SIRP — Documentation (English)
 
-[English](README.en.md) · [简体中文](../README.zh-CN.md) · [Back to main README](../README.md)
+[English](README.en.md) · [简体中文](../README.zh-CN.md) · [日本語](../README.ja.md) · [한국어](../README.ko.md) · [Español](../README.es.md) · [Deutsch](../README.de.md) · [Русский](../README.ru.md) · [Back to main README](../README.md)
 
 This page is the English entry point into the documentation. It covers the things you need in the
 first hour: installing, connecting a machine, and where the API lives.
@@ -143,7 +143,8 @@ touching the database. Offline sites can upload the archive manually. Details:
 | Document | Language | Contents |
 |---|---|---|
 | [../README.md](../README.md) | EN | Overview, install, features, comparison |
-| [../README.zh-CN.md](../README.zh-CN.md) | 中文 | 中文主 README |
+| [../README.zh-CN.md](../README.zh-CN.md) | 中文 | 中文主 README（完整版） |
+| [../README.ja.md](../README.ja.md) · [../README.ko.md](../README.ko.md) · [../README.es.md](../README.es.md) · [../README.de.md](../README.de.md) · [../README.ru.md](../README.ru.md) | JA / KO / ES / DE / RU | Condensed READMEs: pitch, install, feature summary |
 | [HANDBOOK.md](HANDBOOK.md) | 中文 | Architecture, connecting devices, adding protocols, energy, reports, upgrades, API list |
 | [ROADMAP.md](ROADMAP.md) | 中文 | Roadmap and complete changelog with measured results |
 | [COMPETITORS.md](COMPETITORS.md) | 中文 | Competitor comparison and talk tracks |

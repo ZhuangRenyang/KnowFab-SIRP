@@ -1,6 +1,6 @@
 # KnowFab SIRP · AI-powered Smart Factory Management System
 
-[English](README.md) · [简体中文](README.zh-CN.md)
+**English** · [简体中文](README.zh-CN.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [Русский](README.ru.md)
 
 [![License: AGPL-3.0](https://img.shields.io/github/license/ZhuangRenyang/KnowFab-SIRP)](LICENSE)
 [![Latest release](https://img.shields.io/github/v/release/ZhuangRenyang/KnowFab-SIRP)](https://github.com/ZhuangRenyang/KnowFab-SIRP/releases)
@@ -247,5 +247,6 @@ feature: seed → smoke → contract regression".
 
 ---
 
-**Translations**: [English](README.md) · [简体中文](README.zh-CN.md) — the English README is the
-canonical one. Want another language? Open an issue or send a pull request.
+**Translations**: [English](README.md) *(canonical)* · [简体中文](README.zh-CN.md) *(full)* · [日本語](README.ja.md) · [한국어](README.ko.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [Русский](README.ru.md) *(condensed)*.
+Each condensed version covers the pitch, install commands and feature summary and links here
+for details. Want another language? Open an issue or send a pull request.

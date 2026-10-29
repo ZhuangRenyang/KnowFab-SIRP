@@ -1,6 +1,6 @@
 # 知造 SIRP · AI 智慧工厂管理系统
 
-[English](README.md) · **简体中文**
+[English](README.md) · **简体中文** · [日本語](README.ja.md) · [한국어](README.ko.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [Русский](README.ru.md)
 
 **让机器自己报数，而不是让工人扫码。**
 设备直连采集 → 产线成品计数 → 自动入成品仓 → 进销存/财务一体 → 经营报表 → 全员 AI 助手，
