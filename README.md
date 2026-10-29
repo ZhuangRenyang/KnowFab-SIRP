@@ -75,7 +75,8 @@ python tools/smoke-all.py    # 99 项全功能接口冒烟，全绿说明装得�
 - **AI**：早报（每天 7:00 出，可推微信）；**全员 AI 助手**——自然语言查库存/产量/设备/订单/财务，
   按角色收口（销售只能问库存），工具调用而非生成 SQL，接 DeepSeek/通义/Ollama 均可，可整体关闭
 - **角色**：管理员 / 车间主任 / 班组长 / **销售**（只读库存+可承诺量，无成本字段）四级权限
-- **交付**：一键安装脚本、Docker Compose、jar 内置数据库迁移、备份脚本、升级只换 jar 不动数据
+- **交付**：一键安装脚本、Docker Compose、jar 内置数据库迁移、备份脚本、升级只换 jar 不动数据；
+  **自动升级免配置**——默认盯 GitHub Releases，有新版本系统页直接提示、一键下载验签升级
 
 ## 和同类项目的差异
 
@@ -115,6 +116,7 @@ python tools/smoke-all.py    # 99 项全功能接口冒烟，全绿说明装得�
 | [docs/ROADMAP.md](docs/ROADMAP.md) | 路线图与完整变更记录（每条功能都带实测数据） |
 | [docs/COMPETITORS.md](docs/COMPETITORS.md) | 竞品对比与话术 |
 | [docs/DEMO.md](docs/DEMO.md) | 演示指南：一键灌数据 + 推荐巡览路径 |
+| [docs/RELEASE.md](docs/RELEASE.md) | 发版流程：打 tag 传 Release，客户机点一下"检查更新"即可升级 |
 
 ## 参与贡献
 

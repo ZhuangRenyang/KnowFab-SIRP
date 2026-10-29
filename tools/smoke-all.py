@@ -197,6 +197,12 @@ def sec_system():
     st, r = req("GET", "/api/system/version")
     check(s, "版本信息", st == 200 and has(r, "version"), st)
     st, r = req("GET", "/api/system/update/status")
+    # 开源版免配置：未填更新源时默认盯 GitHub Releases（接口结构必须稳定）
+    st, r = req("GET", "/api/system/update/check")
+    srcs = [x.get("source") for x in (r.get("sources") or [])] if isinstance(r, dict) else []
+    check(s, "默认升级源 GitHub Releases", st == 200
+          and srcs and srcs[0].startswith("github://ZhuangRenyang/"),
+          srcs[:1] or st)
     check(s, "升级状态", st == 200, st)
     st, r = req("GET", "/api/system/settings")
     check(s, "系统设置", st == 200 and isinstance(r, dict) and r, st)

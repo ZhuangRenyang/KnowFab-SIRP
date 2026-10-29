@@ -47,6 +47,13 @@ public class UpdateService {
 
     private static final Logger log = LoggerFactory.getLogger(UpdateService.class);
 
+    /**
+     * 未配置更新源时的默认源：开源仓库的 GitHub Releases。
+     * 管理端发版流程见 docs/RELEASE.md —— 打 tag、上传 device-hub-*.zip 即可被所有客户机看到。
+     * 国内网络连不上 api.github.com 时，在「系统设置 → 更新源」填镜像地址（version.json 模式）。
+     */
+    public static final String DEFAULT_SOURCE = "github://ZhuangRenyang/KnowFab-SIRP";
+
     /** 升级包绝对不允许碰的东西：客户数据和授权 */
     private static final List<String> FORBIDDEN_PREFIX = List.of("data/", "license/", "../");
 
@@ -253,8 +260,7 @@ public class UpdateService {
         if (list.isEmpty()) {
             out.put("ok", false);
             out.put("reachable", false);
-            out.put("message", "还没有配置更新源。到「系统 → 系统设置 → 更新源」填一个地址，"
-                    + "例如 https://gitee.com/你的账号/device-hub/raw/master/dist");
+            out.put("message", "没有任何更新源。到「系统 → 系统设置 → 更新源」至少保留默认的 " + DEFAULT_SOURCE);
             return out;
         }
 
@@ -262,26 +268,22 @@ public class UpdateService {
         Map<String, Object> hit = null;
         String hitSource = null;
         for (String base : list) {
-            Map<String, Object> r = new LinkedHashMap<>();
-            r.put("source", base);
+            Map<String, Object> r;
             try {
-                String url = base.endsWith(".json") ? base : (base.endsWith("/") ? base + "version.json" : base + "/version.json");
-                String json = httpGet(url, 6000);
-                Map<?, ?> m = mapper.readValue(json, Map.class);
-                String latest = String.valueOf(m.get("version"));
-                r.put("ok", true);
-                r.put("latest", latest);
-                r.put("notes", m.get("notes"));
-                r.put("url", m.get("url"));
-                r.put("sha256", m.get("sha256"));
-                r.put("newer", VersionService.compare(latest, versionService.version()) > 0);
+                r = probeSource(base);
+            } catch (Exception e) {
+                r = new LinkedHashMap<>();
+                r.put("source", base);
+                r.put("ok", false);
+                r.put("error", e.getClass().getSimpleName() + ": " + e.getMessage());
+            }
+            if (Boolean.TRUE.equals(r.get("ok"))) {
+                r.put("newer", VersionService.compare(String.valueOf(r.get("latest")),
+                        versionService.version()) > 0);
                 if (hit == null && Boolean.TRUE.equals(r.get("newer"))) {
                     hit = new LinkedHashMap<>(r);
                     hitSource = base;
                 }
-            } catch (Exception e) {
-                r.put("ok", false);
-                r.put("error", e.getClass().getSimpleName() + ": " + e.getMessage());
             }
             tried.add(r);
         }
@@ -300,9 +302,71 @@ public class UpdateService {
             out.put("hasUpdate", false);
             out.put("message", out.get("reachable").equals(true)
                     ? "已是最新版本 " + versionService.version()
-                    : "所有更新源都连不上（服务器可能没有外网）。可以手工拷贝升级包，用「上传并校验」。");
+                    : "所有更新源都连不上（默认源是 GitHub Releases，国内网络可能不稳）。"
+                            + "可以在「系统设置 → 更新源」填国内镜像（version.json 地址），"
+                            + "或手工拷贝升级包用「上传并校验」。");
         }
         return out;
+    }
+
+    /**
+     * 探测一个更新源。
+     * <ul>
+     *   <li>{@code github://owner/repo}：走 GitHub Releases API 的 latest——
+     *       tag_name 去掉 v 前缀当版本号，assets 里找 {@code device-hub-*.zip} 当升级包。
+     *       404（还没发过版）转成友好提示；api.github.com 需要请求带 User-Agent。</li>
+     *   <li>其余：version.json 模式（version/notes/url/sha256），自建镜像走这条。</li>
+     * </ul>
+     * 返回的 Map 无论如何都带 source 字段；失败时 ok=false + error。
+     */
+    private Map<String, Object> probeSource(String base) throws Exception {
+        Map<String, Object> r = new LinkedHashMap<>();
+        r.put("source", base);
+        if (base.startsWith("github://")) {
+            String repo = base.substring("github://".length()).trim();
+            String url = "https://api.github.com/repos/" + repo + "/releases/latest";
+            try {
+                com.fasterxml.jackson.databind.JsonNode root = mapper.readTree(httpGet(url, 8000));
+                String tag = root.path("tag_name").asText("");
+                if (tag.isBlank()) {
+                    throw new IllegalStateException("响应里没有 tag_name");
+                }
+                String latest = (tag.startsWith("v") || tag.startsWith("V")) ? tag.substring(1) : tag;
+                r.put("ok", true);
+                r.put("latest", latest);
+                r.put("notes", root.path("body").asText(null));
+                String asset = null;
+                for (com.fasterxml.jackson.databind.JsonNode a : root.path("assets")) {
+                    String name = a.path("name").asText("");
+                    if (name.startsWith("device-hub-") && name.endsWith(".zip")) {
+                        asset = a.path("browser_download_url").asText(null);
+                        break;
+                    }
+                }
+                r.put("url", asset);
+                if (asset == null) {
+                    r.put("error", "Release " + tag + " 里没有 device-hub-*.zip 升级包附件");
+                }
+            } catch (IllegalStateException e) {
+                if (String.valueOf(e.getMessage()).contains("404")) {
+                    r.put("error", "仓库还没有发布过版本（GitHub Releases 为空）");
+                } else {
+                    throw e;
+                }
+            }
+            return r;
+        }
+
+        String u = base.endsWith(".json") ? base
+                : (base.endsWith("/") ? base + "version.json" : base + "/version.json");
+        String json = httpGet(u, 6000);
+        Map<?, ?> m = mapper.readValue(json, Map.class);
+        r.put("ok", true);
+        r.put("latest", String.valueOf(m.get("version")));
+        r.put("notes", m.get("notes"));
+        r.put("url", m.get("url"));
+        r.put("sha256", m.get("sha256"));
+        return r;
     }
 
     /** 从更新源下载升级包，验签后登记待应用 */
@@ -342,7 +406,9 @@ public class UpdateService {
         List<String> out = new ArrayList<>();
         String sources = settings.get(SettingStore.UPDATE_SOURCES);
         if (sources == null || sources.isBlank()) {
-            return out;
+            // 开源版免配置：没填更新源就默认盯 GitHub Releases，
+            // 有新 Release（含 device-hub-*.zip 附件）就能在系统页一键升级
+            return List.of(DEFAULT_SOURCE);
         }
         for (String s : sources.split("[,\\n\\r]+")) {
             String v = s.trim();
@@ -362,8 +428,11 @@ public class UpdateService {
                 .connectTimeout(java.time.Duration.ofMillis(Math.min(timeoutMs, 8000)))
                 .followRedirects(java.net.http.HttpClient.Redirect.NORMAL)
                 .build();
+        // GitHub API 没有 User-Agent 直接 403；Accept 声明 vnd.github+json，对其他源无害
         java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder(java.net.URI.create(url))
                 .timeout(java.time.Duration.ofMillis(timeoutMs))
+                .header("User-Agent", "KnowFab-SIRP-Updater")
+                .header("Accept", "application/vnd.github+json")
                 .GET().build();
         java.net.http.HttpResponse<byte[]> resp = client.send(req,
                 java.net.http.HttpResponse.BodyHandlers.ofByteArray());

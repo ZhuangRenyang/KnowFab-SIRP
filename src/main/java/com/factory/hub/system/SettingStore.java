@@ -49,8 +49,8 @@ public class SettingStore {
     private static final List<SettingDef> DEFS = List.of(
             SettingDef.area(UPDATE_SOURCES, G_UPDATE, "更新源",
                     "system.update.sources", "",
-                    "填 version.json 所在目录，或 version.json 的完整地址。多个用逗号或换行分隔，按顺序试。"
-                            + "国内放 Gitee，海外放 GitHub，一个不通会自动试下一个。留空 = 只能手工上传升级包。"),
+                    "留空 = 默认盯 GitHub Releases（github://ZhuangRenyang/KnowFab-SIRP），有新版本系统页直接提示升级。"
+                            + "国内网络不稳可填镜像：version.json 所在目录或完整地址，多个用逗号或换行分隔，按顺序试。"),
             SettingDef.bool(UPDATE_ALLOW_WEB_RESTART, G_UPDATE, "允许网页上一键重启",
                     "system.update.allow-web-restart", "false", SettingDef.LIVE,
                     "打开后，「应用升级」按钮能直接重启服务，客户不用登服务器敲命令。"
