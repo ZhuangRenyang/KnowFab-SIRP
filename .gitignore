@@ -35,3 +35,6 @@ __pycache__/
 
 # ---- 运行时覆盖配置：系统页「修改数据库密码」会写 config/application.yml（含密码） ----
 /config/
+
+# 便携版本地测试目录
+.portable-test/
