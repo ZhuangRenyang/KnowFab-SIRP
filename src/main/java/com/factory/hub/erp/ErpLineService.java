@@ -46,15 +46,17 @@ public class ErpLineService {
     private final ProdHourlyRepository prodRepo;
     private final ObjectMapper mapper;
     private final SnapshotStore store;
+    private final com.factory.hub.report.ProdRollup rollup;
 
     public ErpLineService(ErpProdLineRepository repo, DeviceService deviceService,
                           ProdHourlyRepository prodRepo, ObjectMapper mapper,
-                          SnapshotStore store) {
+                          SnapshotStore store, com.factory.hub.report.ProdRollup rollup) {
         this.repo = repo;
         this.deviceService = deviceService;
         this.prodRepo = prodRepo;
         this.mapper = mapper;
         this.store = store;
+        this.rollup = rollup;
     }
 
     /* ==================== 查询 ==================== */
@@ -516,8 +518,34 @@ public class ErpLineService {
         }
         long yearStart = LocalDate.now(ZONE).withDayOfYear(1).minusDays(2)
                 .atStartOfDay(ZONE).toInstant().toEpochMilli();
-        return prodRepo.findByDeviceCodeInAndHourStartBetween(codes, yearStart, now).stream()
+        Map<String, List<ProdHourly>> byDev = prodRepo
+                .findByDeviceCodeInAndHourStartBetween(codes, yearStart, now).stream()
                 .collect(Collectors.groupingBy(ProdHourly::getDeviceCode));
+        // 今日产量实时口径（2026-10-29）：设备 KPI（ErpProdController.effOutput）对
+        // 当前小时用 ProdRollup 内存值（秒级），产线这里必须同口径，否则
+        // 「产线今日」落后「设备今日」最多 60 秒的落库窗口，smoke 的一致性断言会挂。
+        // 用脱离副本而不是改实体：OSIV 下查询出的实体被 dirty-checking 写回库，
+        // 只读接口不能有写副作用
+        long curHour = now - (now % HOUR_MS);
+        Map<String, List<ProdHourly>> out = new java.util.HashMap<>(byDev.size());
+        for (Map.Entry<String, List<ProdHourly>> e : byDev.entrySet()) {
+            List<ProdHourly> list = new java.util.ArrayList<>(e.getValue().size());
+            for (ProdHourly p : e.getValue()) {
+                if (p.getHourStart() == curHour) {
+                    double live = rollup.liveOutput(p.getDeviceCode(), p.getHourStart());
+                    if (!Double.isNaN(live) && live != p.getOutput()) {
+                        ProdHourly c = new ProdHourly(p.getDeviceCode(), p.getDeviceName(),
+                                p.getHourStart());
+                        c.setOutput(live);
+                        list.add(c);
+                        continue;
+                    }
+                }
+                list.add(p);
+            }
+            out.put(e.getKey(), list);
+        }
+        return out;
     }
 
     /** [今日, 本月, 今年]，今日按设备自己的清零时刻切日（本地时区，别再用 UTC 天数） */

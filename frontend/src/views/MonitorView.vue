@@ -13,6 +13,12 @@
         <el-option v-for="n in [24, 48, 96, 200]" :key="n" :value="n" :label="`${n} 台/页`" />
       </el-select>
       <el-button :icon="Refresh" :loading="store.loading" @click="store.load()">刷新</el-button>
+      <!-- 2026-10-29 用户口径：发现 + 新增设备都收进设备监控页；发现以弹框打开。
+           靠右显示：margin-left:auto 把这组推到工具栏最右侧 -->
+      <div class="tb-right">
+        <el-button v-if="auth.isAdmin" :icon="Connection" @click="discoVisible = true">设备发现</el-button>
+        <el-button v-if="auth.canWrite" type="primary" :icon="Plus" @click="openNew">新增设备</el-button>
+      </div>
     </div>
 
     <div v-if="store.lastError" class="load-err">加载失败：{{ store.lastError }}（自动重试：点「刷新」）</div>
@@ -41,7 +47,7 @@
         </div>
       </div>
     </div>
-    <el-empty v-else :description="store.list.length ? '没有匹配的设备' : '还没有设备，点右上角「新增设备」'" />
+    <el-empty v-else :description="store.list.length ? '没有匹配的设备' : '还没有设备，点上方「新增设备」'" />
 
     <div v-if="filtered.length" class="pager">
       共 <b>{{ filtered.length }}</b> 台 · 第 <b>{{ page }}</b>/<b>{{ totalPages }}</b> 页
@@ -51,22 +57,26 @@
 
     <DeviceDetail v-if="selected" :code="selected" @edit="openEdit" @removed="onRemoved" />
 
-    <DeviceFormDialog v-model="formVisible" :edit-code="editCode" @saved="onSaved" />
+    <DeviceFormDialog v-model="formVisible" :edit-code="editCode" :prefill="scanPrefill" @saved="onSaved" />
+    <DiscoveryDialog v-model="discoVisible" @add-device="onScanAdd" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Refresh, Search } from '@element-plus/icons-vue'
+import { Refresh, Search, Plus, Connection } from '@element-plus/icons-vue'
 import { useDevicesStore, statusOf, pickKpis, fmt } from '@/stores/devices'
+import { useAuthStore } from '@/stores/auth'
 import StatusBadge from '@/components/StatusBadge.vue'
 import DeviceDetail from '@/components/DeviceDetail.vue'
 import DeviceFormDialog from '@/components/DeviceFormDialog.vue'
+import DiscoveryDialog from '@/components/DiscoveryDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
 const store = useDevicesStore()
+const auth = useAuthStore()
 
 /* 筛选与分页（PRD §1.1：搜索即时生效、状态五选、每页 24/48/96/200 默认 48） */
 const q = ref('')
@@ -94,7 +104,22 @@ watch([q, st, pageSize], () => { page.value = 1 })
 const selected = ref('')
 const formVisible = ref(false)
 const editCode = ref('')
+const discoVisible = ref(false)              // 设备发现弹框
 
+/** 扫描结果一键转新增设备：预填 IP/端口/从站号/点表（2026-10-29） */
+const scanPrefill = ref<{ protocol: string; host: string; port: number; unitId: number; pointsText: string } | null>(null)
+
+function onScanAdd(p: { protocol: string; host: string; port: number; unitId: number; pointsText: string }) {
+  scanPrefill.value = p
+  editCode.value = ''
+  formVisible.value = true
+}
+
+function openNew() {
+  scanPrefill.value = null               // 手动新增：清掉上一次扫描的预填
+  editCode.value = ''
+  formVisible.value = true
+}
 function openEdit(code: string) {
   editCode.value = code
   formVisible.value = true
@@ -120,6 +145,8 @@ watch(() => route.query.new, (v) => {
 
 <style scoped>
 .toolbar { display: flex; gap: 10px; margin-bottom: var(--space-4); flex-wrap: wrap; }
+/* 右侧按钮组：把「设备发现 / 新增设备」推到工具栏最右 */
+.tb-right { margin-left: auto; display: flex; gap: 10px; }
 .w240 { width: 240px; }
 .w110 { width: 110px; }
 .w100 { width: 100px; }

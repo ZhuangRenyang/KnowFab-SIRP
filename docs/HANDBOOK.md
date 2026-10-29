@@ -43,7 +43,7 @@ mvn spring-boot:run
 ```
 
 打开 **http://localhost:8080/app/** —— 新版界面（Vue 3），六个页签全部在内；
-旧的 `/`、`/login.html`、`/discover.html` 现在是 3 行跳转壳，自动送到 `/app/`，旧书签继续有效。
+旧版跳转壳（`/`、`/login.html`、`/index.html`）已于 2026-10-29 删除，路径由后端转发到 `/app/` SPA 壳：未登录访问自动送到 `/app/#/login`，已登录直接进主界面，旧书签继续有效。`/discover.html` 保留为设备发现的正式书签入口。
 车间大屏 `screen.html` / `fault.html` 保持原生零依赖，地址不变。
 
 打包成单文件 jar（部署到客户工控机用这个）：
@@ -142,7 +142,7 @@ connect / read / write / disconnect
 
 ### 0. 懒人路径：设备发现（不用求厂家）
 
-**入口：后台右上角「发现」**（仅管理员，`/discover.html`）。
+**入口：后台右上角「发现」按钮**（仅管理员，`/app/#/discovery`）；书签/手册旧链接 `/discover.html` 仍然有效（跳转壳自动送往发现页）。
 给接第一台真机的人用的侦察工具，厂家联系不上也能走完：
 
 1. **扫网段**：填 `192.168.1`，多段用英文逗号隔开（`192.168.1,192.168.2,…`），
@@ -1202,7 +1202,7 @@ tools/audit-dist.sh dist/device-hub-1.0.0.zip    # 审压缩包
 | 权限 | `.sh` 没有 755 | `./install.sh` 报 Permission denied |
 | 校验和 | `SHA256SUMS` 对不上 | 客户核验时会以为包被篡改 |
 
-jar 内部也查：必须有 `static/index.html`（否则页面 404）和 `META-INF/spring.factories`
+jar 内部也查：必须有 `static/app/index.html`（否则页面 404）和 `META-INF/spring.factories`
 （否则升级时数据库迁移不执行），且不能有 `.java`、私钥。
 
 **这条审计不是形式主义**。写它的当天就抓到一个真问题：所有 `.sh` 都是 CRLF 换行——

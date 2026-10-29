@@ -4,6 +4,11 @@
     width="680px" top="6vh" :close-on-click-modal="false"
   >
     <el-form label-width="130px" label-position="right">
+      <!-- 2026-10-29：用户反馈"新增设备没有自动扫描"——扫描在发现页，
+           这里给个直达入口，不用退出弹窗后满界面找 -->
+      <div class="scan-tip">
+        不知道设备的 IP / 点表？<el-link type="primary" :underline="false" @click="goDiscovery">用自动扫描找设备并生成点表 →</el-link>
+      </div>
       <div class="sec">基本信息</div>
       <div class="frow">
         <el-form-item label="设备编码"><el-input v-model="f.code" :disabled="!!editCode" placeholder="唯一，如 CNC-01" /></el-form-item>
@@ -106,6 +111,23 @@
       </el-form-item>
 
       <div class="sec">点表（JSON 数组）</div>
+      <!-- 设备模板（2026-10-29）：内置模板随版本发布；「我的模板」是现场存下来的，
+           同型号设备选一次就能把协议/端口/从站/采集周期/点表全部带过来 -->
+      <div class="tpls">
+        <el-select v-model="tplId" placeholder="选设备模板（品牌 · 型号 / 我的模板）" clearable
+                   style="width:340px" @change="applyTpl">
+          <el-option-group v-for="g in tplGroups" :key="g.brand" :label="g.brand">
+            <el-option v-for="t in g.list" :key="t.id" :value="t.id"
+                       :label="`${t.model}${t.confidence === 'verified' ? ' · 已实测' : ''}`" />
+          </el-option-group>
+          <el-option-group v-if="customTpls.length" label="我的模板（已存）">
+            <el-option v-for="t in customTpls" :key="'c' + t.id" :value="'c' + t.id" :label="t.name" />
+          </el-option-group>
+        </el-select>
+        <el-button size="small" @click="saveAsTpl">存为模板</el-button>
+        <el-button v-if="isCustomTpl" size="small" text type="danger" @click="delTpl">删除模板</el-button>
+        <span class="hint">{{ tplNote }}</span>
+      </div>
       <div class="tpls">
         <el-button size="small" @click="useTpl('machine')">机床通用</el-button>
         <el-button size="small" @click="useTpl('light')">三色灯干接点</el-button>
@@ -127,18 +149,33 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { ApiError } from '@/api/http'
 import { devicesApi, genKey, PROTOCOLS, BRANDS, TPL } from '@/api/devices'
 import { skuApi, warehouseApi } from '@/api/erp'
+import { DEVICE_TEMPLATES, deviceTplApi, type DeviceTpl, type CustomTpl } from '@/api/deviceTemplates'
 import { useDevicesStore } from '@/stores/devices'
 
-const props = defineProps<{ editCode: string }>()
+const props = defineProps<{
+  editCode: string
+  /** 从设备发现带过来的预填（扫描→探测→添加设备，2026-10-29） */
+  prefill?: {
+    protocol?: string; host?: string; port?: number; unitId?: number; pointsText?: string
+  } | null
+}>()
 const emit = defineEmits<{ saved: [] }>()
 const visible = defineModel<boolean>({ default: false })
 
+const router = useRouter()
 const store = useDevicesStore()
 const busy = ref(false)
+
+/** 关掉弹窗去发现页：扫描 → 探测 → 生成点表，回来再贴进点表框 */
+function goDiscovery() {
+  visible.value = false
+  router.push('/discovery')
+}
 
 const f = reactive({
   code: '', name: '', location: '', pollIntervalMs: 1000,
@@ -158,6 +195,108 @@ const isNet = computed(() => f.protocol === 'modbus-tcp' || f.protocol === 'modb
 const isRtuTcp = computed(() => f.protocol === 'modbus-rtu-tcp')
 const isRtu = computed(() => f.protocol === 'modbus-rtu')
 
+/* 设备模板：内置（随版本） + 我的模板（落库）。选中即预填通信参数 + 点表 */
+const tplId = ref('')
+const tplNote = ref('')
+const customTpls = ref<CustomTpl[]>([])
+const isCustomTpl = computed(() => tplId.value.startsWith('c'))
+
+const tplGroups = computed(() => {
+  const m = new Map<string, DeviceTpl[]>()
+  for (const t of DEVICE_TEMPLATES) {
+    if (!m.has(t.brand)) m.set(t.brand, [])
+    m.get(t.brand)!.push(t)
+  }
+  return [...m.entries()].map(([brand, list]) => ({ brand, list }))
+})
+
+async function loadCustomTpls() {
+  try {
+    const r = await deviceTplApi.list()
+    customTpls.value = r.ok ? (r.items || []) : []
+  } catch { customTpls.value = [] }
+}
+
+/** 存为模板：编辑现有设备时直接抓设备配置（点表里的 role 最完整）；
+ *  新增场景则按当前表单内容存 */
+async function saveAsTpl() {
+  try {
+    const { value: name } = await ElMessageBox.prompt(
+      props.editCode ? `把设备 ${props.editCode} 的完整配置存成模板` : '把当前填写的配置存成模板',
+      '存为设备模板',
+      { inputPlaceholder: '模板名，如：汇川 H3U 注塑机', inputValidator: (v) => (!!v && !!v.trim()) || '模板名不能为空' }
+    )
+    let r
+    if (props.editCode) {
+      r = await deviceTplApi.fromDevice(props.editCode, { name: name.trim() })
+    } else {
+      r = await deviceTplApi.create({
+        name: name.trim(), brand: '', model: f.name || f.code,
+        protocol: f.protocol, port: f.port, unitId: f.unitId,
+        pollIntervalMs: f.pollIntervalMs, timeoutMs: f.timeoutMs,
+        serialPort: f.serialPort, baudRate: f.baudRate, dataBits: f.dataBits,
+        stopBits: f.stopBits, parity: f.parity,
+        pointsJson: f.pointsText, note: ''
+      })
+    }
+    if (!r.ok) { ElMessage.warning(r.message || '保存失败'); return }
+    ElMessage.success(r.message || '模板已保存')
+    await loadCustomTpls()
+  } catch (e: any) {
+    if (e === 'cancel' || e === 'close') return
+    ElMessage.warning(e?.message || '保存失败')
+  }
+}
+
+async function delTpl() {
+  const id = Number(tplId.value.slice(1))
+  if (!id) return
+  try {
+    await ElMessageBox.confirm('删除后不可恢复，已套用该模板创建的设备不受影响。继续？', '删除模板', { type: 'warning' })
+  } catch { return }
+  const r = await deviceTplApi.remove(id).catch(() => null)
+  if (!r?.ok) { ElMessage.warning(r?.message || '删除失败'); return }
+  ElMessage.success('模板已删除')
+  tplId.value = ''
+  tplNote.value = ''
+  await loadCustomTpls()
+}
+
+function applyTpl(key: string) {
+  // 我的模板：key = 'c<id>'
+  if (key.startsWith('c')) {
+    const t = customTpls.value.find((x) => 'c' + x.id === key)
+    if (!t) { tplNote.value = ''; return }
+    f.protocol = t.protocol
+    f.port = t.port
+    f.unitId = t.unitId
+    f.pollIntervalMs = t.pollIntervalMs
+    f.timeoutMs = t.timeoutMs
+    if (t.serialPort) f.serialPort = t.serialPort
+    if (t.baudRate) f.baudRate = t.baudRate
+    if (t.dataBits) f.dataBits = t.dataBits
+    if (t.stopBits) f.stopBits = t.stopBits
+    if (t.parity != null) f.parity = t.parity
+    f.pointsText = t.pointsJson
+    tplNote.value = `${t.name}${t.note ? '：' + t.note : ''}`
+    return
+  }
+  const t = DEVICE_TEMPLATES.find((x) => x.id === key)
+  if (!t) { tplNote.value = ''; return }
+  f.protocol = t.protocol
+  f.port = t.port
+  f.unitId = t.unitId
+  f.pollIntervalMs = t.pollIntervalMs
+  f.timeoutMs = t.timeoutMs
+  if (t.serialPort) f.serialPort = t.serialPort
+  if (t.baudRate) f.baudRate = t.baudRate
+  if (t.dataBits) f.dataBits = t.dataBits
+  if (t.stopBits) f.stopBits = t.stopBits
+  if (t.parity != null) f.parity = t.parity
+  f.pointsText = JSON.stringify(t.points, null, 2)
+  tplNote.value = t.note
+}
+
 function resetDefaults() {
   Object.assign(f, {
     code: '', name: '', location: '', pollIntervalMs: 1000,
@@ -167,10 +306,13 @@ function resetDefaults() {
     pointsText: JSON.stringify(TPL.machine, null, 2),
     prodSkuId: undefined, prodWarehouseId: undefined, prodResetHour: 0, prodAutoStockin: false
   })
+  tplId.value = ''
+  tplNote.value = ''
 }
 
 watch(visible, async (v) => {
   if (!v) return
+  loadCustomTpls()               // 我的模板：不阻塞主流程，失败静默
   /* 生产入库联动下拉数据（失败静默，主流程不受影响） */
   try {
     const [ss, ws] = await Promise.all([skuApi.list(), warehouseApi.list()])
@@ -179,6 +321,15 @@ watch(visible, async (v) => {
   } catch { /* 忽略 */ }
   if (!props.editCode) {
     resetDefaults()
+    // 从设备发现带过来的预填：IP/端口/从站号/点表直接填好，用户只补编码名称
+    const pf = props.prefill
+    if (pf) {
+      if (pf.protocol) f.protocol = pf.protocol
+      if (pf.host) f.host = pf.host
+      if (pf.port) f.port = pf.port
+      if (pf.unitId) f.unitId = pf.unitId
+      if (pf.pointsText) f.pointsText = pf.pointsText
+    }
     return
   }
   /* 编辑：config 接口回填，编码是主键禁改（PRD §1.1） */
@@ -279,4 +430,8 @@ async function save() {
 .keyrow { display: flex; gap: 8px; width: 100%; }
 .tpls { display: flex; gap: 8px; margin-bottom: var(--space-2); flex-wrap: wrap; }
 .mono :deep(textarea) { font-family: var(--font-mono); font-size: var(--text-xs); }
+.scan-tip {
+  margin: 0 0 var(--space-2) 130px; padding: 6px 10px; font-size: var(--text-xs);
+  color: var(--meta); background: var(--bg-soft); border-radius: var(--radius-sm);
+}
 </style>

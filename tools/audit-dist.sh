@@ -171,8 +171,8 @@ PY
   if printf '%s' "$JAR_LIST" | grep -q '^ERROR'; then
     fail "jar 打不开，可能损坏"
   else
-    printf '%s\n' "$JAR_LIST" | grep -q 'BOOT-INF/classes/static/index.html' \
-      && pass "含前端页面" || fail "jar 里没有 static/index.html（页面会 404）"
+    printf '%s\n' "$JAR_LIST" | grep -q 'BOOT-INF/classes/static/app/index.html' \
+      && pass "含前端页面" || fail "jar 里没有 static/app/index.html（页面会 404）"
     printf '%s\n' "$JAR_LIST" | grep -q 'META-INF/spring.factories' \
       && pass "含 spring.factories（数据库迁移靠它注册）" \
       || fail "jar 里没有 META-INF/spring.factories（升级时迁移不会执行）"

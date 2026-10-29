@@ -1,15 +1,21 @@
 package com.factory.hub.discovery;
 
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.net.Inet4Address;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
 import java.util.ArrayList;
+import java.util.Enumeration;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeSet;
 import java.util.regex.Pattern;
 
 /**
@@ -51,6 +57,57 @@ public class DiscoveryController {
     /** 从站扫描：对一台串口服务器逐个从站号探活（B 路径：一个盒子后面挂多台设备）。 */
     public record UnitsReq(String ip, Integer port, String framing,
                            Integer from, Integer to, Integer timeoutMs) {}
+
+    /**
+     * 本机所在网段（自动扫描的第一步）：枚举服务器网卡，返回各 IPv4 所在的 C 段前缀。
+     * <p>
+     * 2026-10-29 加：发现页网段框原来写死 192.168.1，用户设备在 192.168.0.x 时
+     * 直接点扫描扫了个空段，看起来像"没有自动扫描这个功能"。
+     * 前端打开发现页先调这个接口预填网段，一键就能扫到。
+     * <p>
+     * 过滤规则：只留 IPv4；去掉回环（127.）、链路本地（169.254.，DHCP 失败的兜底地址）、
+     * 未启用的网卡；名字含 docker/vmnet/vbox/vEthernet/Loopback 的虚拟网卡一并排除，
+     * 避免把装机自带的 VMware 网段当成本厂网段。
+     */
+    @GetMapping("/local-subnets")
+    public Map<String, Object> localSubnets() {
+        Map<String, Object> out = new LinkedHashMap<>();
+        TreeSet<String> prefixes = new TreeSet<>();
+        try {
+            Enumeration<NetworkInterface> ifs = NetworkInterface.getNetworkInterfaces();
+            while (ifs.hasMoreElements()) {
+                NetworkInterface ni = ifs.nextElement();
+                String name = (ni.getName() + " " + ni.getDisplayName()).toLowerCase();
+                if (ni.isLoopback() || !ni.isUp() || name.contains("docker") || name.contains("vmnet")
+                        || name.contains("vbox") || name.contains("vethernet") || name.contains("loopback")) {
+                    continue;
+                }
+                Enumeration<InetAddress> addrs = ni.getInetAddresses();
+                while (addrs.hasMoreElements()) {
+                    InetAddress a = addrs.nextElement();
+                    if (!(a instanceof Inet4Address)) {
+                        continue;                    // 只要 IPv4，IPv6 不适合按 C 段扫
+                    }
+                    String ip = a.getHostAddress();
+                    if (ip.startsWith("127.") || ip.startsWith("169.254.")) {
+                        continue;
+                    }
+                    int last = ip.lastIndexOf('.');
+                    if (last > 0) {
+                        prefixes.add(ip.substring(0, last));
+                    }
+                }
+            }
+        } catch (Exception e) {
+            out.put("ok", false);
+            out.put("error", "枚举网卡失败：" + e.getMessage());
+            out.put("subnets", List.of());
+            return out;
+        }
+        out.put("ok", true);
+        out.put("subnets", new ArrayList<>(prefixes));
+        return out;
+    }
 
     @PostMapping("/scan")
     public Map<String, Object> scan(@RequestBody ScanReq req) throws InterruptedException {
@@ -109,7 +166,7 @@ public class DiscoveryController {
         int unit = req.unitId() == null ? 1 : req.unitId();
         int fc = req.fc() == null ? 3 : req.fc();
         int from = req.from() == null ? 0 : req.from();
-        int count = req.count() == null ? 20 : req.count();
+        int count = req.count() == null ? 10 : req.count();
         int timeout = req.timeoutMs() == null ? 1000 : req.timeoutMs();
         return service.probe(req.ip(), port, unit, fc, from, count, timeout, framingOf(req.framing()));
     }
@@ -168,7 +225,7 @@ public class DiscoveryController {
             return fail("探测只支持功能码 02/03/04（全是读，工具不写）");
         }
         int from = req.from() == null ? 0 : req.from();
-        int count = req.count() == null ? 20 : req.count();
+        int count = req.count() == null ? 10 : req.count();
         if (from < 0 || from > 65535 || count < 1 || count > 125) {
             return fail("起始地址 0-65535，数量 1-125");
         }

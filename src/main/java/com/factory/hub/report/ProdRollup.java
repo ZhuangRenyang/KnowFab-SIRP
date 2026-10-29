@@ -246,6 +246,26 @@ public class ProdRollup {
         });
     }
 
+    /**
+     * 该设备在 hourStart 所属小时的<b>内存实时产量</b>（秒级，未等 60s checkpoint 落库）。
+     * <p>
+     * 内存桶里存的是这一小时的累计<b>全量</b>（flush 是覆盖写，不是追加），
+     * 所以报表接口对「当前小时」直接取这里的值，KPI/图表就能实时跟上按键；
+     * 历史小时已从内存清掉（flush dropClosedHours），返回 {@code Double.NaN}，
+     * 调用方回退到数据库行。
+     */
+    public double liveOutput(String deviceCode, long hourStart) {
+        long hour = hourStart - (hourStart % HOUR_MS);
+        ProdHourly p = buckets.get(deviceCode + "|" + hour);
+        return p == null ? Double.NaN : p.getOutput();
+    }
+
+    /** 该设备当前小时的内存实时产量；没有内存桶（这一小时还没有任何采样）返回 NaN */
+    public double liveOutputNow(String deviceCode) {
+        long hour = System.currentTimeMillis();
+        return liveOutput(deviceCode, hour);
+    }
+
     private String deviceName(String code) {
         try {
             var d = deviceService.byCode(code);

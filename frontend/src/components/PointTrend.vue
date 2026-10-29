@@ -2,6 +2,13 @@
   <!-- 老设备（继电器/行程开关接入）通常只有 count 点：没有数值点位就不渲染这张图，
        别把计数值当"原始值"画出一条无意义的爬升曲线 -->
   <div v-if="hasValuePoint" class="trend">
+    <!-- 区块标题（2026-10-29 用户截图反馈"这个表没有名字"）：
+         图内那行 11px 灰字几乎看不见，改成图外显式标题，把"画的是哪个点位"写清楚 -->
+    <div class="trend-head">
+      <b>点位趋势</b>
+      <span class="trend-name">{{ pointTitle }}</span>
+      <span class="trend-tip">采集质量曲线 · 不是产量统计</span>
+    </div>
     <div v-if="noData" class="trend-empty">数据积累中…（选中设备后自动拉取近 180 条趋势）</div>
     <div v-show="!noData" ref="el" class="trend-canvas" />
   </div>
@@ -31,6 +38,13 @@ const point = computed(() => {
   return pts.find((p: any) => p.role === 'value') || null
 })
 
+/** 标题里点名：哪个点位、什么单位（例如「转速 (rpm)」） */
+const pointTitle = computed(() => {
+  const p = point.value
+  if (!p) return ''
+  return p.name + (p.unit ? ` (${p.unit})` : '')
+})
+
 let lastHistAt = 0
 const cssv = (n: string) => getComputedStyle(document.documentElement).getPropertyValue(n).trim()
 
@@ -45,18 +59,12 @@ async function load() {
     noData.value = hist.length < 2
     const title = p.name + (p.unit ? ` (${p.unit})` : '')
     setOption({
-      /* 两个标题：左边说明这是"点位原始值"，右边提示产量看下方统计——
-         这张图曾被当成产量曲线（后端字段是 ts，前端读 t 导致横轴全是序号，更像了） */
-      title: [
-        { text: `点位原始值 · ${title}`, left: 4, top: 2,
-          textStyle: { fontSize: 11, color: cssv('--muted'), fontWeight: 400 } },
-        { text: '检查采集质量用 · 产量统计见下方', right: 8, top: 3,
-          textStyle: { fontSize: 10, color: cssv('--meta'), fontWeight: 400 } }
-      ],
-      grid: { left: 44, right: 12, top: 26, bottom: 22 },
+      grid: { left: 44, right: 12, top: 10, bottom: 22 },
+      tooltip: { trigger: 'axis' },
       xAxis: { type: 'category', data: hist.map((x: any, i: number) => fmtT(x.ts) || String(i + 1)) },
       yAxis: { type: 'value', scale: true },
-      series: [{ type: 'line', showSymbol: false, smooth: true, data: hist.map((x: any) => x.v) }]
+      series: [{ name: title, type: 'line', showSymbol: false, smooth: true,
+                 data: hist.map((x: any) => x.v) }]
     })
   } catch { /* 静默，等下次推送重试 */ }
 }
@@ -86,6 +94,13 @@ onMounted(() => { if (el.value) init(el.value) })
 
 <style scoped>
 .trend { margin-top: var(--space-3); }
+/* 区块标题：图表必须有名字，避免和产量统计混淆 */
+.trend-head {
+  display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px;
+}
+.trend-head b { font-size: var(--text-xs); font-weight: 500; color: var(--fg-2); }
+.trend-name { font-size: var(--text-2xs); color: var(--fg); }
+.trend-tip { font-size: var(--text-2xs); color: var(--muted); }
 .trend-canvas { width: 100%; height: 150px; }
 .trend-empty {
   height: 150px; display: flex; align-items: center; justify-content: center;

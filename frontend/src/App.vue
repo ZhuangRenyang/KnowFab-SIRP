@@ -30,7 +30,6 @@
 
       <div class="foot">
         <!-- 收缩态只留图标：56px 宽度塞不下文字链接，会把主题/收起两个图标挤出容器外 -->
-        <a v-if="!collapsed" class="foot-link" href="/" title="切换前的旧版界面（迁移期临时保留）">旧版</a>
         <a v-if="!collapsed" class="foot-link" href="/screen.html" target="_blank" title="打开车间大屏（不需要登录）">大屏</a>
         <el-icon class="foot-icon" :title="theme.light ? '切换深色' : '切换浅色'" @click="theme.toggle()">
           <Moon v-if="theme.light" /><Sunny v-else />
@@ -58,8 +57,8 @@
             :hidden="alarmsOpen <= 0" :max="99">
             <el-icon class="hd-icon" title="报警记录" @click="router.push('/alarm')"><Bell /></el-icon>
           </el-badge>
-          <el-button v-if="auth.isAdmin" size="small" text @click="router.push('/discovery')">发现</el-button>
-          <el-button v-if="auth.canWrite" type="primary" size="small" @click="addDevice">+ 新增设备</el-button>
+          <!-- 2026-10-29：「发现」和「新增设备」已按用户要求移到设备监控页工具栏，
+               发现以弹框打开（DiscoveryDialog），页头不再重复放按钮 -->
           <el-dropdown trigger="click" @command="onUserCmd">
             <span class="user-pill">
               {{ auth.displayName }} · {{ auth.roleLabel }}
@@ -181,9 +180,6 @@ const groups = computed(() => {
 function onUserCmd(cmd: string) {
   if (cmd === 'account') acctVisible.value = true
   else if (cmd === 'logout') auth.logout().then(() => router.replace('/login'))
-}
-function addDevice() {
-  router.push({ path: '/', query: { new: '1' } })
 }
 </script>
 

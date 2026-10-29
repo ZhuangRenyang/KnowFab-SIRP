@@ -45,16 +45,36 @@ public class ErpProdController {
     private final ErpWarehouseRepository whRepo;
     private final SnapshotStore store;
     private final ObjectMapper mapper;
+    private final com.factory.hub.report.ProdRollup rollup;
 
     public ErpProdController(DeviceService deviceService, ProdHourlyRepository prodRepo,
                              ErpSkuRepository skuRepo, ErpWarehouseRepository whRepo,
-                             SnapshotStore store, ObjectMapper mapper) {
+                             SnapshotStore store, ObjectMapper mapper,
+                             com.factory.hub.report.ProdRollup rollup) {
         this.deviceService = deviceService;
         this.prodRepo = prodRepo;
         this.skuRepo = skuRepo;
         this.whRepo = whRepo;
         this.store = store;
         this.mapper = mapper;
+        this.rollup = rollup;
+    }
+
+    /**
+     * 「今日 KPI 变化好慢」修复（2026-10-29）：产量增量在内存里每秒就算好了，
+     * 但要等 60s checkpoint 落库后报表才看得到。这里对<b>当前小时</b>的行
+     * 直接取 ProdRollup 内存实时值（秒级），历史小时仍用库值——
+     * KPI 与日/月/年图表走同一个 helper，日表之和 = 今日的口径不变。
+     */
+    private double effOutput(String code, ProdHourly p, long now) {
+        long curHour = now - (now % HOUR_MS);
+        if (p.getHourStart() == curHour) {
+            double live = rollup.liveOutput(code, p.getHourStart());
+            if (!Double.isNaN(live)) {
+                return live;
+            }
+        }
+        return p.getOutput();
     }
 
     /** 设备有没有 count 角色的点（决定详情页要不要画产量图） */
@@ -111,7 +131,7 @@ public class ErpProdController {
         long monthKey = floorMonth(now);
         double[] months = new double[12];
         for (ProdHourly p : rows) {
-            double o = p.getOutput();
+            double o = effOutput(code, p, now);
             year += o;
             long mk = floorMonth(p.getHourStart());
             if (mk == monthKey) {
@@ -183,7 +203,7 @@ public class ErpProdController {
                         code, ProdDay.startOfDayKey(k0, rh), now)) {
                     long k = ProdDay.dayKey(p.getHourStart(), rh);
                     if (byDay.containsKey(k)) {
-                        byDay.merge(k, p.getOutput(), Double::sum);
+                        byDay.merge(k, effOutput(code, p, now), Double::sum);
                     }
                 }
                 for (Map.Entry<Long, Double> e : byDay.entrySet()) {
@@ -197,7 +217,8 @@ public class ErpProdController {
                 long from = ProdDay.startOfDayKey(
                         LocalDate.of(biz.getYear(), 1, 1).toEpochDay(), rh);
                 for (ProdHourly p : prodRepo.findByDeviceCodeAndHourStartBetween(code, from, now)) {
-                    months[ProdDay.bizDate(p.getHourStart(), rh).getMonthValue() - 1] += p.getOutput();
+                    months[ProdDay.bizDate(p.getHourStart(), rh).getMonthValue() - 1]
+                            += effOutput(code, p, now);
                 }
                 for (int i = 0; i < 12; i++) {
                     points.add(point((i + 1) + "月", months[i]));
@@ -239,7 +260,7 @@ public class ErpProdController {
                         code, start, start + 24 * HOUR_MS)) {
                     long hb = (p.getHourStart() / HOUR_MS) * HOUR_MS;
                     if (byHour.containsKey(hb)) {
-                        byHour.merge(hb, p.getOutput(), Double::sum);
+                        byHour.merge(hb, effOutput(code, p, now), Double::sum);
                     }
                 }
                 for (Map.Entry<Long, Double> e : byHour.entrySet()) {

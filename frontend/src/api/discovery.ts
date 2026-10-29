@@ -38,6 +38,9 @@ export interface UnitsResult {
 }
 
 export const discoveryApi = {
+  /** 本机所在网段（自动预填扫描范围）：服务器各 IPv4 的 C 段前缀 */
+  localSubnets: () =>
+    http.get<{ ok: boolean; subnets: string[]; error?: string }>('/api/discovery/local-subnets'),
   scan: (f: { prefixes: string; from: number; to: number; port: number; timeoutMs: number }) =>
     http.post<ScanResult>('/api/discovery/scan', f),
   probe: (a: ProbeArgs) => http.post<ProbeResult>('/api/discovery/probe', a),

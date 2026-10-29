@@ -151,6 +151,10 @@ def main():
     check("D3 周趋势 200", code == 200, code)
 
     # ============ E. 设备发现 ============
+    # 自动网段探测（发现页打开即预填）：返回本机各 IPv4 的 C 段，前端用它免手填
+    code, body = req("GET", "/api/discovery/local-subnets", cookie=admin_cookie)
+    check("E0 本机网段探测 200 且返回数组", code == 200 and body.get("ok") is True
+          and isinstance(body.get("subnets"), list), body)
     code, body = req("POST", "/api/discovery/scan", {"prefixes": "abc"}, cookie=admin_cookie)
     check("E1 非法网段被拒", code == 200 and body.get("ok") is False, body)
     code, body = req("POST", "/api/discovery/scan", {"prefixes": "999.168.1"}, cookie=admin_cookie)
@@ -158,6 +162,28 @@ def main():
     code, body = req("POST", "/api/discovery/probe", {"ip": "127.0.0.1", "port": 1502, "unitId": 1,
                                                       "fc": 6, "framing": "tcp"}, cookie=admin_cookie)
     check("E3 写功能码被拒", body.get("ok") is False and "只" in str(body.get("error")), body)
+    # 设备模板（2026-10-29）：列表可读 + 建/删闭环 + 坏点表被拒
+    code, body = req("GET", "/api/device-templates", cookie=admin_cookie)
+    check("E5 设备模板列表 200", code == 200 and body.get("ok") is True, body)
+    code, body = req("POST", "/api/device-templates", {
+        "name": "SELFTEST-模板", "protocol": "modbus-tcp", "port": 502, "unitId": 1,
+        "pollIntervalMs": 1000, "timeoutMs": 800,
+        "pointsJson": "[{\"key\":\"t\",\"name\":\"测试\",\"address\":0,"
+                      "\"functionCode\":3,\"dataType\":\"u16\",\"role\":\"value\"}]"
+    }, cookie=admin_cookie)
+    tpl_id = (body.get("item") or {}).get("id")
+    check("E6 存设备模板", body.get("ok") is True and tpl_id, body)
+    code, body = req("POST", "/api/device-templates", {
+        "name": "SELFTEST-模板", "protocol": "modbus-tcp", "pointsJson": "[{\"key\":\"t\"}]"
+    }, cookie=admin_cookie)
+    check("E7 模板重名被拒", body.get("ok") is False, body)
+    code, body = req("POST", "/api/device-templates", {
+        "name": "SELFTEST-空点表", "protocol": "modbus-tcp", "pointsJson": "[]"
+    }, cookie=admin_cookie)
+    check("E8 空点表被拒", body.get("ok") is False, body)
+    if tpl_id:
+        code, body = req("DELETE", f"/api/device-templates/{tpl_id}", cookie=admin_cookie)
+        check("E9 删除设备模板", body.get("ok") is True, body)
     code, body = req("POST", "/api/discovery/probe", {"ip": "127.0.0.1", "port": 1502, "unitId": 1,
                                                       "fc": 3, "framing": "sideways"}, cookie=admin_cookie)
     check("E4 非法 framing 被拒", body.get("ok") is False, body)
@@ -203,11 +229,17 @@ def main():
         def redirect_request(self, req_, fp, code_, msg, headers, newurl):
             return None
     opener = urllib.request.build_opener(NoRedirect)
-    for path, expect in [("/login.html", 200), ("/screen.html", 200), ("/fault.html", 200)]:
+    # 2026-10-29 旧版跳转壳（/login.html 等）已删除：/ 由后端转发到 /app/ SPA 壳
+    for path, expect in [("/", 200), ("/screen.html", 200), ("/fault.html", 200)]:
         code, _ = req("GET", path)
         check(f"G 页面 {path} = {expect}", code == expect, code)
-    # cutover 后：/app/ 是主界面。SPA 外壳必须匿名可取，否则登录页（在 /app/#/login）
-    # 会被安全层 302 回 /login.html，和 login.html 的跳转壳形成死循环（2026-10-28 修复）
+    # /discover.html 是设备发现的书签入口（跳转壳 → /app/#/discovery），
+    # 当天误删过一次导致用户入口丢失，恢复后纳入断言防止再被清掉
+    code, body = req("GET", "/discover.html")
+    ok = code == 200 and isinstance(body, str) and "/app/#/discovery" in body
+    check("G /discover.html 书签入口跳转发现页", ok, code)
+    # /app/ 是主界面。SPA 外壳必须匿名可取（登录页在 /app/#/login，由前端路由守卫兜底，
+    # 2026-10-28 曾因外壳受保护造成匿名 302 死循环），把"外壳公开 ≠ 数据公开"钉成回归项
     code, body = req("GET", "/app/", cookie=admin_cookie)
     ok = code == 200 and isinstance(body, str) and 'id="app"' in body
     check("G /app/ 登录后 200 且为 SPA 壳", ok, code)
@@ -223,10 +255,17 @@ def main():
     # 匿名拿不到任何业务数据（外壳公开 ≠ 数据公开）
     code, _ = req("GET", "/api/erp/stock/summary")
     check("G 匿名读库存接口被拒(401)", code == 401, code)
-    # 旧路径保留 200 跳转壳（书签兼容 + 审计要求 static/index.html 存在）
-    code, body = req("GET", "/index.html", cookie=admin_cookie)
-    ok = code == 200 and isinstance(body, str) and "location.replace('/app/')" in body
-    check("G /index.html 为跳转壳→/app/", ok, code)
+    # 2026-10-29 旧版跳转壳（/index.html 等）已删除，/ 由后端转发到 /app/ SPA 壳
+    code, body = req("GET", "/", cookie=admin_cookie)
+    ok = code == 200 and isinstance(body, str) and 'id="app"' in body
+    check("G / 转发到 /app/ SPA 壳", ok, code)
+    # 旧书签 /index.html、/login.html 转发到 SPA 壳（WebConfig）。
+    # 关键是「已登录」这一支：匿名有安全层 302 兜底，已登录没人兜——
+    # 曾因壳页删除而 404（discover.html 同类问题的后续修复）
+    for path in ("/index.html", "/login.html"):
+        code, body = req("GET", path, cookie=admin_cookie)
+        ok = code == 200 and isinstance(body, str) and 'id="app"' in body
+        check(f"G 已登录 {path} 转发 SPA 壳(200)", ok, code)
     # h2-console：H2 已废弃，路径不存在；匿名访问被安全层重定向到登录页（302）
     try:
         resp = opener.open(urllib.request.Request(BASE + "/h2-console"), timeout=10)

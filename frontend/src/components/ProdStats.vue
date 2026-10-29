@@ -21,6 +21,10 @@
         <div class="ps-kpi">本月<b>{{ st.month }}</b></div>
         <div class="ps-kpi">今年<b>{{ st.year }}</b></div>
       </div>
+      <div class="ps-chart-head">
+        <b>{{ chartTitle }}</b>
+        <span>{{ chartHint }}</span>
+      </div>
       <div ref="el" class="ps-chart" :class="{ tall: mode === 'all' }" />
       <div class="ps-note">
         <template v-if="mode === 'day'">
@@ -46,7 +50,7 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useEcharts } from '@/composables/useEcharts'
 import { prodApi, type ProdStatus } from '@/api/erp'
 
@@ -59,11 +63,32 @@ const props = defineProps<{ code: string }>()
 
 type Mode = 'day' | 'month' | 'year' | 'all'
 const mode = ref<Mode>('day')
+
+/* 图表要有明确名字（2026-10-29 用户反馈"产量一变这张图就跟着变，老误会它"）：
+   标题说清"这张图统计的是什么"，副标题说清"为什么它在动、为什么刻度会跳" */
+const chartTitle = computed(() => {
+  switch (mode.value) {
+    case 'month': return '本月每日产量（折线图）'
+    case 'year': return '今年各月产量（折线图）'
+    case 'all': return '历史每日产量（综合曲线 + 7 日均值）'
+    default: return '今日各小时产量（柱状图）'
+  }
+})
+const chartHint = computed(() => {
+  switch (mode.value) {
+    case 'month': return '每个点 = 一天的产量；今天那一点会随生产实时增长'
+    case 'year': return '每个点 = 一个月的合计产量'
+    case 'all': return '每个点 = 一天的产量，虚线为 7 日均值'
+    default: return '每根柱 = 该小时的产量；当前小时会随生产实时增长，纵轴刻度自动缩放属正常'
+  }
+})
 const el = ref<HTMLElement>()
 const { init, setOption } = useEcharts()
 const st = ref<ProdStatus | null>(null)
 /** 图表 DOM 是 v-if 出来的：st 到位后才能 init，只初始化一次（修复旧版首次打开不渲染） */
 let inited = false
+/** 实时刷新定时器（10s 轮询 KPI + 当前图表） */
+let timer: number | undefined
 
 const num = (v: number) => Number(v).toLocaleString('zh-CN')
 
@@ -108,6 +133,8 @@ function render(points: { label: string; qty: number }[]) {
   const step = niceStep(maxV)
   const yAxis = {
     type: 'value' as const,
+    name: '产量',
+    nameTextStyle: { fontSize: 11, opacity: 0.7, padding: [0, 0, 2, 0] },
     max: Math.max(step, Math.ceil(maxV / step) * step),
     interval: step,
     axisLabel: { formatter: (v: number) => num(v) }
@@ -167,7 +194,17 @@ function render(points: { label: string; qty: number }[]) {
 
 watch(mode, loadChart)
 watch(() => props.code, load)
-onMounted(load)
+onMounted(() => {
+  load()
+  // 10s 轮询让 KPI 与图表跟着按键实时涨（页面切到后台时空转跳过）；
+  // load 自带 inited 守卫，重复调用只刷新数据不会重建图表
+  timer = window.setInterval(() => {
+    if (document.visibilityState === 'visible') load()
+  }, 5_000)
+})
+onBeforeUnmount(() => {
+  if (timer) window.clearInterval(timer)
+})
 </script>
 
 <style scoped>
@@ -185,6 +222,12 @@ onMounted(load)
 .ps-kpi b { font-size: var(--text-lg); font-weight: 500; color: var(--fg); }
 .ps-chart { width: 100%; height: 170px; }
 .ps-chart.tall { height: 210px; }
+/* 图表标题：说明这张图统计什么（避免和计数器数字混淆） */
+.ps-chart-head {
+  display: flex; align-items: baseline; gap: 8px; margin: 6px 0 2px;
+}
+.ps-chart-head b { font-size: var(--text-xs); font-weight: 500; color: var(--fg-2); }
+.ps-chart-head span { font-size: var(--text-2xs); color: var(--muted); }
 .ps-note { font-size: var(--text-2xs); color: var(--muted); padding-top: 2px; }
 .ps-empty {
   background: var(--surface-2); border-radius: var(--radius-md);

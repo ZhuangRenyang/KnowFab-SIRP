@@ -94,6 +94,13 @@ const PURGE_URL: Record<PurgeKind, string> = {
   demand: '/api/energy/demand/purge'
 }
 
+/* 数据库密码页面化修改（管理员） */
+export interface DbPasswordResult {
+  ok: boolean
+  message: string
+  restartRequired?: boolean
+}
+
 export const systemApi = {
   version: () => http.get<{ ok: boolean; version: string; buildTime: string; schemaVersion: string }>('/api/system/version'),
   status: () => http.get<UpdateStatus>('/api/system/update/status'),
@@ -121,7 +128,10 @@ export const systemApi = {
       `/api/system/migrations/${encodeURIComponent(version)}/sql`),
 
   purge: (kind: PurgeKind) =>
-    http.post<{ ok: boolean; message?: string }>(PURGE_URL[kind], { confirm: true })
+    http.post<{ ok: boolean; message?: string }>(PURGE_URL[kind], { confirm: true }),
+
+  changeDbPassword: (oldPassword: string, newPassword: string) =>
+    http.post<DbPasswordResult>('/api/system/settings/db-password', { oldPassword, newPassword })
 }
 
 export const PURGE_META: { kind: PurgeKind; name: string; switchKey: string }[] = [

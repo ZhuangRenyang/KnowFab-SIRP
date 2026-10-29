@@ -75,8 +75,14 @@ final class ModbusTcpProbe {
         // MBAP：事务号(2) + 协议号0(2) + 长度(2) + 从站号(1)
         byte[] mbap = {(byte) (tid >> 8), (byte) tid, 0, 0,
                        0, (byte) (pdu.length + 1), (byte) unitId};
-        out.write(mbap);
-        out.write(pdu);
+        // ⚠️ 必须「一次 write」把 MBAP 和 PDU 整帧发出去（2026-10-29 实测）：
+        // S7-200 SMART 的 MBUS_SERVER 是按单次 recv 收完整帧的，分两次 write
+        // 会被 TCP 拆成两段，PLC 解析错位后回一个随机的 0x83 异常码
+        // （同一请求分别回 01/03，看着像功能码不支持/数量非法，其实是拆包）
+        byte[] frame = new byte[mbap.length + pdu.length];
+        System.arraycopy(mbap, 0, frame, 0, mbap.length);
+        System.arraycopy(pdu, 0, frame, mbap.length, pdu.length);
+        out.write(frame);
         out.flush();
 
         int rid = in.readUnsignedShort();
@@ -92,8 +98,20 @@ final class ModbusTcpProbe {
         }
         if (rfc == ((fc | 0x80) & 0xFF)) {
             int code = in.readUnsignedByte();
-            throw new IOException("从站返回 Modbus 异常码 " + code
-                    + "（常见：2=地址非法 3=数量非法 11=从站忙）");
+            // 异常码按现场最常踩的坑给出可执行提示（2026-10-29：用户报"异常码 1"，
+            // 实际 S7-200 SMART 只映射 MBUS_SERVER 的 MaxHold 个寄存器，
+            // 默认读 20 个必然越界；异常码 1 则是功能码不被从站支持）
+            String hint = switch (code) {
+                case 1 -> "1=功能码不被从站支持：S7-200 SMART 的 MBUS_SERVER 只支持 3/4 区，"
+                        + "确认库里已拖入 MBUS_SERVER 且 En=SM0.0；换 FC3 再试";
+                case 2 -> "2=寄存器地址/范围非法：超出 PLC 映射区。S7-200 SMART 只映射 "
+                        + "MBUS_SERVER 的 HoldStart 起 MaxHold 个字（演示工程是 10 个），"
+                        + "把「数量」调到 10 以内、起始填 0 再试";
+                case 3 -> "3=数量非法：一次读太多（FC3 单帧上限 125 个）";
+                case 11 -> "11=从站忙：PLC 的 Modbus 连接池（MaxConn）被占，等几秒或减少并发";
+                default -> "参考：2=地址非法 3=数量非法 11=从站忙";
+            };
+            throw new IOException("从站返回 Modbus 异常码 " + code + "（" + hint + "）");
         }
         if (rfc != fc) {
             throw new IOException("功能码不匹配");

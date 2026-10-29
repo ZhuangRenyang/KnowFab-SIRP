@@ -51,3 +51,17 @@ router.afterEach((to) => {
     ? `${to.meta.title} · 知造 SIRP`
     : '知造 SIRP · AI 智慧工厂管理系统'
 })
+
+/* 旧页面缓存自愈（2026-10-29）：
+   每次重新打包都会换掉懒加载 chunk 的文件名，浏览器里开着的旧页面点菜单时
+   会去请求已删除的旧文件（Failed to fetch dynamically imported module），
+   表现为「点击没反应」。这里检测到这类错误就硬刷新一次，自动拿到新前端。 */
+router.onError((err, to) => {
+  const msg = String(err ?? '')
+  if (/Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module/i.test(msg)) {
+    const key = 'dh-spa-reload:' + to.fullPath
+    if (sessionStorage.getItem(key)) return          // 防止刷新死循环
+    sessionStorage.setItem(key, '1')
+    window.location.reload()
+  }
+})

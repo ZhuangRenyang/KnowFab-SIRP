@@ -13,14 +13,16 @@ spring:
     timeout-per-shutdown-phase: 10s
 
   # MySQL 8 是默认库（2026-10-27 起 H2 已废弃：后面要并 ERP，长期数据、备份、
-  # 和 ERP 共库都要求真数据库）。密码走环境变量 DEVICEHUB_DB_PASSWORD；
+  # 和 ERP 共库都要求真数据库）。密码默认值内置（与 devicehub 账号实际密码一致），
+  # 仍可用环境变量 DEVICEHUB_DB_PASSWORD 覆盖；
   # 现场一律用 install.sh 生成的 application.yml（会整个覆盖数据源）。
   # 建库：CREATE DATABASE devicehub DEFAULT CHARSET utf8mb4 COLLATE utf8mb4_general_ci;
+  #       CREATE USER 'devicehub'@'localhost' IDENTIFIED BY 'DeviceHub2026';
   datasource:
     url: jdbc:mysql://127.0.0.1:3306/devicehub?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true&rewriteBatchedStatements=true
     driver-class-name: com.mysql.cj.jdbc.Driver
     username: devicehub
-    password: "${DEVICEHUB_DB_PASSWORD:}"
+    password: "${DEVICEHUB_DB_PASSWORD:DeviceHub2026}"
 
   jpa:
     hibernate:

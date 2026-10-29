@@ -16,6 +16,7 @@
     <el-alert v-if="pendingMsg" :title="pendingMsg" type="success" show-icon :closable="false" class="pm" />
 
     <SettingsPanel />
+    <DbPasswordPanel />
     <UpdatePanel :status="st" @changed="load" />
     <MigrationsPanel />
   </div>
@@ -26,6 +27,7 @@ import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { systemApi, type UpdateStatus } from '@/api/system'
 import SettingsPanel from '@/components/system/SettingsPanel.vue'
+import DbPasswordPanel from '@/components/system/DbPasswordPanel.vue'
 import UpdatePanel from '@/components/system/UpdatePanel.vue'
 import MigrationsPanel from '@/components/system/MigrationsPanel.vue'
 

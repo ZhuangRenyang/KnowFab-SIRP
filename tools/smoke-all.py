@@ -84,7 +84,7 @@ def sec_pages():
     s = "页面"
     st, body = req("GET", "/app/")
     check(s, "/app/ 可打开", st == 200 and isinstance(body, str) and 'id="app"' in body, st)
-    for path in ("/login.html", "/screen.html", "/fault.html", "/"):
+    for path in ("/screen.html", "/fault.html", "/"):
         st, _ = req("GET", path)
         check(s, "%s 可打开" % path, st in (200, 302), st)
 

@@ -72,14 +72,19 @@ public class SecurityConfig {
                         .sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
                 .authorizeHttpRequests(auth -> auth
                         // ---- 匿名可访问 ----
-                        .requestMatchers("/login.html", "/favicon.ico").permitAll()
+                        .requestMatchers("/favicon.ico").permitAll()
                         // SPA 外壳必须匿名可取：登录页本身就在 /app/ 里（#/login）。
                         // 2026-10-28 修复：此前 /app/** 落入 anyRequest().authenticated()，
-                        // 匿名打开 /login.html → 跳到 /app/#/login → 又被 302 回 /login.html，
-                        // 浏览器陷入死循环，新电脑/新浏览器根本进不了系统（老会话有 cookie 才没暴露）。
+                        // 匿名用户在旧跳转壳与 /app/ 之间无限 302，
+                        // 新电脑/新浏览器根本进不了系统（老会话有 cookie 才没暴露）。
                         // 这里放开的只是前端静态文件（js/css/html），数据仍然全靠 /api/** 认证；
                         // 页面内的路由守卫会在拿不到会话时停在登录页。
                         .requestMatchers("/app", "/app/", "/app/**").permitAll()
+                        // 设备发现的书签入口（2026-10-29 恢复）：discover.html 只是
+                        // location.replace('/app/#/discovery') 的跳转壳。当天清理旧版壳页时
+                        // 误删过它——它不是迁移残留，而是手册/书签长期使用的正式入口。
+                        // 匿名放行：书签直接落到发现页，未登录由 SPA 路由守卫送去登录
+                        .requestMatchers("/discover.html").permitAll()
                         .requestMatchers("/api/auth/login", "/api/auth/me").permitAll()
                         .requestMatchers("/api/system/version").permitAll()
                         // 车间大屏：挂在墙上的电视，不能要求登录。只读聚合接口，
@@ -105,6 +110,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/devices/**").hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.PUT, "/api/devices/**").hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.DELETE, "/api/devices/**").hasAnyRole("ADMIN", "MANAGER")
+                        // 设备模板（2026-10-29）：读=登录即可（新增设备要用），写=ADMIN/MANAGER
+                        .requestMatchers(HttpMethod.POST, "/api/device-templates/**").hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.PUT, "/api/device-templates/**").hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.DELETE, "/api/device-templates/**").hasAnyRole("ADMIN", "MANAGER")
                         // ERP：读 = 登录即可（班组长要看基础资料），写 = ADMIN/MANAGER
                         .requestMatchers(HttpMethod.POST, "/api/erp/**").hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.PUT, "/api/erp/**").hasAnyRole("ADMIN", "MANAGER")
@@ -154,7 +163,9 @@ public class SecurityConfig {
                 (req, res, ex) -> write(res, mapper, HttpServletResponse.SC_UNAUTHORIZED, "请先登录"));
         var delegating = new org.springframework.security.web.authentication
                 .DelegatingAuthenticationEntryPoint(entries);
-        delegating.setDefaultEntryPoint((req, res, ex) -> res.sendRedirect("/login.html"));
+        // 2026-10-29 旧版跳转壳（/login.html 等）已删除，未登录直接进 SPA，
+        // 由前端路由守卫停在 /app/#/login
+        delegating.setDefaultEntryPoint((req, res, ex) -> res.sendRedirect("/app/"));
         return delegating;
     }
 
