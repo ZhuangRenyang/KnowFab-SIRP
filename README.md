@@ -2,7 +2,8 @@
 
 **让机器自己报数，而不是让工人扫码。**
 设备直连采集 → 产线成品计数 → 自动入成品仓 → 进销存/财务一体 → 经营报表 → 全员 AI 助手，
-一套跑在**你自己服务器**上的系统。Java 17 + Spring Boot 3 + Vue 3 + MySQL，单 jar 交付。
+一套跑在**你自己服务器**上的系统。Java 17 + Spring Boot 3 + Vue 3 + MySQL，单 jar 交付；
+也有**自带 Java 和数据库的便携版**——目标机器什么都不用装，一条命令就跑起来。
 
 [AGPL-3.0 开源](LICENSE)（[商业授权](COMMERCIAL-LICENSE.md)） · [开发与运维手册](docs/HANDBOOK.md) · [路线图](docs/ROADMAP.md)
 
@@ -31,7 +32,43 @@
 
 > 这张图里的每一条连线都是可运行的代码路径：模拟器自带，不接真设备也能走通全链路。
 
-## 30 秒跑起来（Linux + Docker）
+## 装起来（三种，按现场条件挑一种）
+
+### ① 零环境：一条命令，不用装 Java / MySQL / Docker
+
+**Windows**（Win10 及以上，PowerShell）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -Command "irm https://gitee.com/ZhuangRenyang/KnowFab-SIRP/raw/main/device-hub/tools/portable/install.ps1 | iex"
+```
+
+**Linux / macOS Intel**：
+
+```bash
+curl -fsSL https://gitee.com/ZhuangRenyang/KnowFab-SIRP/raw/main/device-hub/tools/portable/install.sh | bash
+```
+
+装完自动打开 `http://localhost:8080/app/`。**初始管理员密码在启动窗口打印**，同时写在 `data/initial-admin.txt`。
+
+首次运行会自动下载 **JRE 17 + MariaDB 11.4 便携版**（约 130MB，走清华/阿里镜像），之后秒起：
+
+| | |
+|---|---|
+| 数据库 | `127.0.0.1:3307`，独占端口，**不碰本机已有的 3306** |
+| 数据在哪 | 全在安装目录内（`runtime/data`）——**卸载 = 删目录，拷走 = 备份** |
+| 换端口 | `start.bat -Port 9000` / `PORT=9000 ./start.sh` |
+| 停服务 | `stop.bat` / `./stop.sh` |
+
+不想用命令行也行：到 [Releases](https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases) 下
+`device-hub-<版本>-portable.zip` → 解压 → Windows 双击 `start.bat`，Linux 执行 `./start.sh`。
+
+> **完全离线**的车间电脑：在一台联网机器上跑一次（让它下完 `runtime/jre` 和 `runtime/mariadb`），
+> 整个目录拷过去就能用，之后不再联网。
+> 首次启动自带演示数据（4 台设备、能耗与报表曲线），不接真设备也能点着看。
+
+> 安装脚本找包时**先问 Gitee、再问 GitHub**（两个源的包完全一致），哪个通走哪个。
+
+### ② Docker Compose（Linux 服务器，最省心）
 
 ```bash
 git clone https://github.com/ZhuangRenyang/KnowFab-SIRP.git
@@ -40,15 +77,28 @@ sudo bash deploy.sh        # 国内服务器：sudo bash deploy-cn.sh
 ```
 
 脚本自动生成随机数据库密码 → 起容器 → 建库 → 打印访问地址和初始密码。
-打开 `http://服务器IP:8080/app/`，第一件事：**右上角改掉初始密码**。
 
-不想用 Docker？看[手册 §一](docs/HANDBOOK.md)，jar + MySQL 也只要一条命令。
+### ③ 已有 MySQL 8 和 Java 17 的机器
+
+```bash
+sudo bash install.sh --db-pass '你的MySQL密码'
+```
+
+装到 `/opt/device-hub` 并注册 systemd 服务；换端口 `sudo PORT=9000 ./install.sh ...`，
+用 PostgreSQL 加 `--db pg`。也可以直接 `java -jar device-hub.jar` 裸跑
+（数据库密码走 `DEVICEHUB_DB_PASSWORD`，或者起来后在系统页「数据库密码」里改）。
+
+---
+
+**不管哪种装法，装完第一件事**：打开 `http://<地址>:8080/app/` → 右上角**改掉初始密码**。
 
 ## 先看一眼效果（不用接真设备）
 
+便携版和 Docker 版**首次启动已自带演示数据**（4 台设备、能耗曲线、报表），打开就能点。
+想看完整的工厂演示数据（9 种商品、采购/销售各 7 种状态、45 天历史产量）——仓库克隆后跑：
+
 ```bash
-python tools/seed-demo.py    # 灌一套仿真工厂数据：4 台设备、2 条产线、9 种商品、
-                             # 采购/销售各 7 种状态、库存 7 类单据、收付款、45 天历史产量
+python tools/seed-demo.py    # 灌一套仿真工厂数据
 python tools/smoke-all.py    # 99 项全功能接口冒烟，全绿说明装得没问题
 ```
 
@@ -75,7 +125,8 @@ python tools/smoke-all.py    # 99 项全功能接口冒烟，全绿说明装得�
 - **AI**：早报（每天 7:00 出，可推微信）；**全员 AI 助手**——自然语言查库存/产量/设备/订单/财务，
   按角色收口（销售只能问库存），工具调用而非生成 SQL，接 DeepSeek/通义/Ollama 均可，可整体关闭
 - **角色**：管理员 / 车间主任 / 班组长 / **销售**（只读库存+可承诺量，无成本字段）四级权限
-- **交付**：一键安装脚本、Docker Compose、jar 内置数据库迁移、备份脚本、升级只换 jar 不动数据；
+- **交付**：**免环境便携版（自带 JRE + MariaDB，一条命令装完即用，Windows/Linux 通用）**、
+  一键安装脚本、Docker Compose、jar 内置数据库迁移、备份脚本、升级只换 jar 不动数据；
   **自动升级免配置**——默认盯 Gitee Releases（国内直连，失败兜底 GitHub），有新版本系统页直接提示、一键下载验签升级
 
 ## 和同类项目的差异
@@ -113,6 +164,7 @@ python tools/smoke-all.py    # 99 项全功能接口冒烟，全绿说明装得�
 | 文档 | 内容 |
 |---|---|
 | [docs/HANDBOOK.md](docs/HANDBOOK.md) | 开发与运维手册：骨架设计、接真设备、加协议、部署升级、接口清单 |
+| [tools/portable/README-portable.txt](tools/portable/README-portable.txt) | 便携版说明：目录结构、换端口、离线部署、备份与迁移 |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | 路线图与完整变更记录（每条功能都带实测数据） |
 | [docs/COMPETITORS.md](docs/COMPETITORS.md) | 竞品对比与话术 |
 | [docs/DEMO.md](docs/DEMO.md) | 演示指南：一键灌数据 + 推荐巡览路径 |
