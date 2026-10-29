@@ -1,63 +1,83 @@
-# 发版流程（让所有客户机点一下"检查更新"就升级）
+# 发版流程（一条命令，GitHub + Gitee 双站发布）
 
-> 开源后升级源免配置：客户机默认盯 `github://ZhuangRenyang/KnowFab-SIRP`（GitHub Releases）。
-> 你（维护者）要做的只是：**改版本号 → 构建签名包 → 打 tag → 把 zip 传到 Release**。
+> 客户机「检查更新」默认读 **Gitee Releases**（主源），失败自动兜底 GitHub。
+> 所以每次发版两个站点都要有同一个版本，`tools/release.sh` 一次搞定。
+
+## 先说一个坑：Gitee 的“仓库镜像”不同步 Release
+
+Gitee 镜像只同步**代码**（分支、tag），**不会同步 Releases 和附件**。
+所以“在 GitHub 发版，Gitee 自动就有了”这个预期靠镜像是实现不了的——
+必须发版时调用 Gitee API 建发行版并上传附件（本仓库的 `tools/gitee-release.sh` 就是干这个的）。
+本项目提供两种自动化：
+
+| 方式 | 触发 | 适合 |
+|------|------|------|
+| 本地一键 | `bash tools/release.sh 1.0.2 "说明"` | 自己电脑发版（推荐，构建在本机，快） |
+| GitHub Actions | `git push origin v1.0.2` | 不想占本机、多人协作 |
 
 ## 前提（一次性）
 
-- 私钥在 `tools/keys/private.key`（**绝不能进 git**，.gitignore 已排除；丢了就升级不了，务必备份到密码管理器）
-- GitHub CLI：`gh auth login`（或者网页手动传附件也行）
+- 签名私钥 `tools/keys/private.key`（**绝不进 git**，丢了所有客户机都升不了级，务必备份）
+- GitHub CLI：`gh auth login`（没装也能发，脚本会打印手动命令）
+- Gitee 令牌：Gitee → 设置 → **私人令牌** → 生成（勾 `projects`），发版时 `GITEE_TOKEN=xxx`
+- Actions 方式还需要在 GitHub 仓库 Secrets 配：
+  - `UPDATE_PRIVATE_KEY`：私钥文件完整内容（PEM）
+  - `GITEE_TOKEN`：上面那个令牌
 
-## 发版步骤
+## 发版（本地一键）
 
 ```bash
-# 1. 改版本号（pom.xml 第 16 行左右的 <version>，去掉 -SNAPSHOT 语义直接改数字）
-#    例如 1.0.0 → 1.1.0
-
-# 2. 构建签名升级包（npm build + mvn package + PackUpdate 签名 + version.json）
-bash tools/make-dist.sh --build
-#    产物：dist/device-hub-1.1.0.zip（已用私钥签 manifest）
-#          dist/version.json（version.json 模式镜像源也用它）
-
-# 3. 提交 + 打 tag（tag 与包内版本必须一致，客户机按 tag 判断新版本）
-git add -A && git commit -m "release: 1.1.0"
-git tag v1.1.0 && git push origin main --tags
-
-# 4. 发布 Release：标题随意，notes 写给用户看的更新说明（会显示在客户机的检查更新里）
-gh release create v1.1.0 dist/device-hub-1.1.0.zip \
-  --title "v1.1.0" \
-  --notes "修复：xxx；新增：yyy"
+GITEE_TOKEN=你的令牌 bash tools/release.sh 1.0.2 "设备模板支持 485 串口预设；修复探测拆包"
 ```
+
+它会依次做：
+
+1. 改 `pom.xml` 版本号
+2. `tools/make-dist.sh --build`（前端构建 + 后端打包 + 安装包 + 审计）
+3. `PackUpdate` 生成**签名升级包**
+4. 更新 `dist/version.json`（指向签名升级包）
+5. `git commit` + 打 tag `v1.0.2` + push
+6. `gh release create` 发 GitHub Release（两个附件）
+7. `tools/gitee-release.sh` 发 Gitee Release（同样的两个附件）
+
+产物命名（**不要改**）：
+
+| 文件 | 用途 |
+|------|------|
+| `device-hub-<版本>-update.zip` | 签名升级包，检查更新只认带 `update` 的附件 |
+| `device-hub-<版本>-installer.zip` | 新客户安装包（install.sh/README/SHA256SUMS） |
+
+## 发版（GitHub Actions）
+
+```bash
+git tag v1.0.2 && git push origin v1.0.2
+```
+
+`.github/workflows/release.yml` 会：校验 tag 与 pom 版本一致 → 构建 → 签名 → 发 GitHub Release
+→ 调 `tools/gitee-release.sh` 同步 Gitee（没配 `GITEE_TOKEN` 会自动跳过 Gitee 那步）。
 
 ## 客户机侧发生什么
 
-1. 管理员打开「系统 → 检查更新」→ 系统请求 `api.github.com/repos/.../releases/latest`
-2. 对比 tag 与本机版本 → 有新版本就显示版本号 + notes + 「下载并校验」按钮
-3. 点击 → 下载 zip → **验签**（公钥内置，不是你签的包装不上）→ 登记待应用
-4. 重启服务（网页一键或脚本）→ apply-pending.sh 换 jar → 新版本生效；出问题可「回滚」
+1. 管理员点「系统 → 检查更新」→ 请求 `https://gitee.com/api/v5/repos/ZhuangRenyang/KnowFab-SIRP/releases/latest`
+2. 对比 tag 与本机版本 → 有新版本显示版本号 + notes + 「下载并校验」
+3. 下载 `*-update.zip` → **验签**（公钥内置，不是你签的包装不上）→ 登记待应用
+4. 重启服务 → 换 jar → 新版本生效；出问题可「回滚」
+5. Gitee 不可达时自动试 GitHub；两者都不行就用「上传并校验」离线升级
 
-## 验收清单（第一次发版时走一遍）
+## 验收清单（每次发版走一遍）
 
-- [ ] Release 页能看到 `device-hub-x.y.z.zip` 附件
-- [ ] 一台**没配置任何更新源**的客户机点「检查更新」→ 能看到新版本号与 notes
-- [ ] 点击下载 → 提示"已下载并校验通过"（验签通过）
-- [ ] 重启后版本号变化，数据完好（用户/设备/单据都在）
-- [ ] 再点一次「检查更新」→ 提示"已是最新版本"
-
-## 国内客户连不上 api.github.com？
-
-三种办法（按推荐顺序）：
-
-1. **自定义更新源**：系统设置 → 更新源 → 填一个能访问到的 `version.json` 地址
-   （可放 Gitee Pages / 自己的 OSS / 客户内网文件服务器），格式见 `dist/version.json`；
-   多个源逗号分隔按顺序试，GitHub 源仍可保留在后面兜底
-2. **手工升级包**：「上传并校验」直接传 zip（U 盘拷进内网也行），验签机制不变
-3. 反馈网络环境给维护者，看是否需要官方镜像
+- [ ] Gitee 发行版页面能看到 tag 和两个附件
+- [ ] GitHub Release 页面同样有两个附件
+- [ ] 一台客户机点「检查更新」→ 看到新版本号与 notes
+- [ ] 点下载 → 提示“已下载并校验通过”
+- [ ] 重启后版本号变化，业务数据完好
+- [ ] 再点一次 → “已是最新版本”
 
 ## 常见问题
 
-- **忘改 pom 版本就发了 tag？** 客户机对比的是 tag 去掉 v 前缀，包内 manifest 也带版本，
-  不一致会在升级后显示错乱——务必先改版本再构建
-- **Release 里没有 zip 附件？** 客户机会提示"该版本没有升级包附件"，不会误升级
-- **私钥丢了？** 老包还能升级已装机器，但新包签不出来；换钥需要给所有客户机换公钥配置，
-  等于重新交付一遍——备份好私钥
+- **Release 里放错附件？** 客户机优先取名字带 `update` 的 zip；没有才退回 `device-hub-*.zip`。
+  把安装包误放成唯一附件会验签失败，脚本已用命名区分，别手工改名。
+- **忘改 pom 版本就打了 tag？** Actions 会直接失败；本地脚本会自动改版本，不用担心。
+- **同一个版本重发？** tag 已存在时脚本会拒绝。只想补传附件用
+  `gh release upload v1.0.2 dist/xxx.zip --clobber`，Gitee 用 `tools/gitee-release.sh`（会复用已有发行版）。
+- **私钥丢了？** 新包签不出来，换钥等于给所有客户机重发公钥，成本极高——备份到密码管理器。

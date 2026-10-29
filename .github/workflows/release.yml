@@ -1,0 +1,93 @@
+# 推 tag 即发版：构建 → 签名升级包 → GitHub Release → 同步 Gitee Release
+#
+# 为什么不用 Gitee「仓库镜像」：Gitee 镜像只同步代码（分支/tag），
+# **不会同步 Release 附件**，所以 Gitee 侧必须由本项目调用 API 建发行版并上传。
+#
+# 需要在仓库 Secrets 里配两项：
+#   UPDATE_PRIVATE_KEY   tools/keys/private.key 的完整内容（PEM，含 BEGIN/END 行）
+#   GITEE_TOKEN          Gitee 私人令牌（设置 → 私人令牌，勾 projects）
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 版本一致性检查（tag 必须等于 pom version）
+        run: |
+          V="${VERSION#v}"
+          P=$(python3 - <<'PY'
+          import re, io
+          s = io.open("pom.xml", encoding="utf-8").read()
+          m = re.search(r"(?m)^    <version>([^<]+)</version>$", s)
+          print(m.group(1) if m else "")
+          PY
+          )
+          echo "tag=$V pom=$P"
+          [ "$V" = "$P" ] || { echo "tag 与 pom 版本不一致，先改 pom 再打 tag"; exit 1; }
+
+      - name: 写入签名私钥
+        run: |
+          mkdir -p tools/keys
+          printf '%s\n' "${{ secrets.UPDATE_PRIVATE_KEY }}" > tools/keys/private.key
+          chmod 600 tools/keys/private.key
+          test -s tools/keys/private.key || { echo "缺少 UPDATE_PRIVATE_KEY secret"; exit 1; }
+
+      - name: 构建（前端 + 后端 + 安装包）
+        env:
+          MVN: mvn
+        run: bash tools/make-dist.sh --build
+
+      - name: 产出两份附件（安装包 / 签名升级包）
+        run: |
+          V="${VERSION#v}"
+          mv "dist/device-hub-$V.zip" "dist/device-hub-$V-installer.zip"
+          NOTES="版本 $V（自动构建）"
+          java tools/PackUpdate.java \
+            --jar target/device-hub.jar \
+            --version "$V" \
+            --notes "$NOTES" \
+            --key tools/keys/private.key \
+            --out "dist/device-hub-$V-update.zip"
+
+      - name: 发布 GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            dist/*-update.zip
+            dist/*-installer.zip
+
+      - name: 同步到 Gitee Release
+        if: ${{ env.GITEE_TOKEN != '' }}
+        env:
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+        run: |
+          V="${VERSION#v}"
+          bash tools/gitee-release.sh "$V" "版本 $V（自动构建）" \
+            "dist/device-hub-$V-update.zip" \
+            "dist/device-hub-$V-installer.zip"
+
+      - name: 清理私钥
+        if: always()
+        run: rm -f tools/keys/private.key

@@ -1,6 +1,6 @@
 {
   "version": "1.0.1",
-  "notes": "设备发现修复；设备模板（内置+我的模板）；扫描智能点表与角色推测；产量统计实时化；图表标题；数据库密码后台修改",
-  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.1/device-hub-1.0.1.zip",
-  "sha256": "09f6feec1365127ed32178f618a6c2f28ab91bfcb4d87c5f2a801602f1774954"
+  "notes": "设备发现修复；设备模板；扫描智能点表；产量实时化；图表标题；数据库密码后台修改；发版双站同步",
+  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.1/device-hub-1.0.1-update.zip",
+  "sha256": "79b36509463e04c57a774188231d54323430aa6a38bba3904867b093f37677f0"
 }

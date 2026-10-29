@@ -352,17 +352,31 @@ public class UpdateService {
                 r.put("ok", true);
                 r.put("latest", latest);
                 r.put("notes", root.path("body").asText(null));
+                // 附件选择（2026-10-29）：Release 里同时有「安装包」和「签名升级包」，
+                // 两者都以 device-hub- 开头 .zip 结尾，抓错就会验签失败。
+                // 优先取名字带 update 的（发版脚本统一命名 device-hub-<ver>-update.zip），
+                // 没有才退回旧命名，保证历史版本还能升级。
                 String asset = null;
                 for (com.fasterxml.jackson.databind.JsonNode a : root.path("assets")) {
                     String name = a.path("name").asText("");
-                    if (name.startsWith("device-hub-") && name.endsWith(".zip")) {
+                    if (name.startsWith("device-hub-") && name.endsWith(".zip")
+                            && name.contains("update")) {
                         asset = a.path("browser_download_url").asText(null);
                         break;
                     }
                 }
+                if (asset == null) {
+                    for (com.fasterxml.jackson.databind.JsonNode a : root.path("assets")) {
+                        String name = a.path("name").asText("");
+                        if (name.startsWith("device-hub-") && name.endsWith(".zip")) {
+                            asset = a.path("browser_download_url").asText(null);
+                            break;
+                        }
+                    }
+                }
                 r.put("url", asset);
                 if (asset == null) {
-                    r.put("error", "Release " + tag + " 里没有 device-hub-*.zip 升级包附件");
+                    r.put("error", "Release " + tag + " 里没有升级包附件（应为 device-hub-<版本>-update.zip）");
                 }
             } catch (IllegalStateException e) {
                 if (String.valueOf(e.getMessage()).contains("404")) {
