@@ -42,7 +42,10 @@
       </div>
     </div>
 
-    <PointTrend :device="d" />
+    <!-- key=设备编码：切换设备时销毁重建。没有 key 的话，先打开一台无数值点的
+         老设备（v-if 让 el 不存在）再切到新设备，onMounted 里的 init 已错过、
+         图表永远空白——这已经是本项目第四次踩"图表 div 未挂载就 init"的坑 -->
+    <PointTrend :device="d" :key="d.code" />
     <ProdStats :code="d.code" />
 
     <div v-if="d.lastError" class="last-err">最后错误：{{ d.lastError }}</div>

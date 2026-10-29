@@ -1,5 +1,7 @@
 <template>
-  <div class="trend">
+  <!-- 老设备（继电器/行程开关接入）通常只有 count 点：没有数值点位就不渲染这张图，
+       别把计数值当"原始值"画出一条无意义的爬升曲线 -->
+  <div v-if="hasValuePoint" class="trend">
     <div v-if="noData" class="trend-empty">数据积累中…（选中设备后自动拉取近 180 条趋势）</div>
     <div v-show="!noData" ref="el" class="trend-canvas" />
   </div>
@@ -20,9 +22,13 @@ const { init, setOption } = useEcharts()
 const ws = useWsStore()
 const noData = ref(false)
 
+/** 只有存在 role=value 点（转速/温度/电流这类可观测数值）才提供原始值曲线 */
+const hasValuePoint = computed(() =>
+  (props.device?.points || []).some((p: any) => p.role === 'value'))
+
 const point = computed(() => {
   const pts = props.device?.points || []
-  return pts.find((p: any) => p.role === 'value') || pts[0] || null
+  return pts.find((p: any) => p.role === 'value') || null
 })
 
 let lastHistAt = 0
@@ -31,7 +37,7 @@ const cssv = (n: string) => getComputedStyle(document.documentElement).getProper
 async function load() {
   const d = props.device
   const p = point.value
-  if (!d || !p) return
+  if (!d || !p || !hasValuePoint.value) return
   try {
     const j = await devicesApi.history(d.code, p.key ?? p.pointKey ?? p.name)
     lastHistAt = Date.now()
