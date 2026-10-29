@@ -138,8 +138,9 @@ if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
     }
   ok "GitHub: https://github.com/$OWNER/$REPO/releases/tag/$TAG"
 else
-  echo "   未登录 gh，请手动执行："
-  echo "   gh release create $TAG \"$ZIP_UPDATE\" \"$ZIP_INSTALLER\" --title \"$TAG\" --notes \"$NOTES\""
+  # 没有 gh 就用 REST API（令牌取 git 凭据，本机 push 过就可用）
+  echo "   未检测到 gh，改用 REST API 发布"
+  bash tools/github-release.sh "$VERSION" "$NOTES" "$ZIP_UPDATE" "$ZIP_INSTALLER"
 fi
 
 # ---------- 6. Gitee Release（同步） ----------
