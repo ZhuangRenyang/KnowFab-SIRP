@@ -38,3 +38,6 @@ __pycache__/
 
 # 便携版本地测试目录
 .portable-test/
+
+# 提交信息临时文件
+.git-commit-msg.txt
