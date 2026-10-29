@@ -1,7 +1,7 @@
 # 知造 SIRP · 开发与运维手册（HANDBOOK）
 
 > 本手册面向**开发者与实施工程师**：骨架设计、接设备、加协议、部署升级、接口清单。
-> 项目概览与快速上手请看根目录 [README](../README.md)；授权口径见 [COMMERCIAL-LICENSE](../COMMERCIAL-LICENSE.md)。
+> 项目概览与快速上手：[README 英文](../README.md) / [README 中文](../README.zh-CN.md) / [英文文档索引](README.en.md)；授权口径见 [COMMERCIAL-LICENSE](../COMMERCIAL-LICENSE.md)。
 
 ## 一、跑起来
 

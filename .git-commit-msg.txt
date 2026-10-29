@@ -1,0 +1,12 @@
+docs(i18n): README 改为英文主版本，中文迁到 README.zh-CN.md，新增英文文档索引
+
+- README.md 重写为英文（GitHub 默认展示），结构与中文版一一对应：四个硬特点、三种装法
+  （零环境置顶）、解决什么问题、架构图、截图、功能全景、差异表、为何懂设备、授权、文档、贡献；
+  顶部加语言切换与 license/release/Java 徽章
+- 中文版 git mv 到 README.zh-CN.md（保留文件历史），顶部加语言切换，文档表补英文索引行
+- 新增 docs/README.en.md 英文文档索引：安装、三条接设备路径、点表 JSON 字段与 role 语义、
+  功能码说明、/api 与 /open/v1 两套接口概览、加协议、能耗/报表/AI、升级、文档地图、贡献
+- HANDBOOK 首页链接改为「英文 README / 中文 README / 英文索引」三入口
+- ROADMAP 补 2026-10-30 变更行
+- 校验：三份 README 围栏配平；英文 README 18 个相对链接、英文索引 9 个链接全部存在；
+  接口方法（local-subnets=GET）、dataType 六种、功能码 1/2/3/4 均与代码核对

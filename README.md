@@ -1,204 +1,251 @@
-# 知造 SIRP · AI 智慧工厂管理系统
+# KnowFab SIRP · AI-powered Smart Factory Management System
 
-**让机器自己报数，而不是让工人扫码。**
-设备直连采集 → 产线成品计数 → 自动入成品仓 → 进销存/财务一体 → 经营报表 → 全员 AI 助手，
-一套跑在**你自己服务器**上的系统。Java 17 + Spring Boot 3 + Vue 3 + MySQL，单 jar 交付；
-也有**自带 Java 和数据库的便携版**——目标机器什么都不用装，一条命令就跑起来。
+[English](README.md) · [简体中文](README.zh-CN.md)
 
-**四个硬特点**（都是车间现场逼出来的，不是功能清单凑数）：
+[![License: AGPL-3.0](https://img.shields.io/github/license/ZhuangRenyang/KnowFab-SIRP)](LICENSE)
+[![Latest release](https://img.shields.io/github/v/release/ZhuangRenyang/KnowFab-SIRP)](https://github.com/ZhuangRenyang/KnowFab-SIRP/releases)
+[![Java 17](https://img.shields.io/badge/Java-17-orange)](https://adoptium.net/)
 
-- **一条命令装完，不用先装环境**：自带 Java 17 + MariaDB，Windows / Linux 各一行命令，
-  不用 Docker、不用先装数据库，装完自动开浏览器；数据全在一个目录里，**拷走就是备份，删目录就是卸载**
-- **老设备也能自动报数**：网口 Modbus TCP、485 透传、继电器 + 行程开关三种接法，
-  没有网口的二十年老冲床，照样每产一件自动计一次
-- **产量直接变成库存**：机器计数即入成品仓，不靠工人扫码；采购 / 库存 / 销售 / 财务共用一套流水账，
-  "账实对不上"从根上不会发生
-- **升级不搬数据**：系统页点「检查更新」→ 下载验签 → 只换 jar，数据库原地不动；
-  私有化部署，数据不出厂
+**Let the machines report their own output — instead of asking workers to scan barcodes.**
+Device-level data acquisition → finished-goods counting per line → automatic stock-in → purchasing /
+inventory / sales / finance in one ledger → business reports → an AI assistant for the whole team.
+It runs on **your own server**. Java 17 + Spring Boot 3 + Vue 3 + MySQL, shipped as a single jar —
+or use the **self-contained portable build** that bundles Java and the database, so a bare machine
+can start it with one command.
 
-[AGPL-3.0 开源](LICENSE)（[商业授权](COMMERCIAL-LICENSE.md)） · [开发与运维手册](docs/HANDBOOK.md) · [路线图](docs/ROADMAP.md)
+**Four traits, all grown on the shop floor** (not features invented at a desk):
+
+- **One command, zero prerequisites.** Bundled Java 17 + MariaDB; a single line on Windows or Linux.
+  No Docker, no pre-installed database, and the browser opens by itself. Everything lives in one
+  directory — **copy it as a backup, delete it to uninstall**.
+- **Old machines can count too.** Three wiring paths: Ethernet Modbus TCP, RS-485 pass-through, and
+  relay + limit-switch pulse counting. A twenty-year-old press with no network port still gets one
+  count per part.
+- **Output becomes inventory automatically.** Every count posts into finished-goods stock — nobody
+  scans anything. Purchasing / inventory / sales / finance share one ledger, so "the books don't
+  match the warehouse" cannot happen by construction.
+- **Upgrades never migrate data.** System page → *Check for updates* → download + signature check →
+  swap the jar. The database stays untouched. Self-hosted, so data never leaves the plant.
 
 ---
 
-## 装起来：一条命令就够（也可以 Docker / 自带 MySQL）
+## Install: one command is enough (Docker / existing MySQL also supported)
 
-三种装法任选一种。**推荐第 ① 种**：目标机器什么都不用装，一行命令，首次约 3~5 分钟
-（要下 JRE 和数据库，之后秒起）；②③ 留给已经有服务器和数据库的场景。
+Three options — **① is the recommended one**: nothing to install on the target machine, a single
+command, roughly 3–5 minutes on first run (it downloads the JRE and the database; later starts are
+instant). ② and ③ are for machines that already have a server or a database.
 
-### ① 零环境（推荐）：一条命令，不用装 Java / MySQL / Docker
+### ① Zero-dependency (recommended): one command, no Java / MySQL / Docker
 
-**Windows**（Win10 及以上）：
+**Windows** (10 or later):
 
 ```powershell
-# 国内源（Gitee，推荐）
+# China (Gitee, recommended)
 powershell -ExecutionPolicy Bypass -Command "irm https://gitee.com/ZhuangRenyang/KnowFab-SIRP/raw/main/tools/portable/install.ps1 | iex"
 
-# 海外 / 备用源（GitHub）
+# Global / fallback (GitHub)
 powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/ZhuangRenyang/KnowFab-SIRP/main/tools/portable/install.ps1 | iex"
 ```
 
-**Linux / macOS Intel**：
+**Linux / macOS (Intel)**:
 
 ```bash
-# 国内源（Gitee，推荐）
+# China (Gitee, recommended)
 curl -fsSL https://gitee.com/ZhuangRenyang/KnowFab-SIRP/raw/main/tools/portable/install.sh | bash
 
-# 海外 / 备用源（GitHub）
+# Global / fallback (GitHub)
 curl -fsSL https://raw.githubusercontent.com/ZhuangRenyang/KnowFab-SIRP/main/tools/portable/install.sh | bash
 ```
 
-装完自动打开 `http://localhost:8080/app/`。**初始管理员密码在启动窗口打印**，同时写在 `data/initial-admin.txt`。
+When it finishes, `http://localhost:8080/app/` opens automatically. **The initial admin password is
+printed in the launcher window** and also written to `data/initial-admin.txt`.
 
-首次运行会自动下载 **JRE 17 + MariaDB 11.4 便携版**（约 130MB，走清华/阿里镜像），之后秒起：
+The first run downloads **JRE 17 + MariaDB 11.4 (portable)** — about 130 MB from Chinese mirrors —
+and every start after that takes seconds:
 
 | | |
 |---|---|
-| 数据库 | `127.0.0.1:3307`，独占端口，**不碰本机已有的 3306** |
-| 数据在哪 | 全在安装目录内（`runtime/data`）——**卸载 = 删目录，拷走 = 备份** |
-| 换端口 | `start.bat -Port 9000` / `PORT=9000 ./start.sh` |
-| 停服务 | `stop.bat` / `./stop.sh` |
+| Database | `127.0.0.1:3307` — dedicated port, **never touches an existing MySQL on 3306** |
+| Where data lives | Inside the install directory (`runtime/data`) — **copy = backup, delete = uninstall** |
+| Change the port | `start.bat -Port 9000` / `PORT=9000 ./start.sh` |
+| Stop it | `stop.bat` / `./stop.sh` |
 
-不想用命令行也行：到
-[Gitee Releases](https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases) 或
-[GitHub Releases](https://github.com/ZhuangRenyang/KnowFab-SIRP/releases) 下载
-`device-hub-<版本>-portable.zip` → 解压 → Windows 双击 `start.bat`，Linux 执行 `./start.sh`。
+Prefer no command line? Grab `device-hub-<version>-portable.zip` from
+[Gitee](https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases) or
+[GitHub](https://github.com/ZhuangRenyang/KnowFab-SIRP/releases) → unzip → double-click `start.bat`
+on Windows, or run `./start.sh` on Linux.
 
-> **完全离线**的车间电脑：在一台联网机器上跑一次（让它下完 `runtime/jre` 和 `runtime/mariadb`），
-> 整个目录拷过去就能用，之后不再联网。
-> 已经手动下好了 zip 的，也能让一键命令用本地包：
-> `KNOWFAB_PORTABLE_URL=D:\下载\device-hub-1.0.1-portable.zip`（Windows 用 `set` 设同名环境变量）。
-> 首次启动自带演示数据（4 台设备、能耗与报表曲线），不接真设备也能点着看。
+> **Fully offline shop-floor PC**: run it once on a connected machine (so it fetches `runtime/jre`
+> and `runtime/mariadb`), then copy the whole folder over — no further network access needed.
+> Already downloaded the zip? Point the installer at the local file:
+> `KNOWFAB_PORTABLE_URL=D:\Downloads\device-hub-1.0.1-portable.zip` (`set` the same env var on Windows).
+> First start ships with demo data (4 devices, energy and report curves), so you can click around
+> without any real hardware.
 
-> 安装脚本找包时**先问 Gitee、再问 GitHub**（两个源的包完全一致），哪个通走哪个；
-> 装到哪也能改：`KNOWFAB_DIR`（Windows 默认 `%LOCALAPPDATA%\KnowFabSIRP`，Linux 默认 `~/KnowFabSIRP`）。
+> The installer looks for the package on **Gitee first, then GitHub** (identical packages). It also
+> honours `KNOWFAB_DIR` — default `%LOCALAPPDATA%\KnowFabSIRP` on Windows, `~/KnowFabSIRP` on Linux.
 
-### ② Docker Compose（Linux 服务器，最省心）
+### ② Docker Compose (Linux server, least effort)
 
 ```bash
 git clone https://github.com/ZhuangRenyang/KnowFab-SIRP.git
 cd KnowFab-SIRP
-sudo bash deploy.sh        # 国内服务器：sudo bash deploy-cn.sh
+sudo bash deploy.sh        # in China: sudo bash deploy-cn.sh
 ```
 
-脚本自动生成随机数据库密码 → 起容器 → 建库 → 打印访问地址和初始密码。
+The script generates a random database password, starts the containers, creates the schema, and
+prints the access URL plus the initial password.
 
-### ③ 已有 MySQL 8 和 Java 17 的机器
+### ③ A machine that already has MySQL 8 and Java 17
 
 ```bash
-sudo bash install.sh --db-pass '你的MySQL密码'
+sudo bash install.sh --db-pass 'your-mysql-password'
 ```
 
-装到 `/opt/device-hub` 并注册 systemd 服务；换端口 `sudo PORT=9000 ./install.sh ...`，
-用 PostgreSQL 加 `--db pg`。也可以直接 `java -jar device-hub.jar` 裸跑
-（数据库密码走 `DEVICEHUB_DB_PASSWORD`，或者起来后在系统页「数据库密码」里改）。
+Installs to `/opt/device-hub` and registers a systemd service. Use `sudo PORT=9000 ./install.sh ...`
+to change the port, or `--db pg` for PostgreSQL. You can also skip the script and run
+`java -jar device-hub.jar` directly (database password via `DEVICEHUB_DB_PASSWORD`, or change it
+later on the System page).
 
 ---
 
-**不管哪种装法，装完第一件事**：打开 `http://<地址>:8080/app/` → 右上角**改掉初始密码**。
+**Whichever path you take, the first thing to do afterwards**: open `http://<host>:8080/app/` and
+**change the initial password** (top right).
 
-## 它解决什么问题
+## What problem it solves
 
-中小工厂想把产量、库存、能耗管起来，通常卡在三件事：
+Small and mid-sized factories trying to get output, inventory and energy under control usually hit
+three walls:
 
-1. **老设备没有网口**——只有继电器和报警蜂鸣器，MES 厂商说"换 PLC 才能接"
-2. **扫码报工靠人自觉**——工人忘扫、错扫，数据永远慢半拍
-3. **设备数据和生产数据两张皮**——产量在车间，库存在表格，账永远对不上
+1. **Legacy machines have no network port** — only relays and a buzzer; MES vendors say "replace the
+   PLC first".
+2. **Barcode reporting depends on discipline** — workers forget, or scan the wrong thing; the data is
+   always half a shift late.
+3. **Machine data and business data live in two worlds** — output on the floor, inventory in a
+   spreadsheet, and the books never reconcile.
 
-知造 SIRP 的答法：**三种接入路径覆盖任何年代的设备**（网口直连 / 485 透传 / 继电器+行程开关计数），
-机器每产一件自动进成品仓，采购-库存-销售-财务共用同一套流水账，数据不出你的机房。
+KnowFab SIRP's answer: **three integration paths cover machines of any vintage** (direct Ethernet,
+RS-485 pass-through, relay + limit-switch counting). Every finished part posts into stock
+automatically, purchasing–inventory–sales–finance share one ledger, and the data never leaves your
+server room.
 
-| 适合你 | 不适合你 |
+| A good fit if you… | Not for you if you… |
 |---|---|
-| 设备新旧混杂、想自动计数报产的工厂 | 需要工序级派工、计件工资的重流程 MES |
-| 数据敏感、必须私有化部署 | 想要开箱即用不装软件的（用 SaaS 更省心） |
-| 想要一套代码同时拿到设备数据 + ERP 账 | 只想要个看板（这个项目对你太重） |
+| run a mix of old and new machines and want automatic counting | need operation-level dispatching and piece-rate payroll (a heavyweight MES) |
+| must self-host because the data is sensitive | want zero-install software (SaaS is simpler) |
+| want machine data **and** ERP books from one system | only want a dashboard (this project is too much) |
 
-### 一张图看懂数据怎么流
+### How the data flows
 
-![知造 SIRP 架构](docs/screenshots/architecture.svg)
+![KnowFab SIRP architecture](docs/screenshots/architecture.svg)
 
-> 这张图里的每一条连线都是可运行的代码路径：模拟器自带，不接真设备也能走通全链路。
+> Every arrow in that diagram is a runnable code path — simulators are included, so the whole loop
+> works without any real hardware.
 
-## 先看一眼效果（不用接真设备）
+## See it working (no hardware required)
 
-便携版和 Docker 版**首次启动已自带演示数据**（4 台设备、能耗曲线、报表），打开就能点。
-想看完整的工厂演示数据（9 种商品、采购/销售各 7 种状态、45 天历史产量）——仓库克隆后跑：
+The portable and Docker builds **ship with demo data** (4 devices, energy curves, reports), so you
+can click through immediately. For the full factory dataset (9 SKUs, 7 states each for purchase and
+sales orders, 45 days of production history), clone the repo and run:
 
 ```bash
-python tools/seed-demo.py    # 灌一套仿真工厂数据
-python tools/smoke-all.py    # 99 项全功能接口冒烟，全绿说明装得没问题
+python tools/seed-demo.py    # seed a simulated factory
+python tools/smoke-all.py    # 99 API smoke checks — all green means the install is healthy
 ```
 
-| 产线管理（设备按工位编排） | 库存管理（余额/预警/流水） |
+| Production lines (devices by workstation) | Inventory (balances / alerts / movements) |
 |---|---|
-| ![产线](docs/screenshots/lines.png) | ![库存](docs/screenshots/stock.png) |
-| **财务管理（应收应付/账龄）** | **经营报表（进销存，可导出 Excel）** |
-| ![财务](docs/screenshots/finance.png) | ![报表](docs/screenshots/report.png) |
-| **机台产量（日/月/年/综合四张表）** | **出入库单据（7 类，来源可溯）** |
-| ![产量](docs/screenshots/prod-month.png) | ![单据](docs/screenshots/stock-bills.png) |
+| ![lines](docs/screenshots/lines.png) | ![stock](docs/screenshots/stock.png) |
+| **Finance (AR/AP, aging)** | **Business reports (stock movement, Excel export)** |
+| ![finance](docs/screenshots/finance.png) | ![report](docs/screenshots/report.png) |
+| **Machine output (day / month / year / all)** | **Stock documents (7 types, fully traceable)** |
+| ![output](docs/screenshots/prod-month.png) | ![bills](docs/screenshots/stock-bills.png) |
 
-## 功能全景
+## Feature map
 
-- **设备接入**：Modbus TCP/RTU/透传三路径；网段+从站双扫描发现设备；点表 JSON 化；
-  继电器+行程开关也能计数（老冲床救星）；模拟器自带，无设备也能开发
-- **生产**：机台计数（今日/本月/今年）、**日/月/年/综合四张产量图表**（纵轴整刻度，各表之和=KPI）；
-  产线编排（工位序号、指定成品计数点）；清零时刻按设备单独设置（两班倒友好）
-- **ERP**：采购（订单→入库→退货，进度从单据算）· 库存（余额/7 类单据/预警/盘点）·
-  销售（订单→发货→退货，发货前硬校验库存）· 财务（应收应付/收付款/账龄四档）
-  —— 库存只有唯一算法：有效明细累计，账实永远对得上
-- **报表**：经营概况 / 库存进销存（期初+入-出=期末）/ 出入库统计 / 采购销售执行，全部可导出 Excel；
-  单据带**业务日期**，月底补录不串月
-- **能耗**：分项计量、峰谷平尖电价、基本电费+需量双轨测算、15 分钟需量图（超合同红线）
-- **AI**：早报（每天 7:00 出，可推微信）；**全员 AI 助手**——自然语言查库存/产量/设备/订单/财务，
-  按角色收口（销售只能问库存），工具调用而非生成 SQL，接 DeepSeek/通义/Ollama 均可，可整体关闭
-- **角色**：管理员 / 车间主任 / 班组长 / **销售**（只读库存+可承诺量，无成本字段）四级权限
-- **交付**：**免环境便携版（自带 JRE + MariaDB，一条命令装完即用，Windows/Linux 通用）**、
-  一键安装脚本、Docker Compose、jar 内置数据库迁移、备份脚本、升级只换 jar 不动数据；
-  **自动升级免配置**——默认盯 Gitee Releases（国内直连，失败兜底 GitHub），有新版本系统页直接提示、一键下载验签升级
+- **Device connectivity** — Modbus TCP / RTU / pass-through; subnet + slave-id double scan for
+  discovery; point tables as JSON; relay + limit-switch counting (the old-press lifesaver); a
+  built-in simulator so you can develop without hardware
+- **Production** — per-machine counters (today / this month / this year); **four output charts**
+  (day / month / year / all; integer axes, and the sum of the parts equals the KPI); production-line
+  layout with workstation order and a designated finished-goods counting point; per-device reset
+  hour (two-shift friendly)
+- **ERP** — purchasing (order → receipt → return, progress derived from documents) · inventory
+  (balances / 7 document types / alerts / stocktake) · sales (order → shipment → return, hard stock
+  check before shipment) · finance (AR/AP, receipts and payments, four aging buckets) — inventory
+  has exactly one algorithm (sum of valid movements), so the books always match the warehouse
+- **Reports** — business overview / inventory movement (opening + in − out = closing) /
+  inbound-outbound statistics / purchasing and sales execution, all exportable to Excel; documents
+  carry a **business date**, so month-end back-filling never leaks into the wrong month
+- **Energy** — sub-metering, peak / flat / valley / super-peak tariffs, dual-track basic-charge vs.
+  demand billing, 15-minute demand chart with a contract red line
+- **AI** — a daily briefing at 07:00 (optionally pushed to WeCom), plus an **AI assistant for the
+  whole team**: ask about inventory / output / devices / orders / finance in natural language,
+  scoped by role (sales can only ask about stock), implemented as tool calls rather than generated
+  SQL, works with DeepSeek / Qwen / Ollama, and can be switched off entirely
+- **Roles** — four levels: admin / plant manager / team lead / **sales** (read-only stock plus
+  available-to-promise, no cost fields)
+- **Delivery** — **self-contained portable build (bundled JRE + MariaDB, one command, Windows and
+  Linux)**, one-click install script, Docker Compose, built-in database migrations, backup script,
+  upgrades that only replace the jar; **zero-config auto-update** watches Gitee Releases by default
+  (direct in China, GitHub as fallback) and lets the System page download, verify and install a new
+  version in one click
 
-## 和同类项目的差异
+## How it differs
 
-| | 知造 SIRP | jshERP | 快工单等 SaaS MES |
+| | KnowFab SIRP | jshERP | SaaS MES (e.g. KuaiGongDan) |
 |---|---|---|---|
-| 设备数据 | **协议级直连+老设备计数** | 无 | 扫码报工为主 |
-| 生产↔库存 | 计数自动入库，单据闭环 | 手工单据 | 工单驱动 |
-| 上手 | **一行命令，自带 Java + 数据库**（不用装 Docker/MySQL） | 需自备 JDK + MySQL | 注册即用，数据在云端 |
-| 部署 | 私有化一键装，数据不出厂 | 需自行部署 | 云端 SaaS |
-| 开源 | AGPL-3.0 + 商业双轨 | AGPL-3.0 | 不开源 |
+| Machine data | **protocol-level direct + legacy counting** | none | mostly barcode reporting |
+| Production ↔ inventory | counting posts stock automatically, documents close the loop | manual documents | work-order driven |
+| Getting started | **one command, bundled Java + database** (no Docker/MySQL) | bring your own JDK + MySQL | sign up, data lives in the cloud |
+| Deployment | self-hosted, one command, data stays inside the plant | deploy it yourself | cloud SaaS |
+| License | AGPL-3.0 + commercial | AGPL-3.0 | closed source |
 
-## 为什么这个项目"懂设备"
+## Why this project actually understands equipment
 
-作者不是先写代码再想象工厂——是先在工厂干了 4.5 年电工（非标自动化方向），
-跑遍多个品牌机器的厂家现场，后来才转的全栈开发（2.5 年）：
+The author didn't imagine a factory and then write code. He spent 4.5 years as an electrician in
+factories (non-standard automation), visiting machine builders of many brands, and only then moved
+into full-stack development (2.5 years):
 
-- **继电器+行程开关计数这条路径**，来自电工本行的常识：哪根线有辅助触点、
-  蜂鸣器信号怎么取，这些是"现场怎么接线"的问题，不是"协议怎么解析"的问题
-- **清零时刻按设备单独设置、两班倒口径**，来自产线上真实的交接班习惯
-- **账龄、需量、进销存恒等式**，来自"账对不上厂里是要吵架的"这种朴素压力
+- **The relay + limit-switch counting path** comes from an electrician's everyday knowledge: which
+  wire carries an auxiliary contact, how to tap a buzzer signal. Those are "how do I wire it on
+  site" questions, not "how do I parse the protocol" questions.
+- **Per-device reset hours and two-shift semantics** come from real handover habits on the line.
+- **Aging buckets, demand billing and the stock-movement identity** come from the very plain
+  pressure that "if the books don't match, the plant argues".
 
-所以这个项目的功能清单里几乎没有"想象出来的功能"，全是现场长出来的。
-设备接入、改造方案讨论欢迎邮件交流。
+That is why the feature list contains almost no invented features — they all grew on the shop floor.
+Device integration and retrofit questions are welcome by email.
 
-## 授权
+## License
 
-代码以 [AGPL-3.0](LICENSE) 开源：自己工厂用、学习、二开并开源——**免费**；
-闭源商用 / SaaS / 白标——需[商业授权](COMMERCIAL-LICENSE.md)。
+The code is open source under [AGPL-3.0](LICENSE): running it in your own factory, learning from it,
+or forking it and keeping the fork open is **free**. Closed-source commercial use, SaaS or white
+labelling requires a [commercial license](COMMERCIAL-LICENSE.md).
 
-**联系**：设备接入与改造方案讨论、部署实施、商业授权——
-996491835@qq.com（发邮件前先看 [HANDBOOK](docs/HANDBOOK.md)，大部分答案在那里）。
+**Contact** — device integration, retrofit design, deployment, commercial licensing:
+996491835@qq.com (please read the [handbook](docs/HANDBOOK.md) first; most answers are already
+there).
 
-## 文档
+## Documentation
 
-| 文档 | 内容 |
+| Document | What is inside |
 |---|---|
-| [docs/HANDBOOK.md](docs/HANDBOOK.md) | 开发与运维手册：骨架设计、接真设备、加协议、部署升级、接口清单 |
-| [tools/portable/README-portable.txt](tools/portable/README-portable.txt) | 便携版说明：目录结构、换端口、离线部署、备份与迁移 |
-| [docs/ROADMAP.md](docs/ROADMAP.md) | 路线图与完整变更记录（每条功能都带实测数据） |
-| [docs/COMPETITORS.md](docs/COMPETITORS.md) | 竞品对比与话术 |
-| [docs/DEMO.md](docs/DEMO.md) | 演示指南：一键灌数据 + 推荐巡览路径 |
-| [docs/RELEASE.md](docs/RELEASE.md) | 发版流程：打 tag 传 Release，客户机点一下"检查更新"即可升级 |
+| [docs/README.en.md](docs/README.en.md) | English docs index: quickstart, deployment, device integration, API overview |
+| [docs/HANDBOOK.md](docs/HANDBOOK.md) | Development and operations handbook *(Chinese)*: architecture, connecting real devices, adding protocols, deployment and upgrades, API list |
+| [tools/portable/README-portable.txt](tools/portable/README-portable.txt) | Portable build guide *(Chinese)*: layout, ports, offline install, backup and migration |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | Roadmap and full changelog *(Chinese; every entry carries measured results)* |
+| [docs/COMPETITORS.md](docs/COMPETITORS.md) | Competitor comparison and talk tracks *(Chinese)* |
+| [docs/DEMO.md](docs/DEMO.md) | Demo guide: seeding data and a recommended tour *(Chinese)* |
+| [docs/RELEASE.md](docs/RELEASE.md) | Release process: tag → upload release assets → clients upgrade via *Check for updates* *(Chinese)* |
 
-## 参与贡献
+## Contributing
 
-Issue / PR 都欢迎。改代码前先跑 `python tools/smoke-all.py` 与 `python tools/selftest.py`，
-提交时保持全绿——这个项目的测试纪律是"每完成一个功能：播种 → 冒烟 → 契约回归"。
+Issues and pull requests are welcome. Before changing code, run `python tools/smoke-all.py` and
+`python tools/selftest.py` and keep them green — the project's testing discipline is "for every
+feature: seed → smoke → contract regression".
+
+---
+
+**Translations**: [English](README.md) · [简体中文](README.zh-CN.md) — the English README is the
+canonical one. Want another language? Open an issue or send a pull request.
