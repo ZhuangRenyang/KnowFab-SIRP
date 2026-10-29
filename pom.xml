@@ -13,7 +13,7 @@
 
     <groupId>com.factory</groupId>
     <artifactId>device-hub</artifactId>
-    <version>1.0.0</version>
+    <version>1.0.1</version>
     <name>device-hub</name>
     <description>工厂设备联网采集与监控脚手架</description>
 
