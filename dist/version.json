@@ -1,5 +1,6 @@
 {
-  "version": "1.0.0",
-  "url": "https://github.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.0/device-hub-1.0.0.zip",
-  "sha256": "879c177fee6e2fe94238b231abf4f3b0ce5f4dcb22c4988295b07a37862c9a4a"
+  "version": "1.0.1",
+  "notes": "设备发现修复；设备模板（内置+我的模板）；扫描智能点表与角色推测；产量统计实时化；图表标题；数据库密码后台修改",
+  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.1/device-hub-1.0.1.zip",
+  "sha256": "09f6feec1365127ed32178f618a6c2f28ab91bfcb4d87c5f2a801602f1774954"
 }
