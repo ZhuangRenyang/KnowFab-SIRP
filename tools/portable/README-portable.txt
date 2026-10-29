@@ -18,6 +18,15 @@ Linux  ：终端里执行 ./start.sh
 
 以后再启动就很快（只启动，不再下载）。
 
+一条命令装（可选，省去手动下载解压）：
+  Windows：powershell -ExecutionPolicy Bypass -Command "irm https://gitee.com/ZhuangRenyang/KnowFab-SIRP/raw/main/tools/portable/install.ps1 | iex"
+  Linux  ：curl -fsSL https://gitee.com/ZhuangRenyang/KnowFab-SIRP/raw/main/tools/portable/install.sh | bash
+  （GitHub 备用源：把域名换成 raw.githubusercontent.com，路径不变）
+已手动下载 zip 的内网/离线机器，可让一键脚本直接用本地包：
+  Windows：set KNOWFAB_PORTABLE_URL=D:\下载\device-hub-1.0.1-portable.zip
+  Linux  ：KNOWFAB_PORTABLE_URL=/tmp/device-hub-1.0.1-portable.zip bash install.sh
+装到什么目录也能改：KNOWFAB_DIR（Windows 默认 %LOCALAPPDATA%\KnowFabSIRP，Linux 默认 ~/KnowFabSIRP）
+
 二、登录
 --------
 账号：admin

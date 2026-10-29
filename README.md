@@ -36,16 +36,24 @@
 
 ### ① 零环境：一条命令，不用装 Java / MySQL / Docker
 
-**Windows**（Win10 及以上，PowerShell）：
+**Windows**（Win10 及以上）：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -Command "irm https://gitee.com/ZhuangRenyang/KnowFab-SIRP/raw/main/device-hub/tools/portable/install.ps1 | iex"
+# 国内源（Gitee，推荐）
+powershell -ExecutionPolicy Bypass -Command "irm https://gitee.com/ZhuangRenyang/KnowFab-SIRP/raw/main/tools/portable/install.ps1 | iex"
+
+# 海外 / 备用源（GitHub）
+powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/ZhuangRenyang/KnowFab-SIRP/main/tools/portable/install.ps1 | iex"
 ```
 
 **Linux / macOS Intel**：
 
 ```bash
-curl -fsSL https://gitee.com/ZhuangRenyang/KnowFab-SIRP/raw/main/device-hub/tools/portable/install.sh | bash
+# 国内源（Gitee，推荐）
+curl -fsSL https://gitee.com/ZhuangRenyang/KnowFab-SIRP/raw/main/tools/portable/install.sh | bash
+
+# 海外 / 备用源（GitHub）
+curl -fsSL https://raw.githubusercontent.com/ZhuangRenyang/KnowFab-SIRP/main/tools/portable/install.sh | bash
 ```
 
 装完自动打开 `http://localhost:8080/app/`。**初始管理员密码在启动窗口打印**，同时写在 `data/initial-admin.txt`。
@@ -59,14 +67,19 @@ curl -fsSL https://gitee.com/ZhuangRenyang/KnowFab-SIRP/raw/main/device-hub/tool
 | 换端口 | `start.bat -Port 9000` / `PORT=9000 ./start.sh` |
 | 停服务 | `stop.bat` / `./stop.sh` |
 
-不想用命令行也行：到 [Releases](https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases) 下
+不想用命令行也行：到
+[Gitee Releases](https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases) 或
+[GitHub Releases](https://github.com/ZhuangRenyang/KnowFab-SIRP/releases) 下载
 `device-hub-<版本>-portable.zip` → 解压 → Windows 双击 `start.bat`，Linux 执行 `./start.sh`。
 
 > **完全离线**的车间电脑：在一台联网机器上跑一次（让它下完 `runtime/jre` 和 `runtime/mariadb`），
 > 整个目录拷过去就能用，之后不再联网。
+> 已经手动下好了 zip 的，也能让一键命令用本地包：
+> `KNOWFAB_PORTABLE_URL=D:\下载\device-hub-1.0.1-portable.zip`（Windows 用 `set` 设同名环境变量）。
 > 首次启动自带演示数据（4 台设备、能耗与报表曲线），不接真设备也能点着看。
 
-> 安装脚本找包时**先问 Gitee、再问 GitHub**（两个源的包完全一致），哪个通走哪个。
+> 安装脚本找包时**先问 Gitee、再问 GitHub**（两个源的包完全一致），哪个通走哪个；
+> 装到哪也能改：`KNOWFAB_DIR`（Windows 默认 `%LOCALAPPDATA%\KnowFabSIRP`，Linux 默认 `~/KnowFabSIRP`）。
 
 ### ② Docker Compose（Linux 服务器，最省心）
 
