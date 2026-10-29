@@ -23,19 +23,9 @@
    topics：`mes` `erp` `modbus` `iot` `spring-boot` `vue3` `factory` `scada`
 3. **About 页链接**：指向 README 或 DEMO.md
 
-## 你本人要决策的一项 ❗
+## 已决策 ✅
 
-- **git 作者邮箱是 QQ 邮箱**（`996491835@qq.com`），开源后每一笔提交公开可见。
-  - 不介意 → 什么都不用做（还能当联系方式）
-  - 介意 → 在一个**新克隆**里执行（34 个提交，很快）：
-    ```bash
-    git clone https://github.com/ZhuangRenyang/KnowFab-SIRP.git rewrite && cd rewrite
-    git config user.name "你的GitHub名"
-    git config user.email "你的GitHub-noreply邮箱"   # GitHub → Settings → Emails 里那个 @users.noreply.github.com
-    git filter-repo --email-callback 'return b"你的GitHub-noreply邮箱" if email == b"996491835@qq.com" else email'
-    git push --force
-    ```
-    （需要 `pip install git-filter-repo`；force push 会覆盖远端，做之前确认没有别人在克隆）
+- **git 作者邮箱**（`996491835@qq.com`）：**保留公开**，兼作联系方式——README 与 COMMERCIAL-LICENSE 均已署名，无需改写历史。
 
 ## 日常维护约定
 

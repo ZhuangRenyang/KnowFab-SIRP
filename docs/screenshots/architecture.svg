@@ -1,0 +1,65 @@
+<svg viewBox="0 0 680 560" width="100%" xmlns="http://www.w3.org/2000/svg" role="img">
+  <title>知造 SIRP 架构：设备三路径接入到 ERP 闭环</title>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="#5F5E5A" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+  <style>
+    .th{font:500 14px -apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;fill:#2C2C2A}
+    .ts{font:400 12px -apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;fill:#5F5E5A}
+    .cap{font:400 12px -apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;fill:#888780}
+  </style>
+  <text class="cap" x="40" y="26">① 任何年代的设备，三种接法</text>
+  <g>
+    <rect x="40" y="38" width="180" height="64" rx="10" fill="#F1EFE8" stroke="#B4B2A9" stroke-width="0.5"/>
+    <text class="th" x="130" y="60" text-anchor="middle" dominant-baseline="central">网口设备</text>
+    <text class="ts" x="130" y="82" text-anchor="middle" dominant-baseline="central">PLC · 数控 · 伺服（Modbus TCP）</text>
+    <rect x="250" y="38" width="180" height="64" rx="10" fill="#F1EFE8" stroke="#B4B2A9" stroke-width="0.5"/>
+    <text class="th" x="340" y="60" text-anchor="middle" dominant-baseline="central">老设备 + 485 网关</text>
+    <text class="ts" x="340" y="82" text-anchor="middle" dominant-baseline="central">Modbus RTU 透传</text>
+    <rect x="460" y="38" width="180" height="64" rx="10" fill="#F1EFE8" stroke="#B4B2A9" stroke-width="0.5"/>
+    <text class="th" x="550" y="60" text-anchor="middle" dominant-baseline="central">继电器 + 行程开关</text>
+    <text class="ts" x="550" y="82" text-anchor="middle" dominant-baseline="central">DI 计数（老冲床也能接）</text>
+  </g>
+  <path d="M130 106V132" fill="none" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <path d="M340 106V132" fill="none" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <path d="M550 106V132" fill="none" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <rect x="40" y="136" width="600" height="52" rx="10" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+  <text class="th" x="340" y="156" text-anchor="middle" dominant-baseline="central">② 采集引擎：三路径轮询 · 网段/从站自动扫描 · 点表 JSON · 自带模拟器</text>
+  <text class="ts" x="340" y="176" text-anchor="middle" dominant-baseline="central">连续寄存器整帧读取、CRC 校验、断线补记</text>
+  <path d="M340 192V218" fill="none" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <rect x="40" y="222" width="600" height="52" rx="10" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/>
+  <text class="th" x="340" y="242" text-anchor="middle" dominant-baseline="central">③ 产线编排 → 成品计数（可指定"最后一台机器 = 整线产量"）</text>
+  <text class="ts" x="340" y="262" text-anchor="middle" dominant-baseline="central">每产一件，自动开入库单进成品仓 · 清零时刻按设备单独设置（两班倒友好）</text>
+  <path d="M340 278V304" fill="none" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <rect x="40" y="308" width="600" height="108" rx="10" fill="#FFFFFF" stroke="#B4B2A9" stroke-width="0.5"/>
+  <text class="th" x="340" y="328" text-anchor="middle" dominant-baseline="central">④ ERP：同一套单据流水（库存 = 有效明细累计，账实永远对得上）</text>
+  <g>
+    <rect x="52" y="348" width="136" height="48" rx="8" fill="#E6F1FB" stroke="#378ADD" stroke-width="0.5"/>
+    <text class="th" x="120" y="372" text-anchor="middle" dominant-baseline="central">采购</text>
+    <text class="ts" x="120" y="388" text-anchor="middle" dominant-baseline="central">订单→入库→退货</text>
+    <rect x="200" y="348" width="136" height="48" rx="8" fill="#E6F1FB" stroke="#378ADD" stroke-width="0.5"/>
+    <text class="th" x="268" y="372" text-anchor="middle" dominant-baseline="central">库存</text>
+    <text class="ts" x="268" y="388" text-anchor="middle" dominant-baseline="central">余额 · 预警 · 盘点</text>
+    <rect x="348" y="348" width="136" height="48" rx="8" fill="#E6F1FB" stroke="#378ADD" stroke-width="0.5"/>
+    <text class="th" x="416" y="372" text-anchor="middle" dominant-baseline="central">销售</text>
+    <text class="ts" x="416" y="388" text-anchor="middle" dominant-baseline="central">发货前校验库存</text>
+    <rect x="496" y="348" width="136" height="48" rx="8" fill="#E6F1FB" stroke="#378ADD" stroke-width="0.5"/>
+    <text class="th" x="564" y="372" text-anchor="middle" dominant-baseline="central">财务</text>
+    <text class="ts" x="564" y="388" text-anchor="middle" dominant-baseline="central">应收应付 · 账龄</text>
+  </g>
+  <path d="M340 420V446" fill="none" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text class="cap" x="40" y="466">⑤ 四个出口</text>
+  <g>
+    <rect x="40" y="476" width="180" height="48" rx="8" fill="#FAEEDA" stroke="#BA7517" stroke-width="0.5"/>
+    <text class="th" x="130" y="500" text-anchor="middle" dominant-baseline="central">Web · 四级角色</text>
+    <rect x="232" y="476" width="130" height="48" rx="8" fill="#FAEEDA" stroke="#BA7517" stroke-width="0.5"/>
+    <text class="th" x="297" y="500" text-anchor="middle" dominant-baseline="central">车间大屏</text>
+    <rect x="374" y="476" width="130" height="48" rx="8" fill="#FAEEDA" stroke="#BA7517" stroke-width="0.5"/>
+    <text class="th" x="439" y="500" text-anchor="middle" dominant-baseline="central">AI 助手</text>
+    <rect x="516" y="476" width="124" height="48" rx="8" fill="#FAEEDA" stroke="#BA7517" stroke-width="0.5"/>
+    <text class="th" x="578" y="500" text-anchor="middle" dominant-baseline="central">MES · Excel</text>
+  </g>
+  <text class="cap" x="340" y="548" text-anchor="middle">AGPL-3.0 开源 · 私有化部署 · 数据不出厂 · 一条命令安装</text>
+</svg>
