@@ -47,10 +47,6 @@ public class SettingStore {
     private static final String G_DEMO = "演示数据";
 
     private static final List<SettingDef> DEFS = List.of(
-            SettingDef.area(UPDATE_SOURCES, G_UPDATE, "更新源",
-                    "system.update.sources", "",
-                    "留空 = 默认盯 GitHub Releases（github://ZhuangRenyang/KnowFab-SIRP），有新版本系统页直接提示升级。"
-                            + "国内网络不稳可填镜像：version.json 所在目录或完整地址，多个用逗号或换行分隔，按顺序试。"),
             SettingDef.bool(UPDATE_ALLOW_WEB_RESTART, G_UPDATE, "允许网页上一键重启",
                     "system.update.allow-web-restart", "false", SettingDef.LIVE,
                     "打开后，「应用升级」按钮能直接重启服务，客户不用登服务器敲命令。"
@@ -201,6 +197,9 @@ public class SettingStore {
         out.add(readonly("数据库", dbLabel(),
                 "库地址和密码在 $DIR/application-db.yml（或 application.yml）。换库要停服务、导数据，"
                         + "不能在线切——半路切过去表结构对不上，数据就废了。"));
+        out.add(readonly("更新源", "gitee://ZhuangRenyang/KnowFab-SIRP",
+                "国内镜像已固定为 Gitee（Gitee Releases，失败自动兜底 GitHub），页面不再提供输入框。"
+                        + "两个源都连不上时用「上传并校验」离线升级，不受影响。"));
         out.add(readonly("升级暂存目录", env.getProperty("system.update.dir", "./updates"),
                 "和 systemd 的启动前脚本约定死了（bin/apply-pending.sh 读这个目录），改了升级会失效。"));
         out.add(readonly("采集数据目录", "./data",

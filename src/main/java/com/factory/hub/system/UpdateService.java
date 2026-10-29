@@ -48,11 +48,14 @@ public class UpdateService {
     private static final Logger log = LoggerFactory.getLogger(UpdateService.class);
 
     /**
-     * 未配置更新源时的默认源：开源仓库的 GitHub Releases。
-     * 管理端发版流程见 docs/RELEASE.md —— 打 tag、上传 device-hub-*.zip 即可被所有客户机看到。
-     * 国内网络连不上 api.github.com 时，在「系统设置 → 更新源」填镜像地址（version.json 模式）。
+     * 默认更新源（2026-10-29 用户口径：国内镜像固定 Gitee，不再让现场填输入框）。
+     * 主源走 Gitee Releases（国内直连快），GitHub 仅作兜底；两者都连不上就用「上传升级包」。
+     * 发版流程见 docs/RELEASE.md —— 打 tag、上传 device-hub-*.zip 附件即可。
      */
-    public static final String DEFAULT_SOURCE = "github://ZhuangRenyang/KnowFab-SIRP";
+    public static final String DEFAULT_SOURCE = "gitee://ZhuangRenyang/KnowFab-SIRP";
+
+    /** 兜底源：Gitee 不可用（未发版/被限流）时再试 GitHub */
+    private static final String FALLBACK_SOURCE = "github://ZhuangRenyang/KnowFab-SIRP";
 
     /** 升级包绝对不允许碰的东西：客户数据和授权 */
     private static final List<String> FORBIDDEN_PREFIX = List.of("data/", "license/", "../");
@@ -260,7 +263,7 @@ public class UpdateService {
         if (list.isEmpty()) {
             out.put("ok", false);
             out.put("reachable", false);
-            out.put("message", "没有任何更新源。到「系统 → 系统设置 → 更新源」至少保留默认的 " + DEFAULT_SOURCE);
+            out.put("message", "没有可用更新源（内置 " + DEFAULT_SOURCE + "）。请检查网络，或用「上传并校验」离线升级。");
             return out;
         }
 
@@ -300,11 +303,20 @@ public class UpdateService {
             out.put("message", "有新版本 " + hit.get("latest") + "（当前 " + versionService.version() + "）");
         } else {
             out.put("hasUpdate", false);
-            out.put("message", out.get("reachable").equals(true)
-                    ? "已是最新版本 " + versionService.version()
-                    : "所有更新源都连不上（默认源是 GitHub Releases，国内网络可能不稳）。"
-                            + "可以在「系统设置 → 更新源」填国内镜像（version.json 地址），"
-                            + "或手工拷贝升级包用「上传并校验」。");
+            // 区分三种情况：已是新版 / 连得上但仓库还没发版 / 真连不上
+            boolean answeredNoRelease = tried.stream().anyMatch(x -> {
+                String e = String.valueOf(x.get("error"));
+                return e.contains("还没有发布过版本");
+            });
+            if (Boolean.TRUE.equals(out.get("reachable"))) {
+                out.put("message", "已是最新版本 " + versionService.version());
+            } else if (answeredNoRelease) {
+                out.put("message", "已连上 Gitee 更新源，但仓库还没有发布升级包"
+                        + "（发版后这里会自动提示；现在可用「上传并校验」离线升级）");
+            } else {
+                out.put("message", "更新源都连不上（内置 Gitee，失败兜底 GitHub）。"
+                        + "可稍后重试，或用「上传并校验」离线升级。");
+            }
         }
         return out;
     }
@@ -322,9 +334,14 @@ public class UpdateService {
     private Map<String, Object> probeSource(String base) throws Exception {
         Map<String, Object> r = new LinkedHashMap<>();
         r.put("source", base);
-        if (base.startsWith("github://")) {
-            String repo = base.substring("github://".length()).trim();
-            String url = "https://api.github.com/repos/" + repo + "/releases/latest";
+        boolean gitee = base.startsWith("gitee://");
+        if (gitee || base.startsWith("github://")) {
+            String repo = base.substring((gitee ? "gitee://" : "github://").length()).trim();
+            // Gitee 的 Releases API 与 GitHub 字段基本一致（tag_name/body/assets.name/
+            // assets.browser_download_url），解析逻辑共用
+            String url = gitee
+                    ? "https://gitee.com/api/v5/repos/" + repo + "/releases/latest"
+                    : "https://api.github.com/repos/" + repo + "/releases/latest";
             try {
                 com.fasterxml.jackson.databind.JsonNode root = mapper.readTree(httpGet(url, 8000));
                 String tag = root.path("tag_name").asText("");
@@ -349,7 +366,7 @@ public class UpdateService {
                 }
             } catch (IllegalStateException e) {
                 if (String.valueOf(e.getMessage()).contains("404")) {
-                    r.put("error", "仓库还没有发布过版本（GitHub Releases 为空）");
+                    r.put("error", "仓库还没有发布过版本（" + (gitee ? "Gitee" : "GitHub") + " Releases 为空）");
                 } else {
                     throw e;
                 }
@@ -403,20 +420,9 @@ public class UpdateService {
     }
 
     private List<String> sourceList() {
-        List<String> out = new ArrayList<>();
-        String sources = settings.get(SettingStore.UPDATE_SOURCES);
-        if (sources == null || sources.isBlank()) {
-            // 开源版免配置：没填更新源就默认盯 GitHub Releases，
-            // 有新 Release（含 device-hub-*.zip 附件）就能在系统页一键升级
-            return List.of(DEFAULT_SOURCE);
-        }
-        for (String s : sources.split("[,\\n\\r]+")) {
-            String v = s.trim();
-            if (!v.isEmpty()) {
-                out.add(v);
-            }
-        }
-        return out;
+        // 固定主源 + 兜底（2026-10-29）：国内现场优先 Gitee，连不上再试 GitHub，
+        // 两个都不可用时页面提示用「上传并校验」离线升级。不再读「更新源」设置项。
+        return List.of(DEFAULT_SOURCE, FALLBACK_SOURCE);
     }
 
     private String httpGet(String url, int timeoutMs) throws Exception {

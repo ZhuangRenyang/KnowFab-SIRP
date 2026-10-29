@@ -1,7 +1,7 @@
 <template>
   <div class="panel">
     <div class="p-head"><h3>检查更新</h3>
-      <span>默认盯 GitHub Releases，无需配置；国内不稳可换镜像</span></div>
+      <span>默认走 Gitee Releases（国内直连）· 失败自动兜底 GitHub · 都不可用可离线上传</span></div>
     <div class="row">
       <el-button :loading="checking" @click="check">{{ checking ? '检查中…' : '检查更新' }}</el-button>
       <span class="msg" v-html="checkMsg"></span>

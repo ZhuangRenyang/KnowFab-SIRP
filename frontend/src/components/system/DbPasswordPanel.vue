@@ -4,6 +4,12 @@
       <span class="hint">修改 devicehub 账号的 MySQL 密码，改完需重启系统</span>
     </div>
 
+    <div class="tip">
+      <b>默认账号：</b><code>devicehub</code>
+      <b>默认密码：</b><code>DeviceHub2026</code>
+      <span>（装好后没改过，就在「当前密码」里填这个；改过则填你记录的新密码）</span>
+    </div>
+
     <el-form label-width="110px" class="dbform" @submit.prevent>
       <el-form-item label="当前密码">
         <el-input v-model="oldPwd" type="password" show-password
@@ -71,6 +77,17 @@ async function submit() {
 .p-head { display: flex; align-items: baseline; gap: var(--space-3); margin-bottom: var(--space-3); }
 .p-head h3 { margin: 0; font-size: var(--text-md); font-weight: 600; }
 .hint { font-size: var(--text-xs); color: var(--muted); }
+.tip {
+  margin: 4px 0 var(--space-3); padding: 8px 12px; border-radius: var(--radius-sm);
+  background: var(--bg-soft, var(--surface-2)); color: var(--fg-2); font-size: var(--text-xs);
+  display: flex; gap: 6px; flex-wrap: wrap; align-items: baseline;
+}
+.tip b { font-weight: 500; color: var(--muted); }
+.tip code {
+  font-family: var(--font-mono); font-size: var(--text-xs);
+  background: var(--surface); padding: 1px 6px; border-radius: 4px; color: var(--fg);
+}
+.tip span { color: var(--muted); }
 .dbform { max-width: 560px; }
 .msg { margin-left: var(--space-3); font-size: var(--text-xs); color: var(--muted); }
 .desc { font-size: var(--text-xs); color: var(--meta); line-height: 1.7; }
