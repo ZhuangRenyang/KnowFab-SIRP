@@ -15,7 +15,7 @@ first hour: installing, connecting a machine, and where the API lives.
 
 ## 1. Install
 
-Three supported paths, all covered in the [main README](../README.md#install-one-command-is-enough-docker--existing-mysql-also-supported):
+Three supported paths, all covered in the [main README](../README.md#install):
 
 | Path | Command | When to use |
 |---|---|---|

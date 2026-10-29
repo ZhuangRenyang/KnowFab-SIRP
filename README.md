@@ -29,7 +29,7 @@ can start it with one command.
 
 ---
 
-## Install: one command is enough (Docker / existing MySQL also supported)
+## Install
 
 Three options — **① is the recommended one**: nothing to install on the target machine, a single
 command, roughly 3–5 minutes on first run (it downloads the JRE and the database; later starts are
