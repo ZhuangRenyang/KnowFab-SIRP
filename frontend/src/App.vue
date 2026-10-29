@@ -29,8 +29,9 @@
       </nav>
 
       <div class="foot">
-        <a class="foot-link" href="/" title="切换前的旧版界面（迁移期临时保留）">旧版</a>
-        <a class="foot-link" href="/screen.html" target="_blank" title="打开车间大屏（不需要登录）">大屏</a>
+        <!-- 收缩态只留图标：56px 宽度塞不下文字链接，会把主题/收起两个图标挤出容器外 -->
+        <a v-if="!collapsed" class="foot-link" href="/" title="切换前的旧版界面（迁移期临时保留）">旧版</a>
+        <a v-if="!collapsed" class="foot-link" href="/screen.html" target="_blank" title="打开车间大屏（不需要登录）">大屏</a>
         <el-icon class="foot-icon" :title="theme.light ? '切换深色' : '切换浅色'" @click="theme.toggle()">
           <Moon v-if="theme.light" /><Sunny v-else />
         </el-icon>
