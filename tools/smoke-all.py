@@ -583,7 +583,7 @@ def sec_write(skus, whs):
         check(s, "预收登记 → 作废", ok, no or r)
 
     st, r = req("POST", "/api/erp/stock/bills", {
-        "type": "OTHER_IN", "warehouse_id": wh_id, "remark": "【冒烟】入库并作废",
+        "type": "OTHER_IN", "warehouseId": wh_id, "remark": "【冒烟】入库并作废",
         "lines": [{"skuId": sku_id, "qty": 1}]})
     ok = isinstance(r, dict) and r.get("ok")
     no = r.get("billNo") if ok else None
