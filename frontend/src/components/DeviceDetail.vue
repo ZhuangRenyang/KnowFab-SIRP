@@ -37,12 +37,12 @@
 
     <div class="pts">
       <div v-for="p in d.points" :key="p.pointKey ?? p.key" class="pt" :class="{ bad: p.quality !== 'GOOD' }">
-        <!-- 产量点位显示「今日产量」为主，括号里附寄存器累计值：
-             老厂 PLC 寄存器里是几十万的历史累计，直接当产量展示会误导 -->
+        <!-- 产量点位只显示「今日产量」：老厂 PLC 寄存器里是几十万的历史累计，
+             直接当产量展示会误导 -->
         <span>{{ p.role === 'count' ? '今日产量' : p.name }}</span>
         <b class="num">
           <template v-if="p.role === 'count'">
-            {{ fmt(d.todayOutput ?? 0) + (p.unit || '') }}<em class="cum">累计 {{ fmt(p.value) }}</em>
+            {{ fmt(d.todayOutput ?? 0) + (p.unit || '') }}
           </template>
           <template v-else>{{ p.quality === 'GOOD' ? fmt(p.value) + (p.unit || '') : '--' }}</template>
         </b>
@@ -147,7 +147,6 @@ async function toggleKey(enabled: boolean) {
 }
 .pt span { font-size: var(--text-2xs); color: var(--muted); }
 .pt b { font-size: var(--text-sm); font-weight: 500; }
-.pt .cum { font-style: normal; font-size: var(--text-2xs); color: var(--muted); margin-left: 6px; }
 .pt.bad b { color: var(--muted); }
 .last-err { margin-top: var(--space-3); color: var(--alarm); font-size: var(--text-sm); }
 </style>
