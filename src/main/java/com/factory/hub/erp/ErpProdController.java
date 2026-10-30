@@ -77,6 +77,37 @@ public class ErpProdController {
         return p.getOutput();
     }
 
+    /**
+     * 补上「当前小时」的实时增量。
+     * <p>
+     * checkpoint 每 60s 才把内存桶落库，此刻按下的按键还只在内存里；
+     * 而下面这些统计全是 DB 行驱动的遍历——当前小时若还没落库，
+     * 这一段增量就会被整段漏掉，「按一下 +1」要等一分钟才显形。
+     * 这里把内存里的当前小时补进来（DB 已有行时交给 effOutput 用 live 覆盖）。
+     */
+    private List<ProdHourly> rowsWithLive(String code, List<ProdHourly> rows, long now) {
+        long curHour = now - (now % HOUR_MS);
+        boolean hasCur = false;
+        for (ProdHourly p : rows) {
+            if (p.getHourStart() == curHour) {
+                hasCur = true;
+                break;
+            }
+        }
+        if (hasCur) {
+            return rows;
+        }
+        double live = rollup.liveOutput(code, curHour);
+        if (Double.isNaN(live) || live == 0d) {
+            return rows;
+        }
+        ProdHourly tmp = new ProdHourly(code, "", curHour);
+        tmp.setOutput(live);
+        List<ProdHourly> out = new ArrayList<>(rows);
+        out.add(tmp);
+        return out;
+    }
+
     /** 设备有没有 count 角色的点（决定详情页要不要画产量图） */
     private boolean hasCountPoint(DeviceEntity d) {
         try {
@@ -126,6 +157,7 @@ public class ErpProdController {
 
         List<ProdHourly> rows =
                 prodRepo.findByDeviceCodeAndHourStartBetween(code, yearStart, now);
+        rows = rowsWithLive(code, rows, now);
 
         double today = 0, month = 0, year = 0;
         long monthKey = floorMonth(now);
@@ -199,8 +231,8 @@ public class ErpProdController {
                 for (long k = k0; k < k0 + days; k++) {
                     byDay.put(k, 0d);
                 }
-                for (ProdHourly p : prodRepo.findByDeviceCodeAndHourStartBetween(
-                        code, ProdDay.startOfDayKey(k0, rh), now)) {
+                for (ProdHourly p : rowsWithLive(code, prodRepo.findByDeviceCodeAndHourStartBetween(
+                        code, ProdDay.startOfDayKey(k0, rh), now), now)) {
                     long k = ProdDay.dayKey(p.getHourStart(), rh);
                     if (byDay.containsKey(k)) {
                         byDay.merge(k, effOutput(code, p, now), Double::sum);
@@ -216,7 +248,8 @@ public class ErpProdController {
                 double[] months = new double[12];
                 long from = ProdDay.startOfDayKey(
                         LocalDate.of(biz.getYear(), 1, 1).toEpochDay(), rh);
-                for (ProdHourly p : prodRepo.findByDeviceCodeAndHourStartBetween(code, from, now)) {
+                for (ProdHourly p : rowsWithLive(code, prodRepo.findByDeviceCodeAndHourStartBetween(
+                        code, from, now), now)) {
                     months[ProdDay.bizDate(p.getHourStart(), rh).getMonthValue() - 1]
                             += effOutput(code, p, now);
                 }
@@ -237,11 +270,11 @@ public class ErpProdController {
                     for (long k = k0; k <= todayKey; k++) {
                         byDay.put(k, 0d);
                     }
-                    for (ProdHourly p : prodRepo.findByDeviceCodeAndHourStartBetween(
-                            code, ProdDay.startOfDayKey(k0, rh), now)) {
+                    for (ProdHourly p : rowsWithLive(code, prodRepo.findByDeviceCodeAndHourStartBetween(
+                            code, ProdDay.startOfDayKey(k0, rh), now), now)) {
                         long k = ProdDay.dayKey(p.getHourStart(), rh);
                         if (byDay.containsKey(k)) {
-                            byDay.merge(k, p.getOutput(), Double::sum);
+                            byDay.merge(k, effOutput(code, p, now), Double::sum);
                         }
                     }
                     var fmt = java.time.format.DateTimeFormatter.ofPattern("MM-dd");
@@ -256,8 +289,8 @@ public class ErpProdController {
                 for (long b = start; b < start + 24 * HOUR_MS; b += HOUR_MS) {
                     byHour.put(b, 0d);
                 }
-                for (ProdHourly p : prodRepo.findByDeviceCodeAndHourStartBetween(
-                        code, start, start + 24 * HOUR_MS)) {
+                for (ProdHourly p : rowsWithLive(code, prodRepo.findByDeviceCodeAndHourStartBetween(
+                        code, start, start + 24 * HOUR_MS), now)) {
                     long hb = (p.getHourStart() / HOUR_MS) * HOUR_MS;
                     if (byHour.containsKey(hb)) {
                         byHour.merge(hb, effOutput(code, p, now), Double::sum);
