@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>知造 KnowFab-SIRP · 项目介绍</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    width: 1080px; background: #0d1117; color: #e6edf3;
+    font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans SC", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { padding: 46px 54px 40px; }
+
+  /* ── 头部 ── */
+  .hero { display: flex; align-items: center; gap: 20px; }
+  .logo {
+    width: 78px; height: 78px; border: 3px solid #4c8dff; border-radius: 16px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 34px; font-weight: 700; color: #4c8dff; flex: none;
+  }
+  .title { font-size: 44px; font-weight: 700; letter-spacing: .5px; }
+  .title small { font-size: 22px; color: #7d8590; font-weight: 400; margin-left: 12px; }
+  .slogan {
+    margin-top: 16px; font-size: 27px; font-weight: 500; color: #4c8dff;
+    background: rgba(76,141,255,.1); border-left: 4px solid #4c8dff;
+    padding: 12px 18px; border-radius: 0 10px 10px 0; display: inline-block;
+  }
+  .sub { margin-top: 12px; font-size: 19px; color: #9aa4b0; line-height: 1.7; }
+
+  /* ── 分区 ── */
+  .sec { margin-top: 40px; }
+  .sec-h {
+    font-size: 24px; font-weight: 600; color: #e6edf3; margin-bottom: 18px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .sec-h::before {
+    content: ""; width: 5px; height: 24px; border-radius: 3px; background: #4c8dff;
+  }
+  .sec-h em { font-style: normal; font-size: 17px; color: #7d8590; font-weight: 400; }
+
+  /* 问题四宫格 */
+  .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .cell {
+    background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 18px 16px;
+  }
+  .cell .k { font-size: 19px; font-weight: 600; margin-bottom: 8px; }
+  .cell .v { font-size: 15px; color: #8b949e; line-height: 1.65; }
+  .cell .t { font-size: 30px; margin-bottom: 6px; }
+
+  /* 数据流 */
+  .flow { display: flex; align-items: stretch; gap: 10px; }
+  .node {
+    flex: 1; background: #161b22; border: 1px solid #30363d; border-radius: 12px;
+    padding: 16px 14px; text-align: center;
+  }
+  .node .n { font-size: 19px; font-weight: 600; }
+  .node .d { font-size: 14px; color: #8b949e; margin-top: 6px; line-height: 1.5; }
+  .node.hl { border-color: #4c8dff; background: rgba(76,141,255,.08); }
+  .arrow { align-self: center; color: #4c8dff; font-size: 24px; flex: none; }
+
+  /* 承诺 */
+  .pills { display: flex; flex-wrap: wrap; gap: 12px; }
+  .pill {
+    background: #161b22; border: 1px solid #30363d; border-radius: 999px;
+    padding: 11px 20px; font-size: 18px;
+  }
+  .pill b { color: #4c8dff; }
+
+  /* 截图 */
+  .shots { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .shot { background: #161b22; border: 1px solid #30363d; border-radius: 12px; overflow: hidden; }
+  .shot img { width: 100%; display: block; }
+  .shot .cap { padding: 10px 14px; font-size: 15px; color: #8b949e; border-top: 1px solid #21262d; }
+  .shot.wide { grid-column: 1 / -1; }
+
+  /* 底部 */
+  .foot {
+    margin-top: 38px; background: #161b22; border: 1px solid #30363d; border-radius: 14px;
+    padding: 26px 28px; display: flex; align-items: center; gap: 28px;
+  }
+  .foot .txt { flex: 1; }
+  .foot .l1 { font-size: 22px; font-weight: 600; margin-bottom: 10px; }
+  .foot .l2 { font-size: 17px; color: #8b949e; line-height: 1.85; }
+  .foot .l2 b { color: #4c8dff; font-family: Consolas, monospace; }
+  .qr { width: 168px; height: 168px; border-radius: 10px; background: #fff; padding: 7px; flex: none; }
+  .qr img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .license { margin-top: 18px; font-size: 15px; color: #6e7681; text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="hero">
+    <div class="logo">知</div>
+    <div>
+      <div class="title">知造 KnowFab-SIRP<small>v1.0</small></div>
+      <div class="sub">跑在自己电脑上的工厂数据系统 · 接 PLC 读产量、故障、电耗，联动库存与单据</div>
+    </div>
+  </div>
+
+  <div class="slogan">让老机器自己报产量</div>
+
+  <div class="sec">
+    <div class="sec-h">它解决什么问题 <em>中小工厂的数据，现在散在四个地方</em></div>
+    <div class="grid4">
+      <div class="cell">
+        <div class="t">01</div>
+        <div class="k">产量在 PLC 里</div>
+        <div class="v">寄存器里只有累计值，没人知道今天做了多少</div>
+      </div>
+      <div class="cell">
+        <div class="t">02</div>
+        <div class="k">故障在师傅脑子里</div>
+        <div class="v">停机了才知道，修了多久全凭记性</div>
+      </div>
+      <div class="cell">
+        <div class="t">03</div>
+        <div class="k">库存在纸本上</div>
+        <div class="v">账和货对不上，要等月底对账</div>
+      </div>
+      <div class="cell">
+        <div class="t">04</div>
+        <div class="k">电费在电表里</div>
+        <div class="v">算不出哪台机器费电</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-h">怎么跑起来 <em>一根网线的事</em></div>
+    <div class="flow">
+      <div class="node">
+        <div class="n">老 PLC</div>
+        <div class="d">Modbus TCP / OPC UA / 485<br>程序一行不改</div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="node hl">
+        <div class="n">知造 SIRP</div>
+        <div class="d">一条命令装在自己电脑<br>数据不出厂</div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="node">
+        <div class="n">车间大屏</div>
+        <div class="d">24 小时产量曲线<br>故障原因置顶</div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="node">
+        <div class="n">库存与单据</div>
+        <div class="d">产量涨库存自动涨<br>自动开生产入库单</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-h">真机效果 <em>接的就是一台跑了十几年的 S7-200 SMART</em></div>
+    <div class="shots">
+      <div class="shot wide">
+        <img src="shots/screen-full.png" alt="车间监控大屏">
+        <div class="cap">车间监控大屏：24 小时完整产量轴、故障原因置顶、底部实时播报</div>
+      </div>
+      <div class="shot">
+        <img src="shots/trend-24h.png" alt="24 小时趋势">
+        <div class="cap">今日产量趋势：00~23 点整轴，未到的时段是空槽</div>
+      </div>
+      <div class="shot">
+        <img src="shots/stock.png" alt="库存看板">
+        <div class="cap">库存余额：设备产出自动入库，2 秒刷新</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-h">硬核承诺</div>
+    <div class="pills">
+      <div class="pill"><b>不改 PLC 程序</b>，只读不写</div>
+      <div class="pill"><b>不用 Docker</b>，单文件即服务</div>
+      <div class="pill"><b>不用装数据库</b>，自带存储</div>
+      <div class="pill"><b>不联网也能用</b>，车间断网照跑</div>
+      <div class="pill"><b>数据不出厂</b>，全在自己电脑</div>
+      <div class="pill"><b>AGPL-3.0 开源</b> + 商业授权</div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <div class="txt">
+      <div class="l1">怎么找到它</div>
+      <div class="l2">
+        GitHub / Gitee 搜 <b>KnowFab-SIRP</b> → 源码、文档、一键安装包<br>
+        一条命令（Windows / Linux）：<br>
+        <b>curl -fsSL https://gitee.com/ZhuangRenyang/KnowFab-SIRP/raw/main/tools/install.sh | bash</b><br>
+        中文交流群（答疑 / 接入案例 / 群文件）：<b>QQ 1132864448</b>
+      </div>
+    </div>
+    <div class="qr"><img src="../assets/qq-group.jpg" alt="QQ群二维码"></div>
+  </div>
+
+  <div class="license">本项目开源（AGPL-3.0）；闭源商用 / SaaS / 白标需购买商业授权</div>
+</div>
+</body>
+</html>

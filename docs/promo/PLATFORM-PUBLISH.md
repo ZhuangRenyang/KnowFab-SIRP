@@ -59,7 +59,7 @@
 
 **置顶评论（自己写）**：
 ```
-一键安装包 + 接入清单在主页，翻一下就能拿到。
+源码 + 一键安装包 + 接入清单：GitHub 和 Gitee 搜 KnowFab-SIRP。
 接不上的设备也可以发我型号，我帮你看参数怎么配。
 ```
 
@@ -81,7 +81,7 @@
 抖音私信量大的时候手打不过来，用「抖音私信自动回复」或人工模板：
 
 ```
-你好！安装包和文档在这两个地址（仓库里全是）：
+你好！安装包和文档在仓库里，GitHub / Gitee 搜 KnowFab-SIRP 就能找到：
   github.com/ZhuangRenyang/KnowFab-SIRP
   gitee.com/ZhuangRenyang/KnowFab-SIRP
 
