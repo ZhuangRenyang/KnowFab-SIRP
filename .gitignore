@@ -42,5 +42,5 @@ __pycache__/
 # 提交信息临时文件
 .git-commit-msg.txt
 
-# PLC 联网诊断报告（本地产物，不入库）
-tools/net/plc-diag-*.txt
+# PLC 联网工具（个人电脑用途，不入库；本地保留）
+tools/net/

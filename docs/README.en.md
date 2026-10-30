@@ -146,6 +146,7 @@ touching the database. Offline sites can upload the archive manually. Details:
 | [../README.zh-CN.md](../README.zh-CN.md) | 中文 | 中文主 README（完整版） |
 | [../README.ja.md](../README.ja.md) · [../README.ko.md](../README.ko.md) · [../README.es.md](../README.es.md) · [../README.de.md](../README.de.md) · [../README.ru.md](../README.ru.md) | JA / KO / ES / DE / RU | Condensed READMEs: pitch, install, feature summary |
 | [HANDBOOK.md](HANDBOOK.md) | 中文 | Architecture, connecting devices, adding protocols, energy, reports, upgrades, API list |
+| [ip-inventory-template.xlsx](ip-inventory-template.xlsx) | 中文 | IP inventory workbook: duplicate-IP / gateway-clash auto flags, plus the networking rules for non-changeable device IPs |
 | [ROADMAP.md](ROADMAP.md) | 中文 | Roadmap and complete changelog with measured results |
 | [COMPETITORS.md](COMPETITORS.md) | 中文 | Competitor comparison and talk tracks |
 | [DEMO.md](DEMO.md) | 中文 | Demo script and tour |

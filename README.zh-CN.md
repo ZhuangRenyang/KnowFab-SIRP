@@ -197,6 +197,7 @@ python tools/smoke-all.py    # 99 项全功能接口冒烟，全绿说明装得�
 | [docs/README.en.md](docs/README.en.md) | 英文文档索引：安装、接设备、点表字段、接口概览 |
 | [docs/HANDBOOK.md](docs/HANDBOOK.md) | 开发与运维手册：骨架设计、接真设备、加协议、部署升级、接口清单 |
 | [tools/portable/README-portable.txt](tools/portable/README-portable.txt) | 便携版说明：目录结构、换端口、离线部署、备份与迁移 |
+| [docs/ip-inventory-template.xlsx](docs/ip-inventory-template.xlsx) | IP 台账模板：重复 IP / 撞网关自动标红，配套 HANDBOOK《设备 IP 不可改时的组网规范》 |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | 路线图与完整变更记录（每条功能都带实测数据） |
 | [docs/COMPETITORS.md](docs/COMPETITORS.md) | 竞品对比与话术 |
 | [docs/DEMO.md](docs/DEMO.md) | 演示指南：一键灌数据 + 推荐巡览路径 |

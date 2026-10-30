@@ -234,6 +234,7 @@ there).
 | [docs/README.en.md](docs/README.en.md) | English docs index: quickstart, deployment, device integration, API overview |
 | [docs/HANDBOOK.md](docs/HANDBOOK.md) | Development and operations handbook *(Chinese)*: architecture, connecting real devices, adding protocols, deployment and upgrades, API list |
 | [tools/portable/README-portable.txt](tools/portable/README-portable.txt) | Portable build guide *(Chinese)*: layout, ports, offline install, backup and migration |
+| [docs/ip-inventory-template.xlsx](docs/ip-inventory-template.xlsx) | IP inventory workbook *(Chinese UI)*: auto-flags duplicate IPs and gateway clashes; pairs with the networking section in the handbook |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Roadmap and full changelog *(Chinese; every entry carries measured results)* |
 | [docs/COMPETITORS.md](docs/COMPETITORS.md) | Competitor comparison and talk tracks *(Chinese)* |
 | [docs/DEMO.md](docs/DEMO.md) | Demo guide: seeding data and a recommended tour *(Chinese)* |
