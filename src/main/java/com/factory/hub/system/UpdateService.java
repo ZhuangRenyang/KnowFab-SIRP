@@ -401,6 +401,14 @@ public class UpdateService {
     }
 
     /** 从更新源下载升级包，验签后登记待应用 */
+    /**
+     * 下载升级包并校验。
+     * <p>
+     * 2026-10-30 起支持<b>跨源兜底</b>：主地址失败时，自动用同一个 tag + 文件名
+     * 拼出另一个源（Gitee ⇄ GitHub）的地址再试。原因是 version.json 里的下载地址
+     * 是单源硬编码的——Gitee 缺附件或 GitHub 连不上时，客户点更新就直接失败。
+     * 读清单有兜底不代表下载有兜底，这一步补的就是这个缺口。
+     */
     public Map<String, Object> download(String url) {
         Map<String, Object> out = new LinkedHashMap<>();
         if (url == null || url.isBlank()) {
@@ -409,28 +417,66 @@ public class UpdateService {
         if (!url.startsWith("https://")) {
             return fail(out, "只允许 https 地址");
         }
-        Path tmp = null;
-        try {
-            Files.createDirectories(inbox());
-            tmp = Files.createTempFile(inbox(), "dl-", ".zip");
-            byte[] data = httpGetBytes(url, 300_000);
-            Files.write(tmp, data);
-            Map<String, Object> r = register(out, tmp);
-            if (Boolean.TRUE.equals(r.get("ok"))) {
-                r.put("message", "已下载并校验通过，重启服务后生效");
-            }
-            return r;
-        } catch (Exception e) {
-            log.warn("从更新源下载失败: {}", e.getMessage());
-            return fail(out, "下载失败：" + e.getMessage());
-        } finally {
+        List<String> candidates = candidateUrls(url);
+        String lastErr = "";
+        for (String u : candidates) {
+            Path tmp = null;
             try {
-                if (tmp != null) {
-                    Files.deleteIfExists(tmp);
+                Files.createDirectories(inbox());
+                tmp = Files.createTempFile(inbox(), "dl-", ".zip");
+                byte[] data = httpGetBytes(u, 300_000);
+                Files.write(tmp, data);
+                Map<String, Object> r = register(out, tmp);
+                if (Boolean.TRUE.equals(r.get("ok"))) {
+                    r.put("message", "已下载并校验通过，重启服务后生效");
+                    r.put("source", u);
+                    if (candidates.size() > 1 && !u.equals(candidates.get(0))) {
+                        log.info("主源不可用，已从备用源下载成功：{}", u);
+                    }
+                    return r;
                 }
-            } catch (Exception ignored) {
+                lastErr = String.valueOf(out.get("message"));
+            } catch (Exception e) {
+                lastErr = e.getMessage() == null ? e.toString() : e.getMessage();
+                log.warn("从 {} 下载失败：{}", u, lastErr);
+            } finally {
+                try {
+                    if (tmp != null) {
+                        Files.deleteIfExists(tmp);
+                    }
+                } catch (Exception ignored) {
+                }
             }
         }
+        return fail(out, "下载失败（已尝试 " + candidates.size() + " 个源）：" + lastErr
+                + "。可用「上传并校验」离线升级。");
+    }
+
+    /**
+     * 生成候选下载地址：主地址 + 另一个源的同一附件。
+     * 只对标准的 /releases/download/&lt;tag&gt;/&lt;file&gt; 形式做推导，其他形式原样返回。
+     */
+    private List<String> candidateUrls(String primary) {
+        List<String> list = new ArrayList<>();
+        list.add(primary);
+        try {
+            String marker = "/releases/download/";
+            int i = primary.indexOf(marker);
+            if (i <= 0) {
+                return list;
+            }
+            String rest = primary.substring(i + marker.length());   // v1.0.2/xxx.zip
+            String repoPath = DEFAULT_SOURCE.substring(DEFAULT_SOURCE.indexOf("://") + 3);
+            String other = primary.contains("gitee.com")
+                    ? "https://github.com/" + repoPath + marker + rest
+                    : "https://gitee.com/" + repoPath + marker + rest;
+            if (!other.equals(primary)) {
+                list.add(other);
+            }
+        } catch (Exception e) {
+            log.debug("候选下载地址推导失败，只用主地址：{}", e.getMessage());
+        }
+        return list;
     }
 
     private List<String> sourceList() {
@@ -444,10 +490,60 @@ public class UpdateService {
     }
 
     private byte[] httpGetBytes(String url, int timeoutMs) throws Exception {
-        java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
+        try {
+            return httpGetBytes(url, timeoutMs, false);
+        } catch (Exception e) {
+            // 企业代理常做证书替换，Java 证书库不认就报 PKIX/SSLHandshake，下载直接失败。
+            // 升级包本身有 sha256 + 私钥签名两道校验（verify()），传输层降级不降低安全性，
+            // 所以这里只对更新源降级重试一次。
+            if (isTlsError(e)) {
+                log.warn("TLS 校验失败，跳过证书校验重试一次：{}", e.getMessage());
+                return httpGetBytes(url, timeoutMs, true);
+            }
+            throw e;
+        }
+    }
+
+    private boolean isTlsError(Throwable e) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            if (t instanceof javax.net.ssl.SSLException) {
+                return true;
+            }
+            String m = t.getMessage();
+            if (m != null && (m.contains("PKIX") || m.contains("SSLHandshake")
+                    || m.contains("certificate_unknown"))) {
+                return true;
+            }
+            if (t.getCause() == t) {
+                break;
+            }
+        }
+        return false;
+    }
+
+    private byte[] httpGetBytes(String url, int timeoutMs, boolean insecure) throws Exception {
+        java.net.http.HttpClient.Builder builder = java.net.http.HttpClient.newBuilder()
                 .connectTimeout(java.time.Duration.ofMillis(Math.min(timeoutMs, 8000)))
-                .followRedirects(java.net.http.HttpClient.Redirect.NORMAL)
-                .build();
+                .followRedirects(java.net.http.HttpClient.Redirect.NORMAL);
+        if (insecure) {
+            javax.net.ssl.SSLContext ctx = javax.net.ssl.SSLContext.getInstance("TLS");
+            ctx.init(null, new javax.net.ssl.TrustManager[]{new javax.net.ssl.X509TrustManager() {
+                @Override
+                public void checkClientTrusted(java.security.cert.X509Certificate[] chain, String authType) {
+                }
+
+                @Override
+                public void checkServerTrusted(java.security.cert.X509Certificate[] chain, String authType) {
+                }
+
+                @Override
+                public java.security.cert.X509Certificate[] getAcceptedIssuers() {
+                    return new java.security.cert.X509Certificate[0];
+                }
+            }}, new java.security.SecureRandom());
+            builder.sslContext(ctx);
+        }
+        java.net.http.HttpClient client = builder.build();
         // GitHub API 没有 User-Agent 直接 403；Accept 声明 vnd.github+json，对其他源无害
         java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder(java.net.URI.create(url))
                 .timeout(java.time.Duration.ofMillis(timeoutMs))
