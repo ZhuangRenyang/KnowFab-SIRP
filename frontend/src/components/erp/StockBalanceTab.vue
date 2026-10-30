@@ -1,7 +1,7 @@
 <template>
   <div>
     <div class="tab-toolbar">
-      <el-select v-model="whId" placeholder="全部仓库" clearable style="width:170px" @change="load">
+      <el-select v-model="whId" placeholder="全部仓库" clearable style="width:170px" @change="load()">
         <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
       </el-select>
       <el-input
@@ -10,10 +10,14 @@
         clearable
         :prefix-icon="Search"
         style="width:220px"
-        @keyup.enter="load"
-        @clear="load"
+        @keyup.enter="load()"
+        @clear="load()"
       />
-      <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
+      <el-button :icon="Refresh" :loading="loading" @click="load()">刷新</el-button>
+      <span class="auto-wrap" title="每 5 秒自动刷新库存余额">
+        <el-switch v-model="autoRefresh" size="small" @change="onAutoChange" />
+        <span class="auto-label">自动刷新</span>
+      </span>
       <span class="spacer" />
       <el-button v-if="auth.canWrite" :icon="Files" @click="emit('stocktake')">盘点</el-button>
       <el-button v-if="auth.canWrite" type="primary" :icon="Plus" @click="emit('new-bill')">新建单据</el-button>
@@ -91,7 +95,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Files, Plus, Refresh, Search } from '@element-plus/icons-vue'
 import { stockApi, warehouseApi, type ErpWarehouse, type StockBalance, type StockFlowRow } from '@/api/erp'
@@ -112,16 +116,46 @@ const flowLoading = ref(false)
 const flowRows = ref<StockFlowRow[]>([])
 const flowTitle = ref('')
 const flowStock = ref(0)
+const flowSku = ref<SkuRef | null>(null)
 
-async function load() {
-  loading.value = true
+const autoRefresh = ref(true)
+let timer: number | null = null
+
+async function load(silent = false) {
+  if (!silent) loading.value = true
   try {
     rows.value = await stockApi.balances({ warehouseId: whId.value, q: q.value })
+    if (flowOpen.value && flowSku.value) {
+      const live = rows.value.find(
+        (r) => r.skuId === flowSku.value!.skuId && r.warehouseId === flowSku.value!.warehouseId
+      )
+      if (live) flowStock.value = Number(live.qty || 0)
+    }
   } catch (e: any) {
-    ElMessage.error(e?.message || '加载库存失败')
+    if (!silent) ElMessage.error(e?.message || '加载库存失败')
   } finally {
-    loading.value = false
+    if (!silent) loading.value = false
   }
+}
+
+function stopTimer() {
+  if (timer !== null) {
+    window.clearInterval(timer)
+    timer = null
+  }
+}
+
+function startTimer() {
+  stopTimer()
+  timer = window.setInterval(() => {
+    if (document.hidden) return
+    load(true)
+  }, 5000)
+}
+
+function onAutoChange(on: any) {
+  if (on) startTimer()
+  else stopTimer()
 }
 
 async function loadWarehouses() {
@@ -148,6 +182,7 @@ interface SkuRef { skuId: number; code: string; name: string; warehouseId: numbe
 async function openFlow(row: SkuRef) {
   flowTitle.value = `${row.code} · ${row.name}`
   flowStock.value = Number(row.qty || 0)
+  flowSku.value = row
   flowOpen.value = true
   flowLoading.value = true
   try {
@@ -163,7 +198,10 @@ async function openFlow(row: SkuRef) {
 onMounted(async () => {
   await loadWarehouses()
   await load()
+  startTimer()
 })
+
+onUnmounted(stopTimer)
 
 defineExpose({ load })
 </script>
@@ -171,6 +209,8 @@ defineExpose({ load })
 <style scoped>
 .tab-toolbar { display: flex; gap: 10px; margin-bottom: var(--space-3); flex-wrap: wrap; align-items: center; }
 .tab-toolbar .spacer { flex: 1; }
+.auto-wrap { display: inline-flex; align-items: center; gap: 6px; }
+.auto-label { font-size: var(--text-xs); color: var(--muted); }
 .spec { color: var(--meta); font-size: var(--text-2xs); margin-left: 6px; }
 .dim { color: var(--muted); }
 .plus { color: var(--run); }
