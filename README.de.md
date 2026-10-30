@@ -101,3 +101,5 @@ Der Code steht unter [AGPL-3.0](LICENSE): Nutzung im eigenen Werk, Lernen oder e
 [kommerzielle Lizenz](COMMERCIAL-LICENSE.md).
 
 **Kontakt** — Maschinenanbindung und Nachrüstung, Einführung, kommerzielle Lizenzen: 996491835@qq.com
+
+**Community (QQ-Gruppe, chinesisch)** — Fragen zu Anbindung, Punktlisten und Einführung: **知造(KnowFab-SIRP) · 1132864448**

@@ -104,3 +104,5 @@ fork manteniéndolo abierto es **gratis**. El uso comercial cerrado, SaaS o marc
 [licencia comercial](COMMERCIAL-LICENSE.md).
 
 **Contacto** — integración y retrofit de equipos, despliegue, licencias comerciales: 996491835@qq.com
+
+**Comunidad (grupo QQ, chino)** — dudas de conexión, tablas de puntos y despliegue: **知造(KnowFab-SIRP) · 1132864448**

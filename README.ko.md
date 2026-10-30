@@ -88,3 +88,5 @@ curl -fsSL https://raw.githubusercontent.com/ZhuangRenyang/KnowFab-SIRP/main/too
 클로즈드소스 상용 / SaaS / 화이트라벨은 [상용 라이선스](COMMERCIAL-LICENSE.md)가 필요합니다.
 
 **문의** — 설비 연결·개조 상담, 구축 지원, 상용 라이선스: 996491835@qq.com
+
+**커뮤니티 (中文交流群)** — 설비 연결·점표 설정·도입 문의는 QQ 그룹에서: **知造(KnowFab-SIRP) · 1132864448**

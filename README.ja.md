@@ -88,3 +88,5 @@ curl -fsSL https://raw.githubusercontent.com/ZhuangRenyang/KnowFab-SIRP/main/too
 クローズドソースでの商用利用 / SaaS / ホワイトラベルは[商業ライセンス](COMMERCIAL-LICENSE.md)が必要です。
 
 **連絡先** — 設備接続・改造のご相談、導入支援、商業ライセンス: 996491835@qq.com
+
+**コミュニティ (中文交流群)** — 設備接続・点表設定・導入の答疑は QQ 群で: **知造(KnowFab-SIRP) · 1132864448**

@@ -203,6 +203,12 @@ python tools/smoke-all.py    # 99 项全功能接口冒烟，全绿说明装得�
 | [docs/DEMO.md](docs/DEMO.md) | 演示指南：一键灌数据 + 推荐巡览路径 |
 | [docs/RELEASE.md](docs/RELEASE.md) | 发版流程：打 tag 传 Release，客户机点一下"检查更新"即可升级 |
 
+## 交流群
+
+扫码进群聊设备接入、点表配置、部署踩坑——**知造(KnowFab-SIRP) · QQ 群号 1132864448**：
+
+![交流群二维码](docs/assets/qq-group.jpg)
+
 ## 参与贡献
 
 Issue / PR 都欢迎。改代码前先跑 `python tools/smoke-all.py` 与 `python tools/selftest.py`，

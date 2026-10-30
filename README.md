@@ -240,6 +240,18 @@ there).
 | [docs/DEMO.md](docs/DEMO.md) | Demo guide: seeding data and a recommended tour *(Chinese)* |
 | [docs/RELEASE.md](docs/RELEASE.md) | Release process: tag → upload release assets → clients upgrade via *Check for updates* *(Chinese)* |
 
+## Community (中文交流群)
+
+Scan to join the QQ group — 设备接入、点表配置、部署踩坑都在里面聊：
+
+![QQ group](docs/assets/qq-group.jpg)
+
+**知造(KnowFab-SIRP) · QQ 群号 1132864448**
+
+The group is Chinese-speaking. For English support, open an issue on GitHub/Gitee — both are watched.
+
+---
+
 ## Contributing
 
 Issues and pull requests are welcome. Before changing code, run `python tools/smoke-all.py` and
