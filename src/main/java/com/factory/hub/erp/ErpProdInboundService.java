@@ -30,7 +30,7 @@ public class ErpProdInboundService {
     private static final Logger log = LoggerFactory.getLogger(ErpProdInboundService.class);
 
     /** 配置缓存 60 秒：onProduced 每秒被调，不能每秒查库 */
-    private record Cfg(Long skuId, Long whId) {}
+    private record Cfg(Long skuId, Long whId, Long defaultWhId) {}
 
     private final DeviceService deviceService;
     private final ErpStockService stockService;
@@ -62,6 +62,12 @@ public class ErpProdInboundService {
             pendingBackfill.put(deviceCode, true);
         }
         pending.merge(deviceCode, delta, Double::sum);
+        // 数量先上账（还没成单）：库存余额秒级可见，单据仍按批次成
+        Long whId = c.whId() != null ? c.whId() : c.defaultWhId();
+        if (whId != null) {
+            stockService.addPendingStock(c.skuId(), whId,
+                    BigDecimal.valueOf(delta).setScale(4, RoundingMode.HALF_UP));
+        }
     }
 
     private synchronized Map<String, Cfg> configs() {
@@ -69,9 +75,11 @@ public class ErpProdInboundService {
         if (now - cfgLoadedAt > 60_000) {
             Map<String, Cfg> m = new HashMap<>();
             try {
+                Long defaultWh = whRepo.findByDefaultWarehouseTrue()
+                        .map(ErpWarehouse::getId).orElse(null);
                 for (DeviceEntity d : deviceService.all()) {
                     if (d.isProdAutoStockin() && d.getProdSkuId() != null) {
-                        m.put(d.getCode(), new Cfg(d.getProdSkuId(), d.getProdWhId()));
+                        m.put(d.getCode(), new Cfg(d.getProdSkuId(), d.getProdWhId(), defaultWh));
                     }
                 }
             } catch (Exception e) {
@@ -115,9 +123,11 @@ public class ErpProdInboundService {
             }
             try {
                 // 走统一单据服务：生成单头 + 明细行，单据列表里与手工单同一套结构
-                stockService.createProdInbound(code, c.skuId(), whId,
-                        BigDecimal.valueOf(qty).setScale(4, RoundingMode.HALF_UP),
+                BigDecimal qtyBig = BigDecimal.valueOf(qty).setScale(4, RoundingMode.HALF_UP);
+                stockService.createProdInbound(code, c.skuId(), whId, qtyBig,
                         Boolean.TRUE.equals(bfs.get(code)));
+                // 已经写进单据了：从「未成单增量」里扣掉，余额由单据汇总接管
+                stockService.clearPendingStock(c.skuId(), whId, qtyBig);
             } catch (Exception ex) {
                 // 放回缓冲，下轮重试；不丢产量
                 pending.merge(code, qty, Double::sum);

@@ -150,7 +150,7 @@ function startTimer() {
   timer = window.setInterval(() => {
     if (document.hidden) return
     load(true)
-  }, 5000)
+  }, 2000)
 }
 
 function onAutoChange(on: any) {

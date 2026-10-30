@@ -17,6 +17,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 出入库与库存（ROADMAP DH-43b）。
@@ -361,6 +362,39 @@ public class ErpStockService {
     /* ==================== 查询 ==================== */
 
     /** 库存余额：只列有流水的 SKU×仓库 组合，按数量归零的行不显示 */
+    /**
+     * 尚未成单的生产增量（件）。
+     * <p>
+     * 库存余额 = 单据汇总。生产入库单按批次成（10 秒一批，单据整洁），
+     * 但产量是每按一下就 +1 的——若只等单据，库存数字要等 10 秒才动。
+     * 这里把「已产生、还没成单」的增量先叠加到余额上，单据落库后再扣掉，
+     * 库存数字就能秒级跳，而单据仍然保持批量。
+     */
+    private final Map<String, BigDecimal> pendingStock = new ConcurrentHashMap<>();
+
+    private static String stockKey(Long skuId, Long whId) {
+        return skuId + "@" + whId;
+    }
+
+    /** 产量发生但还没成单：先加到余额上 */
+    public void addPendingStock(Long skuId, Long whId, BigDecimal qty) {
+        if (skuId == null || whId == null || qty == null) {
+            return;
+        }
+        pendingStock.merge(stockKey(skuId, whId), qty, BigDecimal::add);
+    }
+
+    /** 单据落库后扣掉对应增量（单据汇总里已经算进去了，不能重复） */
+    public void clearPendingStock(Long skuId, Long whId, BigDecimal qty) {
+        if (skuId == null || whId == null || qty == null) {
+            return;
+        }
+        pendingStock.computeIfPresent(stockKey(skuId, whId), (k, v) -> {
+            BigDecimal nv = v.subtract(qty);
+            return nv.abs().compareTo(EPS) <= 0 ? null : nv;
+        });
+    }
+
     public List<Map<String, Object>> balances(Long whId, String q) {
         Map<Long, ErpSku> skus = new HashMap<>();
         for (ErpSku s : skuRepo.findAll()) {
@@ -372,10 +406,31 @@ public class ErpStockService {
         }
         String kw = q == null ? "" : q.trim().toLowerCase();
         List<Map<String, Object>> out = new ArrayList<>();
-        for (Object[] a : billRepo.aggregateStock()) {
+        List<Object[]> rows = new ArrayList<>(billRepo.aggregateStock());
+        // 只有未成单增量、还没有任何单据的 SKU+仓：补一条 0 基础行，
+        // 否则新 SKU 刚投产时库存页看不到这一行
+        for (String k : pendingStock.keySet()) {
+            boolean has = false;
+            for (Object[] a : rows) {
+                if (stockKey(((Number) a[0]).longValue(), ((Number) a[1]).longValue()).equals(k)) {
+                    has = true;
+                    break;
+                }
+            }
+            if (!has) {
+                String[] ps = k.split("@");
+                rows.add(new Object[]{Long.parseLong(ps[0]), Long.parseLong(ps[1]), BigDecimal.ZERO});
+            }
+        }
+        for (Object[] a : rows) {
             Long skuId = ((Number) a[0]).longValue();
             Long wId = ((Number) a[1]).longValue();
             BigDecimal qty = dec(a[2]);
+            // 叠加未成单的生产增量：库存数字秒级可见
+            BigDecimal pend = pendingStock.get(stockKey(skuId, wId));
+            if (pend != null) {
+                qty = qty.add(pend);
+            }
             if (qty.abs().compareTo(EPS) <= 0) {
                 continue;
             }
