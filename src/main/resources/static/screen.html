@@ -32,16 +32,17 @@
     color:var(--text);
     font-family:"HarmonyOS Sans SC","Microsoft YaHei","PingFang SC",system-ui,sans-serif;
     font-size:14px;
-    display:grid;
-    /* 第 3 行是"产线产量条"，auto 高度：没配产线时该元素 display:none，这一行自动收成 0 */
-    grid-template-rows: 11vh 17vh auto 1fr 26vh 5vh;
+    display:flex;
+    flex-direction:column;
+    /* 竖排固定块 + main 弹性占满：任何情况下总高恒为 100vh，
+       底部「最新动态」滚动条绝不被挤出屏幕（grid fr 行曾把布局撑破） */
     gap:1.1vh;
     padding:1.2vh 1.2vw;
   }
 
   /* ---------- 顶栏 ---------- */
   header{display:flex;align-items:center;gap:2vw;border-bottom:1px solid var(--line);
-         padding-bottom:1vh}
+         padding-bottom:1vh;height:11vh;flex:none;min-height:0;overflow:hidden}
   .brand{display:flex;align-items:center;gap:1vw}
   .logo{width:4.2vh;height:4.2vh;border:2px solid var(--accent);border-radius:8px;
         box-shadow:0 0 16px rgba(76,141,255,.35);position:relative;flex:none}
@@ -81,7 +82,7 @@
   .p-extra{margin-left:auto;font-size:clamp(10px,.7vw,13px);color:var(--muted)}
 
   /* ---------- KPI ---------- */
-  .kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:1.1vw}
+  .kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:1.1vw;height:17vh;flex:none;min-height:0;overflow:hidden}
   .kpi{background:linear-gradient(180deg,var(--panel),var(--panel2));
        border:1px solid var(--line);border-radius:14px;padding:1.4vh 1vw;
        box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
@@ -108,7 +109,7 @@
   .chip .ct.ct-low{color:var(--alarm)}
 
   /* ---------- 产线产量条（没配产线时整条隐藏） ---------- */
-  .linebar{display:flex;align-items:center;gap:1.2vw;min-height:5.2vh;
+  .linebar{display:flex;align-items:center;gap:1.2vw;height:6.5vh;min-height:0;flex:none;overflow:hidden;
     background:linear-gradient(90deg,rgba(76,141,255,.12),rgba(76,141,255,0) 70%);
     border:1px solid var(--line);border-radius:14px;padding:.8vh 1.2vw;overflow:hidden}
   .linebar[hidden]{display:none}
@@ -121,7 +122,7 @@
   .lb em{font-style:normal;font-size:clamp(10px,.66vw,12px);color:var(--dim)}
 
   /* ---------- 主区三列 ---------- */
-  main{display:grid;grid-template-columns: 32fr 40fr 38fr;gap:1.1vw;min-height:0}
+  main{display:grid;grid-template-columns: 32fr 40fr 38fr;gap:1.1vw;flex:1 1 0;min-height:0}
 
   /* 环形图 */
   .donut-wrap{display:flex;align-items:center;gap:1.6vw;flex:1;min-height:0}
@@ -179,7 +180,7 @@
          justify-content:center;flex:1;letter-spacing:.08em}
 
   /* ---------- 底部 ---------- */
-  footer{display:grid;grid-template-columns: 38fr 62fr;gap:1.1vw;min-height:0}
+  footer{display:grid;grid-template-columns: 38fr 62fr;gap:1.1vw;height:26vh;flex:none;min-height:0;overflow:hidden}
   .reasons{display:flex;flex-direction:column;gap:.95vh;flex:1;justify-content:center}
   .rs{display:grid;grid-template-columns: 5.4vw 1fr auto;gap:.7vw;align-items:center;
       font-size:clamp(11px,.82vw,15px)}
@@ -190,19 +191,19 @@
   .rs .rv{font-family:var(--num);color:var(--text);white-space:nowrap;
           font-variant-numeric:tabular-nums}
 
-  .fault{display:flex;flex-direction:column;gap:.9vh;flex:1;min-height:0;overflow:hidden}
+  .fault{display:flex;flex-direction:column;gap:.6vh;flex:1;min-height:0;overflow:hidden}
   .f-top{display:flex;align-items:center;gap:.7vw;font-size:clamp(13px,.95vw,17px)}
   .f-top b{font-weight:600}
   .f-top .st{font-size:clamp(10px,.7vw,13px);padding:.25vh .5vw;border-radius:4px;
              border:1px solid var(--line);color:var(--muted)}
   .f-sec{font-size:clamp(10px,.68vw,12px);color:var(--dim);letter-spacing:.1em;margin-bottom:.5vh}
   .f-al{display:flex;gap:.6vw;align-items:baseline;font-size:clamp(11px,.82vw,15px);
-        padding:.5vh 0;border-bottom:1px dashed rgba(255,255,255,.05)}
+        padding:.3vh 0;border-bottom:1px dashed rgba(255,255,255,.05)}
   .f-al .lv{flex:none}
   .f-al .fr{color:var(--text);white-space:nowrap}
   .f-al .fm{color:var(--muted);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;
             white-space:nowrap}
-  .f-kv{font-size:clamp(11px,.78vw,14px);color:var(--muted);line-height:1.8}
+  .f-kv{font-size:clamp(11px,.78vw,14px);color:var(--muted);line-height:1.55}
   .f-kv b{color:var(--text);font-weight:500}
   .f-kv .err{color:var(--alarm)}
   .f-ai{flex:1;min-height:0;overflow:auto;background:rgba(76,141,255,.06);
@@ -231,12 +232,13 @@
 
   /* ---------- 滚动条 ---------- */
   .ticker{display:flex;align-items:center;gap:1vw;border-top:1px solid var(--line);
-          font-size:clamp(11px,.78vw,14px);color:var(--muted);overflow:hidden;white-space:nowrap}
+          height:6vh;flex:none;min-height:0;overflow:hidden;white-space:nowrap;
+          font-size:clamp(11px,.78vw,14px);color:var(--muted)}
   .ticker .tag{color:var(--accent);letter-spacing:.1em;flex:none}
   .ticker .roll{overflow:hidden;flex:1;position:relative;height:100%}
   .ticker .roll span{position:absolute;left:0;top:50%;transform:translateY(-50%);
                      animation:roll 26s linear infinite;padding-left:100%}
-  @keyframes roll{from{transform:translate(0,50%)}to{transform:translate(-100%,50%)}}
+  @keyframes roll{from{transform:translate(0,-50%)}to{transform:translate(-100%,-50%)}}
 
   .offline-mask{position:fixed;inset:0;background:rgba(6,11,18,.55);display:none;
                 align-items:center;justify-content:center;z-index:9}
