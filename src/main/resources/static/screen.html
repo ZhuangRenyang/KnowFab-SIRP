@@ -198,6 +198,16 @@
   /* ---------- 底部 ---------- */
   footer{display:grid;grid-template-columns: 38fr 62fr;gap:1.1vw;height:26vh;flex:none;min-height:0;overflow:hidden}
   .reasons{display:flex;flex-direction:column;gap:.95vh;flex:1;justify-content:center}
+
+  /* 卡片双视图容器：停机原因 ⇆ 故障维修看板（小圆点切换，自动轮播） */
+  .bl-body{flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+  .bl-body > *{display:none}
+  .bl-body > .show{display:flex;flex-direction:column;flex:1;min-height:0}
+  .pager{display:flex;gap:.45vw;align-items:center;flex:none}
+  .pager .dot{width:.72vh;height:.72vh;border-radius:50%;background:rgba(255,255,255,.16);
+              cursor:pointer;transition:background .25s}
+  .pager .dot:hover{background:rgba(255,255,255,.36)}
+  .pager .dot.on{background:var(--accent)}
   .rs{display:grid;grid-template-columns: 5.4vw 1fr auto;gap:.7vw;align-items:center;
       font-size:clamp(11px,.82vw,15px)}
   .rs .rn{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -382,8 +392,15 @@
       <span class="p-title" id="bl-title">停机原因</span>
       <span class="p-note" id="bl-note">今日累计时长</span>
       <span class="p-extra" id="bl-extra"></span>
+      <span class="pager" id="bl-pager" hidden>
+        <i class="dot" data-v="0" title="停机原因"></i>
+        <i class="dot" data-v="1" title="故障维修看板"></i>
+      </span>
     </div>
-    <div class="reasons" id="reasons"></div>
+    <div class="bl-body">
+      <div class="reasons" id="reasons"></div>
+      <div class="bl-fault" id="fault-body"></div>
+    </div>
   </section>
 
   <section class="panel">
@@ -587,6 +604,8 @@ function renderAlarmPage(){
 }
 
 let faultAll = [], faultPage = 0, faultAt = 0;
+/* 卡片视图：0=停机原因 1=故障维修看板；有故障时故障看板优先显示 */
+let blView = 0, blTimer = null;
 
 /* 故障原因横幅：把最严重的一条「为什么坏」提到大屏最上方。
    取源优先级：PLC 报警字典原因 → 报警规则 → 通讯/离线原因。 */
@@ -626,18 +645,66 @@ function renderFaultBar(faults){
 }
 
 function renderFaults(list, reasons){
+  const prevLen = faultAll.length;
+  faultAll = list || [];
+  if (faultPage >= faultAll.length) faultPage = 0;
+  renderFaultBody();
+  renderReasons(reasons || []);
+  // 新出现故障时优先切到故障维修看板；已在某视图时不打断
+  if (prevLen === 0 && faultAll.length > 0) blView = 1;
+  setBlView(blView);
+  startBlRotate();
+}
+
+/* 切换卡片视图：0=停机原因，1=故障维修看板 */
+function setBlView(v){
+  blView = v;
+  const has = faultAll.length > 0;
+  const showFault = has && v === 1;
+  $('reasons').classList.toggle('show', !showFault);
+  $('fault-body').classList.toggle('show', showFault);
   const title = $('bl-title'), note = $('bl-note'), extra = $('bl-extra');
-  if (!list.length){
-    faultAll = []; faultPage = 0;
-    title.textContent = '停机原因'; note.textContent = '今日累计时长'; extra.textContent = '';
-    renderReasons(reasons);
+  if (showFault){
+    title.textContent = '故障维修看板';
+    note.textContent = '报警设备 ' + faultAll.length + ' 台';
+    extra.textContent = faultAll.length > 1 ? ('第 ' + (faultPage+1) + '/' + faultAll.length + ' 台 · 自动轮播') : '';
+  } else {
+    title.textContent = '停机原因';
+    note.textContent = '今日累计时长';
+    extra.textContent = '';
+  }
+  const pager = $('bl-pager');
+  pager.hidden = !has;
+  pager.querySelectorAll('.dot').forEach((d, i) => d.classList.toggle('on', i === (has ? v : 0)));
+}
+
+/* 有故障时两个视图自动轮播（故障看板 ↔ 停机原因） */
+function startBlRotate(){
+  stopBlRotate();
+  blTimer = setInterval(() => {
+    if (faultAll.length > 0) setBlView(blView === 1 ? 0 : 1);
+  }, 8000);
+}
+
+function stopBlRotate(){
+  if (blTimer){ clearInterval(blTimer); blTimer = null; }
+}
+
+/* 小圆点：点击手动切换视图，并重置自动轮播计时 */
+document.querySelectorAll('#bl-pager .dot').forEach(d => {
+  d.addEventListener('click', () => {
+    setBlView(parseInt(d.dataset.v, 10) || 0);
+    startBlRotate();
+  });
+});
+
+function renderFaultBody(){
+  if (!faultAll.length){
+    $('fault-body').innerHTML = '';
     return;
   }
-  if (faultPage >= list.length) faultPage = 0;
+  const list = faultAll;
   const f = list[faultPage];
-  title.textContent = '故障维修看板';
-  note.textContent = '报警设备 ' + list.length + ' 台';
-  extra.textContent = list.length > 1 ? ('第 ' + (faultPage+1) + '/' + list.length + ' 台 · 自动轮播') : '';
 
   const comm = f.comm || {};
   const lines = (f.alarms || []).map(a =>
@@ -668,7 +735,7 @@ function renderFaults(list, reasons){
   }
   const brandText = plc.length && plc[0].brandText ? esc(plc[0].brandText) : '';
 
-  $('reasons').innerHTML = `
+  $('fault-body').innerHTML = `
     <div class="fault">
       <div class="f-top"><b>${esc(f.name)}</b>
         <span class="st">${esc(f.state)}</span>
