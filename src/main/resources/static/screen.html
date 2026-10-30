@@ -197,12 +197,20 @@
 
   /* ---------- 底部 ---------- */
   footer{display:grid;grid-template-columns: 38fr 62fr;gap:1.1vw;height:26vh;flex:none;min-height:0;overflow:hidden}
-  .reasons{display:flex;flex-direction:column;gap:.95vh;flex:1;justify-content:center}
+  /* 内容少时垂直居中；内容多时改从顶部排（safe 关键字避免居中溢出被裁且滚不回去） */
+  .reasons{display:flex;flex-direction:column;gap:.95vh;flex:1;justify-content:safe center}
 
-  /* 卡片双视图容器：停机原因 ⇆ 故障维修看板（小圆点切换，自动轮播） */
+  /* 卡片双视图容器：停机原因 ⇆ 故障维修看板（小圆点切换，自动轮播）
+     内容装不下时容器内部出滚动条，不再静默裁掉 */
   .bl-body{flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden}
   .bl-body > *{display:none}
-  .bl-body > .show{display:flex;flex-direction:column;flex:1;min-height:0}
+  .bl-body > .show{display:flex;flex-direction:column;flex:1;min-height:0;
+                   overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;
+                   scrollbar-color:rgba(255,255,255,.22) transparent}
+  .bl-body > .show::-webkit-scrollbar{width:.55vw}
+  .bl-body > .show::-webkit-scrollbar-track{background:rgba(255,255,255,.04);border-radius:99px}
+  .bl-body > .show::-webkit-scrollbar-thumb{background:rgba(255,255,255,.22);border-radius:99px}
+  .bl-body > .show::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.36)}
   .pager{display:flex;gap:.45vw;align-items:center;flex:none}
   .pager .dot{width:.72vh;height:.72vh;border-radius:50%;background:rgba(255,255,255,.16);
               cursor:pointer;transition:background .25s}
@@ -217,7 +225,8 @@
   .rs .rv{font-family:var(--num);color:var(--text);white-space:nowrap;
           font-variant-numeric:tabular-nums}
 
-  .fault{display:flex;flex-direction:column;gap:.6vh;flex:1;min-height:0;overflow:hidden}
+  /* 故障看板：内容按自然高度撑开，超出部分交给外层 .show 容器滚动 */
+  .fault{display:flex;flex-direction:column;gap:.6vh;flex:none;overflow:visible}
   .f-top{display:flex;align-items:center;gap:.7vw;font-size:clamp(13px,.95vw,17px)}
   .f-top b{font-weight:600}
   .f-top .st{font-size:clamp(10px,.7vw,13px);padding:.25vh .5vw;border-radius:4px;
@@ -232,7 +241,7 @@
   .f-kv{font-size:clamp(11px,.78vw,14px);color:var(--muted);line-height:1.55}
   .f-kv b{color:var(--text);font-weight:500}
   .f-kv .err{color:var(--alarm)}
-  .f-ai{flex:1;min-height:0;overflow:auto;background:rgba(76,141,255,.06);
+  .f-ai{flex:none;background:rgba(76,141,255,.06);
         border:1px solid rgba(76,141,255,.28);border-radius:10px;padding:.9vh .8vw;
         font-size:clamp(11px,.8vw,14px);line-height:1.85;white-space:pre-wrap;color:var(--text)}
   .f-ai .src{display:block;font-size:clamp(9px,.66vw,12px);color:var(--accent);
