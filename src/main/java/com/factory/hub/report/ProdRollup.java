@@ -168,6 +168,18 @@ public class ProdRollup {
         flush(true);
     }
 
+    /**
+     * 删除设备后清掉它的全部产量痕迹：
+     * DB 的小时行（今日/本月/今年综合表都从这里聚合）+ 内存桶 + 统计基准。
+     * 重建设备后产量从零开始；寄存器首读只当基准，不会把 PLC 现值算进产量。
+     */
+    public synchronized void purgeByCode(String code) {
+        // 先清内存（防止下一次 checkpoint 把内存数据写回 DB），再删 DB 行
+        buckets.keySet().removeIf(k -> k.startsWith(code + "|"));
+        states.remove(code);
+        repo.deleteByDeviceCode(code);
+    }
+
     private void flush(boolean dropClosedHours) {
         if (buckets.isEmpty()) {
             return;
@@ -245,6 +257,19 @@ public class ProdRollup {
         }
         return buckets.computeIfAbsent(key, k -> {
             ProdHourly n = new ProdHourly(deviceCode, deviceName(deviceCode), hour);
+            // 服务重启后内存桶从零开始，而 flush 是覆盖写——若不继承已落库的
+            // 当前小时累计，重启前的增量会被内存里的零值冲掉。
+            // 从 DB 快照继续累计（产量 + 各状态时长全量继承）。
+            ProdHourly saved = repo.findByDeviceCodeAndHourStart(deviceCode, hour);
+            if (saved != null) {
+                n.setOutput(saved.getOutput());
+                n.setBackfill(saved.getBackfill());
+                n.setRunSec(saved.getRunSec());
+                n.setIdleSec(saved.getIdleSec());
+                n.setStopSec(saved.getStopSec());
+                n.setAlarmSec(saved.getAlarmSec());
+                n.setUnknownSec(saved.getUnknownSec());
+            }
             return n;
         });
     }
@@ -292,6 +317,7 @@ public class ProdRollup {
         }
         List<ProdHourly> rows = repo.findByHourStartBetween(now - 48L * HOUR_MS, now);
         long curHour = now - (now % HOUR_MS);
+        Set<String> curHourRows = new HashSet<>();
         for (ProdHourly p : rows) {
             Integer rh = reset.get(p.getDeviceCode());
             if (rh == null) {
@@ -302,12 +328,27 @@ public class ProdRollup {
             }
             double v = p.getOutput();
             if (p.getHourStart() == curHour) {
+                curHourRows.add(p.getDeviceCode());
                 double live = liveOutput(p.getDeviceCode(), p.getHourStart());
                 if (!Double.isNaN(live)) {
                     v = live;
                 }
             }
             out.merge(p.getDeviceCode(), v, Double::sum);
+        }
+        // 内存桶兜底：当前小时已有增量但 checkpoint（60s）还没落库时，
+        // 上面按 DB 行驱动的循环看不见它，今日产量会滞后最多 1 分钟。
+        // 这里把「无 DB 行、但内存桶有数」的当前小时增量补上，
+        // 让「按一下 +1」在设备卡片和车间大屏上秒级可见。
+        for (DeviceEntity d : devices) {
+            String code = d.getCode();
+            if (curHourRows.contains(code)) {
+                continue;
+            }
+            double live = liveOutput(code, curHour);
+            if (!Double.isNaN(live) && live != 0d) {
+                out.merge(code, live, Double::sum);
+            }
         }
         return out;
     }

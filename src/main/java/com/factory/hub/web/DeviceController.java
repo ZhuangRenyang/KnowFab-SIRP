@@ -150,6 +150,9 @@ public class DeviceController {
         scheduler.reload();
         if (d != null) {
             store.clear(d.getCode());
+            // 产量痕迹一并清除：今日/本月/今年综合表 + 内存基准/内存桶。
+            // 报警、能耗、ERP 数据按需求保留不动。
+            rollup.purgeByCode(d.getCode());
         }
         return Map.of("ok", true);
     }

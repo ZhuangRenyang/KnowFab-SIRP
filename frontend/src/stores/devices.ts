@@ -24,7 +24,13 @@ export function pickKpis(d: any) {
   const pts = d.points || []
   const counts = pts.filter((p: any) => p.role === 'count')
   const vals = pts.filter((p: any) => p.role === 'value' || p.role === 'alarm')
-  return [...counts, ...vals].slice(0, 4)
+  /* 第一个 count 点显示「今日产量」（后端增量统计口径），不展示寄存器累计值：
+     老工厂寄存器里是几十万的累计读数，直接当产量展示会误导。
+     其余 count 点保留寄存器值（辅助对照用）。 */
+  const mapped = counts.map((p: any, i: number) =>
+    i === 0 ? { ...p, name: '今日产量', value: Number(d.todayOutput ?? 0) } : p
+  )
+  return [...mapped, ...vals].slice(0, 4)
 }
 
 export function fmt(v: any): string | number {
