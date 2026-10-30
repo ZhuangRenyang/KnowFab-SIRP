@@ -39,6 +39,7 @@ public class CollectScheduler {
     private final SnapshotStore store;
     private final WsHandler wsHandler;
     private final ObjectMapper mapper;
+    private final com.factory.hub.report.ProdRollup rollup;
 
     /** deviceCode -> 正在跑的采集任务 */
     private final Map<String, Task> tasks = new ConcurrentHashMap<>();
@@ -60,13 +61,15 @@ public class CollectScheduler {
                             DriverRegistry driverRegistry,
                             SnapshotStore store,
                             WsHandler wsHandler,
-                            ObjectMapper mapper
+                            ObjectMapper mapper,
+                            com.factory.hub.report.ProdRollup rollup
                             ) {
         this.deviceService = deviceService;
         this.driverRegistry = driverRegistry;
         this.store = store;
         this.wsHandler = wsHandler;
         this.mapper = mapper;
+        this.rollup = rollup;
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -127,7 +130,7 @@ public class CollectScheduler {
         DriverContext ctx = deviceService.contextOf(d);
 
         DeviceCollector collector = new DeviceCollector(
-                d, points, driver, ctx, store, wsHandler, mapper);
+                d, points, driver, ctx, store, wsHandler, mapper, rollup);
 
         Thread t = new Thread(collector, "collect-" + d.getCode());
         t.setDaemon(true);

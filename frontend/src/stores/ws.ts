@@ -64,6 +64,10 @@ export const useWsStore = defineStore('ws', () => {
         for (const it of msg.items || []) per.set(it.pointKey, it)
         valueBuf.set(msg.deviceCode, per)
         if (flushTimer == null) flushTimer = window.setTimeout(flushValues, 250)
+        // 今日产量随点位变化一起推过来，卡片数字才能秒级跟涨
+        if (msg.todayOutput != null) {
+          emit('prod', { deviceCode: msg.deviceCode, todayOutput: msg.todayOutput })
+        }
       } else if (msg.type === 'status') {
         emit('status', msg.data)
       } else if (msg.type === 'alarm:new' || msg.type === 'alarm:clear' || msg.type === 'alarm:burst') {

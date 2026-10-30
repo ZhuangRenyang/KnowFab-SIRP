@@ -169,6 +169,43 @@ public class ProdRollup {
     }
 
     /**
+     * 单设备的今日产量：DB 已落库的小时行 + 当前小时的内存实时增量。
+     * <p>
+     * 推送用——点位一变就把今日产量一起推给前端，设备卡片上的数字才能秒级跟涨
+     * （列表接口的 todayOutput 只有在页面刷新时才会变，WS 推送不带就一直是旧值）。
+     */
+    public synchronized double todayOutputOf(String code) {
+        DeviceEntity d = deviceService.byCode(code);
+        if (d == null) {
+            return 0d;
+        }
+        int rh = d.getProdResetHour();
+        long now = System.currentTimeMillis();
+        long start = ProdDay.dayStart(now, rh);
+        long curHour = now - (now % HOUR_MS);
+        double sum = 0;
+        boolean hasCur = false;
+        for (ProdHourly p : repo.findByDeviceCodeAndHourStartBetween(code, start, now)) {
+            double v = p.getOutput();
+            if (p.getHourStart() == curHour) {
+                hasCur = true;
+                double live = liveOutput(code, curHour);
+                if (!Double.isNaN(live)) {
+                    v = live;
+                }
+            }
+            sum += v;
+        }
+        if (!hasCur) {
+            double live = liveOutput(code, curHour);
+            if (!Double.isNaN(live)) {
+                sum += live;
+            }
+        }
+        return sum;
+    }
+
+    /**
      * 删除设备后清掉它的全部产量痕迹：
      * DB 的小时行（今日/本月/今年综合表都从这里聚合）+ 内存桶 + 统计基准。
      * 重建设备后产量从零开始；寄存器首读只当基准，不会把 PLC 现值算进产量。

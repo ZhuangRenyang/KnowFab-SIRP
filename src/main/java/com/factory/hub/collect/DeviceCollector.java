@@ -38,6 +38,7 @@ public class DeviceCollector implements Runnable {
     private final SnapshotStore store;
     private final WsHandler ws;
     private final ObjectMapper mapper;
+    private final com.factory.hub.report.ProdRollup rollup;
 
     private final ReentrantLock ioLock = new ReentrantLock();
     private volatile boolean running = true;
@@ -53,7 +54,8 @@ public class DeviceCollector implements Runnable {
                            DriverContext ctx,
                            SnapshotStore store,
                            WsHandler ws,
-                           ObjectMapper mapper) {
+                           ObjectMapper mapper,
+                           com.factory.hub.report.ProdRollup rollup) {
         this.device = device;
         this.points = points;
         this.driver = driver;
@@ -61,6 +63,7 @@ public class DeviceCollector implements Runnable {
         this.store = store;
         this.ws = ws;
         this.mapper = mapper;
+        this.rollup = rollup;
         this.store.runtime(device.getCode()).protocol = device.getProtocol();
     }
 
@@ -183,6 +186,8 @@ public class DeviceCollector implements Runnable {
         msg.put("type", "values");
         msg.put("deviceCode", device.getCode());
         msg.put("items", changed);
+        // 今日产量一起推：卡片上的「今日产量」只有跟着推送走才会秒级跟涨
+        msg.put("todayOutput", rollup.todayOutputOf(device.getCode()));
         broadcast(msg);
     }
 

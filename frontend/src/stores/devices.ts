@@ -95,10 +95,17 @@ export const useDevicesStore = defineStore('devices', () => {
     d.lastOkTs = s.lastOkTs
   }
 
+  function applyProd(p: { deviceCode: string; todayOutput: number }) {
+    const d = list.value.find((x) => x.code === p.deviceCode)
+    if (!d) return
+    d.todayOutput = p.todayOutput
+  }
+
   function bindWs() {
     const ws = useWsStore()
     ws.on('values', applyValues)
     ws.on('status', applyStatus)
+    ws.on('prod', applyProd)
   }
 
   return { list, loaded, loading, lastError, stats, load, reloadAll, bindWs }
