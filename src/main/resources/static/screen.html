@@ -169,6 +169,9 @@
   .bar .n{position:absolute;top:-.2vh;font-size:clamp(9px,.62vw,12px);color:var(--muted);
           font-family:var(--num);opacity:0}
   .bar.hl .n{opacity:1;color:var(--accent)}
+  /* 24 小时制整轴：未到的小时留空槽，看得出今天进度到哪 */
+  .bar.future .fill{min-height:0;background:rgba(255,255,255,.05);box-shadow:none}
+  .bar.future .h{opacity:.4}
 
   /* 报警列表 */
   .alarms{flex:1;overflow:hidden;display:flex;flex-direction:column;gap:.7vh;min-height:0;
@@ -558,26 +561,35 @@ function renderChart(hours){
   box.innerHTML = '<div class="gridline" style="top:25%"></div>' +
                   '<div class="gridline" style="top:50%"></div>' +
                   '<div class="gridline" style="top:75%"></div>';
-  if (!hours.length){
-    box.innerHTML += '<div class="empty" style="position:absolute;inset:0">今日暂无产量数据</div>';
-    return;
+  // 固定 24 小时轴（00~23 时）：没到的小时留空槽，一眼看出今天进度
+  const map = {};
+  for (const h of (hours || [])){
+    const hh = parseInt(h.h, 10);
+    if (!isNaN(hh)) map[hh] = h.output || 0;
   }
-  chartMax = Math.max(1, ...hours.map(h => h.output || 0));
-  const peak = Math.max(...hours.map(h => h.output || 0));
-  const lastIdx = hours.length - 1;
-
-  hours.forEach((h, i) => {
-    const pct = (h.output || 0) / chartMax * 100;
+  const vals = Object.values(map);
+  const peak = vals.length ? Math.max(...vals) : 0;
+  chartMax = Math.max(1, peak);
+  const nowH = new Date().getHours();
+  if (!vals.length){
+    box.innerHTML += '<div class="empty" style="position:absolute;inset:0">今日暂无产量数据</div>';
+  }
+  for (let i = 0; i < 24; i++){
+    const has = Object.prototype.hasOwnProperty.call(map, i);
+    const out = has ? map[i] : 0;
+    const pct = out / chartMax * 100;
     const div = document.createElement('div');
-    div.className = 'bar' + (h.output === peak && peak > 0 ? ' tall' : '') +
-                    (i === lastIdx ? ' hl' : '');
+    div.className = 'bar' + (has && peak > 0 && out === peak ? ' tall' : '') +
+                    (i === nowH ? ' hl' : '') + (has ? '' : ' future');
+    // 偶数小时显示刻度，23 时补上，避免 24 个标签互相压
+    const label = (i % 2 === 0) ? String(i).padStart(2, '0') : (i === 23 ? '23' : '');
     div.innerHTML =
-      `<span class="n">${h.output || ''}</span>` +
-      `<div class="fill" style="height:${pct}%"></div>` +
-      `<span class="h">${h.h}</span>`;
+      `<span class="n">${has ? out : ''}</span>` +
+      `<div class="fill" style="height:${has ? pct : 0}%"></div>` +
+      `<span class="h">${label}</span>`;
     box.appendChild(div);
-  });
-  $('chart-note').textContent = '峰值 ' + num(peak) + ' 件/时';
+  }
+  $('chart-note').textContent = peak ? ('峰值 ' + num(peak) + ' 件/时') : '';
 }
 
 let alarmAll = [], alarmPage = 0, ALARM_PER_PAGE = 6;
