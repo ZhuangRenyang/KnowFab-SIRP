@@ -29,6 +29,7 @@ done
 
 say() { printf '\n== %s\n' "$*"; }
 ok()  { printf '   %s\n' "$*"; }
+warn() { printf '   [注意] %s\n' "$*"; }
 die() { printf '失败：%s\n' "$*" >&2; exit 1; }
 
 JAR="$ROOT/target/device-hub.jar"
