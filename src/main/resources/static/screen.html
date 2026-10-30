@@ -164,8 +164,8 @@
   .bar .fill{width:72%;max-width:28px;background:linear-gradient(180deg,#5b93ee,#2b62c4);
              border-radius:3px 3px 0 0;min-height:2px;transition:height .5s ease;box-shadow:0 0 10px rgba(76,141,255,.22)}
   .bar.tall .fill{background:linear-gradient(180deg,#a8ec6e,#4e9418)}
-  .bar .h{position:absolute;bottom:-2.1vh;font-size:clamp(8px,.6vw,11px);color:var(--dim);
-          font-family:var(--num)}
+  .bar .h{position:absolute;bottom:-2.1vh;font-size:clamp(7px,.5vw,10px);color:var(--dim);
+          font-family:var(--num);letter-spacing:-.02em}
   .bar .n{position:absolute;top:-.2vh;font-size:clamp(9px,.62vw,12px);color:var(--muted);
           font-family:var(--num);opacity:0}
   .bar.hl .n{opacity:1;color:var(--accent)}
@@ -581,8 +581,8 @@ function renderChart(hours){
     const div = document.createElement('div');
     div.className = 'bar' + (has && peak > 0 && out === peak ? ' tall' : '') +
                     (i === nowH ? ' hl' : '') + (has ? '' : ' future');
-    // 偶数小时显示刻度，23 时补上，避免 24 个标签互相压
-    const label = (i % 2 === 0) ? String(i).padStart(2, '0') : (i === 23 ? '23' : '');
+    // 每格都显示小时刻度（00~23），柱子与刻度一一对应，不隔格显示
+    const label = String(i).padStart(2, '0');
     div.innerHTML =
       `<span class="n">${has ? out : ''}</span>` +
       `<div class="fill" style="height:${has ? pct : 0}%"></div>` +
