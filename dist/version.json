@@ -1,6 +1,6 @@
 {
-  "version": "1.0.2",
-  "notes": "大屏：24 小时完整产量轴、故障原因置顶横幅、故障看板与停机原因双视图小圆点切换、超量内容滚动；产量：卡片与详情页统一显示今日产量，不再暴露寄存器累计值；实时性：WS 推送携带今日产量、产量统计补当前小时实时增量、库存余额秒级上账（单据仍按批次成）；体验：SPA 壳页禁缓存，改版后无需手动强刷",
-  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.2/device-hub-1.0.2-update.zip",
-  "sha256": "48e782f76c0b7e59162d8286059b9d5ff10081705b99a3227e0c0f79154c84d9"
+  "version": "1.0.3",
+  "notes": "1.0.3 升级可靠性：升级包下载失败自动跨源重试（Gitee ⇄ GitHub）；企业代理替换证书导致的下载失败自动降级（包仍经 sha256 + 私钥签名校验）。含 1.0.2 全部内容：大屏 24 小时完整产量轴、故障原因置顶横幅、故障看板与停机原因双视图小圆点切换、超量内容滚动；卡片与详情页统一显示今日产量；WS 推送携带今日产量、产量统计补当前小时实时增量、库存余额秒级上账；SPA 壳页禁缓存",
+  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.3/device-hub-1.0.3-update.zip",
+  "sha256": "ca88ced3b2ee3156d6bc502bfb5040d708d54a9a33b36f800b0f62a7fda8af2f"
 }
