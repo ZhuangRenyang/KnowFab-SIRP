@@ -2,6 +2,8 @@ package com.factory.hub.report;
 
 import com.factory.hub.collect.SnapshotStore;
 import com.factory.hub.erp.ErpProdInboundService;
+import com.factory.hub.erp.ProdDay;
+import com.factory.hub.model.DeviceEntity;
 import com.factory.hub.model.PointValue;
 import com.factory.hub.service.DeviceService;
 import jakarta.annotation.PreDestroy;
@@ -10,6 +12,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -264,6 +267,49 @@ public class ProdRollup {
     public double liveOutputNow(String deviceCode) {
         long hour = System.currentTimeMillis();
         return liveOutput(deviceCode, hour);
+    }
+
+    /**
+     * 全部设备的「今日产量」，按<b>各自清零时刻</b>的统计日口径，
+     * live（当前小时内存桶）+ DB（已落库小时行）混合 —— 与产量统计页 KPI 完全同源。
+     * 设备卡片完成率、车间大屏目标红绿灯都用它。
+     * <p>
+     * 48 小时窗口覆盖任何清零时刻（跨天班次）：窗口外的行不可能属于今天的统计日。
+     */
+    public Map<String, Double> todayByDevice(List<DeviceEntity> devices) {
+        long now = System.currentTimeMillis();
+        LocalDate today = LocalDate.now();
+        Map<String, Integer> reset = new HashMap<>();
+        for (DeviceEntity d : devices) {
+            reset.put(d.getCode(), d.getProdResetHour());
+        }
+        Map<String, Double> out = new HashMap<>();
+        for (DeviceEntity d : devices) {
+            out.put(d.getCode(), 0d);
+        }
+        if (devices.isEmpty()) {
+            return out;
+        }
+        List<ProdHourly> rows = repo.findByHourStartBetween(now - 48L * HOUR_MS, now);
+        long curHour = now - (now % HOUR_MS);
+        for (ProdHourly p : rows) {
+            Integer rh = reset.get(p.getDeviceCode());
+            if (rh == null) {
+                continue;
+            }
+            if (!ProdDay.bizDate(p.getHourStart(), rh).equals(today)) {
+                continue;
+            }
+            double v = p.getOutput();
+            if (p.getHourStart() == curHour) {
+                double live = liveOutput(p.getDeviceCode(), p.getHourStart());
+                if (!Double.isNaN(live)) {
+                    v = live;
+                }
+            }
+            out.merge(p.getDeviceCode(), v, Double::sum);
+        }
+        return out;
     }
 
     private String deviceName(String code) {

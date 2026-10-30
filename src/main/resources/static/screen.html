@@ -96,6 +96,16 @@
   .kpi.warn .v{color:var(--alarm)}
   .kpi.good .v{color:var(--run)}
   .kpi.info .v{color:var(--accent)}
+  /* 目标完成率：>=100 绿 / >=60 蓝 / <60 红。没设目标的设备不参与，行不显示 */
+  .tgt-line{margin-top:.25vh}
+  .tgt-line.t-good{color:var(--run)}
+  .tgt-line.t-mid{color:var(--accent)}
+  .tgt-line.t-low{color:var(--alarm)}
+  .chip .ct{margin-left:auto;font-family:var(--num);font-size:clamp(10px,.7vw,13px);
+            font-variant-numeric:tabular-nums;white-space:nowrap}
+  .chip .ct.ct-good{color:var(--run)}
+  .chip .ct.ct-mid{color:var(--accent)}
+  .chip .ct.ct-low{color:var(--alarm)}
 
   /* ---------- 产线产量条（没配产线时整条隐藏） ---------- */
   .linebar{display:flex;align-items:center;gap:1.2vw;min-height:5.2vh;
@@ -263,6 +273,7 @@
     <div class="k">今日产量</div>
     <div class="v"><span id="k-output">0</span><i>件</i></div>
     <div class="s" id="k-output-sub">按设备累计计数</div>
+    <div class="s tgt-line" id="k-output-target"></div>
   </div>
   <div class="kpi good">
     <div class="k">稼动率</div>
@@ -407,6 +418,16 @@ function render(d){
   const p = d.prod || {};
   $('k-output').textContent = num(p.output);
   $('k-output-sub').textContent = p.hasData ? '按设备累计计数' : '今日暂无产量数据';
+  // 目标完成率：有设备设了日目标才显示（targetRate 为 null 时整行留空）
+  const tEl = $('k-output-target');
+  if (p.targetRate == null) {
+    tEl.textContent = '';
+    tEl.className = 's tgt-line';
+  } else {
+    const rate = Number(p.targetRate);
+    tEl.textContent = `目标 ${num(p.targetSum)} 件 · 完成 ${rate}%`;
+    tEl.className = 's tgt-line ' + (rate >= 100 ? 't-good' : rate >= 60 ? 't-mid' : 't-low');
+  }
   $('k-avail').textContent = (p.availability == null) ? '--' : p.availability.toFixed(1);
   // 停机时长用状态秒数（和稼动率同源），不用告警口径——
   // 342 秒的状态停机没有对应告警时，显示 0 会让人以为"停机时长是假的"
@@ -632,12 +653,17 @@ function renderDevices(list){
     box.innerHTML = '<div class="empty">未接入设备</div>';
     return;
   }
-  box.innerHTML = list.map(d => `
+  box.innerHTML = list.map(d => {
+    const tgt = d.target > 0
+      ? `<span class="ct ${d.rate >= 100 ? 'ct-good' : d.rate >= 60 ? 'ct-mid' : 'ct-low'}">${d.rate}%</span>`
+      : '';
+    return `
     <div class="chip ${d.state}">
       <span class="cd"></span>
       <span class="cn" title="${esc(d.code)}">${esc(d.name)}</span>
-      <span class="cs">${d.text}</span>
-    </div>`).join('');
+      <span class="cs">${d.text}</span>${tgt}
+    </div>`;
+  }).join('');
 }
 
 let tickerLock = 0;

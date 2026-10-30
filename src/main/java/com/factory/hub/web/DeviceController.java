@@ -44,25 +44,31 @@ public class DeviceController {
     private final ObjectMapper mapper;
     /** 设备列表要带"属于哪条产线、第几工位"，产线名从这张表查（只读，不反向依赖产线服务） */
     private final ErpProdLineRepository lineRepo;
+    /** 今日产量（live+DB 混合口径）——设备卡片完成率用 */
+    private final com.factory.hub.report.ProdRollup rollup;
 
     public DeviceController(DeviceService deviceService,
                             SnapshotStore store,
                             CollectScheduler scheduler,
                             ObjectMapper mapper,
-                            ErpProdLineRepository lineRepo
+                            ErpProdLineRepository lineRepo,
+                            com.factory.hub.report.ProdRollup rollup
                             ) {
         this.deviceService = deviceService;
         this.store = store;
         this.scheduler = scheduler;
         this.mapper = mapper;
         this.lineRepo = lineRepo;
+        this.rollup = rollup;
     }
 
     @GetMapping("/devices")
     public List<DeviceView> list() {
+        List<DeviceEntity> all = deviceService.all();
+        Map<String, Double> today = rollup.todayByDevice(all);
         List<DeviceView> out = new ArrayList<>();
-        for (DeviceEntity d : deviceService.all()) {
-            out.add(toView(d));
+        for (DeviceEntity d : all) {
+            out.add(toView(d, today.getOrDefault(d.getCode(), 0d)));
         }
         return out;
     }
@@ -73,7 +79,8 @@ public class DeviceController {
         if (d == null) {
             return ResponseEntity.notFound().build();
         }
-        return ResponseEntity.ok(toView(d));
+        return ResponseEntity.ok(toView(d, rollup.todayByDevice(List.of(d))
+                .getOrDefault(d.getCode(), 0d)));
     }
 
     /** 编辑用：读回完整配置（含点表 JSON）。列表接口不带点表，否则太大 */
@@ -90,7 +97,8 @@ public class DeviceController {
                 d.getPollIntervalMs(), d.getServoBrand(), d.getTimeoutMs(), d.getOfflineAfterFails(),
                 d.isApiKeyEnabled(),
                 d.getEnabled(), d.getApiKey(), d.getPointsJson(),
-                d.getProdSkuId(), d.getProdWhId(), d.getProdResetHour(), d.isProdAutoStockin()));
+                d.getProdSkuId(), d.getProdWhId(), d.getProdResetHour(), d.isProdAutoStockin(),
+                d.getDailyTarget()));
     }
 
     /** 新增或按 code 覆盖 */
@@ -107,7 +115,8 @@ public class DeviceController {
         apply(d, req);
         deviceService.save(d);
         scheduler.reload();
-        return ResponseEntity.ok(toView(d));
+        return ResponseEntity.ok(toView(d, rollup.todayByDevice(List.of(d))
+                .getOrDefault(d.getCode(), 0d)));
     }
 
     @PutMapping("/devices/{id}")
@@ -127,7 +136,8 @@ public class DeviceController {
         apply(d, req);
         deviceService.save(d);
         scheduler.reload();
-        return ResponseEntity.ok(toView(d));
+        return ResponseEntity.ok(toView(d, rollup.todayByDevice(List.of(d))
+                .getOrDefault(d.getCode(), 0d)));
     }
 
     @DeleteMapping("/devices/{id}")
@@ -301,12 +311,14 @@ public class DeviceController {
         d.setProdWhId(req.prodWarehouseId());
         d.setProdResetHour(req.prodResetHour() == null ? 0 : Math.max(0, Math.min(23, req.prodResetHour())));
         d.setProdAutoStockin(req.prodAutoStockin() != null && req.prodAutoStockin());
+        // 日目标：空/0 = 不设完成率；负数按 0 处理
+        d.setDailyTarget(req.dailyTarget() == null || req.dailyTarget() <= 0 ? null : req.dailyTarget());
         if (req.points() != null) {
             d.setPointsJson(mapper.writeValueAsString(req.points()));
         }
     }
 
-    private DeviceView toView(DeviceEntity d) {
+    private DeviceView toView(DeviceEntity d, double todayOutput) {
         SnapshotStore.Runtime rt = store.runtime(d.getCode());
         Map<String, PointValue> latest = store.latest(d.getCode());
 
@@ -330,6 +342,7 @@ public class DeviceController {
                 d.getApiKey(), d.isApiKeyEnabled(),
                 rt.online, rt.lastOkTs == 0 ? null : rt.lastOkTs, rt.lastError,
                 rt.successCount, rt.failCount, rt.lastCostMs,
-                d.getProdLineId(), lineName, d.getLineSeq(), points);
+                d.getProdLineId(), lineName, d.getLineSeq(),
+                d.getDailyTarget(), Math.round(todayOutput * 100d) / 100d, points);
     }
 }

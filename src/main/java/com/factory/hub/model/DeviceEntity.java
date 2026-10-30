@@ -120,6 +120,14 @@ public class DeviceEntity {
     @Column(name = "prod_auto_stockin", nullable = false)
     private boolean prodAutoStockin = false;
 
+    /**
+     * 日目标产量（件）。null/0 = 未设目标。
+     * 设备卡片与车间大屏按「今日产量 / 目标」显示完成率红绿灯；
+     * 口径与产量统计一致（按清零时刻的统计日），改这里不影响采集。
+     */
+    @Column(name = "daily_target")
+    private Integer dailyTarget;
+
     /** 所属产线（DH-40）；null = 未分配 */
     @Column(name = "prod_line_id")
     private Long prodLineId;
@@ -306,6 +314,9 @@ public class DeviceEntity {
     public void setProdLineId(Long prodLineId) { this.prodLineId = prodLineId; }
     public int getLineSeq() { return lineSeq; }
     public void setLineSeq(int lineSeq) { this.lineSeq = lineSeq; }
+    public Integer getDailyTarget() { return dailyTarget; }
+    public void setDailyTarget(Integer dailyTarget) { this.dailyTarget = dailyTarget; }
+
     public boolean isProdAutoStockin() { return prodAutoStockin; }
     public void setProdAutoStockin(boolean prodAutoStockin) { this.prodAutoStockin = prodAutoStockin; }
 }

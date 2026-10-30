@@ -30,6 +30,7 @@ public record DeviceConfig(
         Long prodSkuId,
         Long prodWarehouseId,
         Integer prodResetHour,
-        Boolean prodAutoStockin
+        Boolean prodAutoStockin,
+        Integer dailyTarget
 ) {
 }

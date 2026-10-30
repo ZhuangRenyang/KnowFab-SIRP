@@ -33,6 +33,8 @@ public record DeviceView(
         Long lineId,
         String lineName,
         int lineSeq,
+        Integer dailyTarget,
+        Double todayOutput,
         List<PointValue> points
 ) {
 }

@@ -17,6 +17,10 @@
       <div class="frow">
         <el-form-item label="位置 / 车间"><el-input v-model="f.location" /></el-form-item>
         <el-form-item label="采集周期（毫秒）"><el-input-number v-model="f.pollIntervalMs" :min="100" :step="100" /></el-form-item>
+        <el-form-item label="日目标产量">
+          <el-input-number v-model="f.dailyTarget" :min="1" :max="10000000" placeholder="选填" style="width:100%" />
+          <div class="hint">选填（件）。设备卡片与车间大屏按「今日产量 ÷ 目标」显示完成率红绿灯</div>
+        </el-form-item>
       </div>
       <div class="frow">
         <el-form-item label="伺服/PLC 品牌">
@@ -185,7 +189,8 @@ const f = reactive({
   apiKey: '', apiKeyEnabled: true, servoBrand: '',
   pointsText: JSON.stringify(TPL.machine, null, 2),
   prodSkuId: undefined as number | undefined, prodWarehouseId: undefined as number | undefined,
-  prodResetHour: 0, prodAutoStockin: false
+  prodResetHour: 0, prodAutoStockin: false,
+  dailyTarget: undefined as number | undefined
 })
 
 const skuList = ref<any[]>([])
@@ -304,7 +309,8 @@ function resetDefaults() {
     serialPort: 'COM3', baudRate: 9600, dataBits: 8, stopBits: 1, parity: 0,
     unitId: 1, unitId2: 1, apiKey: '', apiKeyEnabled: true, servoBrand: '',
     pointsText: JSON.stringify(TPL.machine, null, 2),
-    prodSkuId: undefined, prodWarehouseId: undefined, prodResetHour: 0, prodAutoStockin: false
+    prodSkuId: undefined, prodWarehouseId: undefined, prodResetHour: 0, prodAutoStockin: false,
+    dailyTarget: undefined
   })
   tplId.value = ''
   tplNote.value = ''
@@ -347,7 +353,8 @@ watch(visible, async (v) => {
   })
   Object.assign(f, {
     prodSkuId: c.prodSkuId ?? undefined, prodWarehouseId: c.prodWarehouseId ?? undefined,
-    prodResetHour: c.prodResetHour ?? 0, prodAutoStockin: !!c.prodAutoStockin
+    prodResetHour: c.prodResetHour ?? 0, prodAutoStockin: !!c.prodAutoStockin,
+    dailyTarget: c.dailyTarget ?? undefined
   })
   try {
     f.pointsText = JSON.stringify(JSON.parse(c.pointsJson || '[]'), null, 2)
@@ -394,7 +401,8 @@ async function save() {
     prodSkuId: f.prodSkuId ?? null,
     prodWarehouseId: f.prodWarehouseId ?? null,
     prodResetHour: Number(f.prodResetHour) || 0,
-    prodAutoStockin: f.prodAutoStockin
+    prodAutoStockin: f.prodAutoStockin,
+    dailyTarget: f.dailyTarget ? Number(f.dailyTarget) : null
   }
   busy.value = true
   try {

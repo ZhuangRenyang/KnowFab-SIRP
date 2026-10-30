@@ -45,6 +45,15 @@
             <b class="num">{{ fmt(p.value) }}<i v-if="p.unit">{{ p.unit }}</i></b>
           </div>
         </div>
+        <!-- 日目标完成率：设了目标才显示（红绿灯口径：>=100 绿 / >=60 蓝 / <60 红） -->
+        <div v-if="(d.dailyTarget || 0) > 0" class="tgt">
+          <div class="tgt-bar">
+            <div class="tgt-fill" :class="tgtClass(d)" :style="{ width: Math.min(100, tgtPct(d)) + '%' }"></div>
+          </div>
+          <span class="tgt-pct num" :class="tgtClass(d)">
+            今日 {{ fmt(d.todayOutput) }}/{{ d.dailyTarget }} · {{ tgtPct(d) }}%
+          </span>
+        </div>
       </div>
     </div>
     <el-empty v-else :description="store.list.length ? '没有匹配的设备' : '还没有设备，点上方「新增设备」'" />
@@ -68,6 +77,17 @@ import { useRoute, useRouter } from 'vue-router'
 import { Refresh, Search, Plus, Connection } from '@element-plus/icons-vue'
 import { useDevicesStore, statusOf, pickKpis, fmt } from '@/stores/devices'
 import { useAuthStore } from '@/stores/auth'
+
+/* 完成率红绿灯：今日产量 / 日目标。todayOutput 由后端按统计日口径算好 */
+function tgtPct(d: any) {
+  const t = Number(d.dailyTarget) || 0
+  if (t <= 0) return 0
+  return Math.min(999, Math.round(((Number(d.todayOutput) || 0) / t) * 100))
+}
+function tgtClass(d: any) {
+  const p = tgtPct(d)
+  return p >= 100 ? 'tg-ok' : p >= 60 ? 'tg-mid' : 'tg-low'
+}
 import StatusBadge from '@/components/StatusBadge.vue'
 import DeviceDetail from '@/components/DeviceDetail.vue'
 import DeviceFormDialog from '@/components/DeviceFormDialog.vue'
@@ -169,6 +189,16 @@ watch(() => route.query.new, (v) => {
 .dev-name { font-size: var(--text-md); font-weight: 500; }
 .dev-code { font-size: var(--text-xs); color: var(--muted); }
 .kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 6px; margin-top: 10px; }
+.tgt { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.tgt-bar { flex: 1; height: 6px; border-radius: 999px; overflow: hidden; background: rgba(127, 127, 127, .16); }
+.tgt-fill { height: 100%; border-radius: 999px; transition: width .4s; }
+.tgt-fill.tg-ok { background: var(--run); }
+.tgt-fill.tg-mid { background: var(--accent, #4c8dff); }
+.tgt-fill.tg-low { background: var(--alarm); }
+.tgt-pct { font-size: var(--text-2xs); white-space: nowrap; }
+.tgt-pct.tg-ok { color: var(--run); }
+.tgt-pct.tg-mid { color: var(--accent, #4c8dff); }
+.tgt-pct.tg-low { color: var(--alarm); }
 .kpi {
   background: var(--surface-2); border-radius: var(--radius-md); padding: 6px 10px;
   display: flex; flex-direction: column; min-width: 0;

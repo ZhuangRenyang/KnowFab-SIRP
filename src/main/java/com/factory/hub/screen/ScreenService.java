@@ -6,6 +6,7 @@ import com.factory.hub.collect.SnapshotStore;
 import com.factory.hub.model.DeviceEntity;
 import com.factory.hub.model.PointDef;
 import com.factory.hub.model.PointValue;
+import com.factory.hub.report.ProdRollup;
 import com.factory.hub.report.ReportService;
 import com.factory.hub.service.DeviceService;
 import org.slf4j.Logger;
@@ -50,6 +51,7 @@ public class ScreenService {
     private final AlarmEventRepository alarmRepo;
     private final FaultAdvisor advisor;
     private final AlarmCodeDict alarmDict;
+    private final ProdRollup rollup;
 
     private volatile Map<String, Object> cache;
     private volatile long cacheAt;
@@ -59,7 +61,8 @@ public class ScreenService {
     public ScreenService(DeviceService deviceService, SnapshotStore snapshot,
                          ReportService reportService, AlarmEventRepository alarmRepo,
                          FaultAdvisor advisor, AlarmCodeDict alarmDict,
-                         com.factory.hub.erp.ErpLineService lineService) {
+                         com.factory.hub.erp.ErpLineService lineService,
+                         ProdRollup rollup) {
         this.deviceService = deviceService;
         this.snapshot = snapshot;
         this.reportService = reportService;
@@ -67,6 +70,7 @@ public class ScreenService {
         this.advisor = advisor;
         this.alarmDict = alarmDict;
         this.lineService = lineService;
+        this.rollup = rollup;
     }
 
     public Map<String, Object> snapshot() {
@@ -92,7 +96,20 @@ public class ScreenService {
         out.put("device", dev.counts);
         out.put("deviceList", dev.rows);
 
-        out.put("prod", production());
+        Map<String, Object> prod = production();
+        // 目标完成率：只统计设了日目标的设备；一个都没设就是 null，大屏不显示（老客户大屏不受影响）
+        double tToday = 0, tSum = 0;
+        for (Map<String, Object> r : dev.rows) {
+            int tg = ((Number) r.getOrDefault("target", 0)).intValue();
+            if (tg > 0) {
+                tSum += tg;
+                tToday += ((Number) r.getOrDefault("today", 0)).doubleValue();
+            }
+        }
+        prod.put("targetSum", Math.round(tSum));
+        prod.put("targetToday", Math.round(tToday));
+        prod.put("targetRate", tSum > 0 ? Math.round(tToday / tSum * 1000d) / 10d : null);
+        out.put("prod", prod);
         // 产线产量：没有配产线时返回空数组，大屏对应的一条不显示（不能为了新功能把老屏幕顶乱）
         try {
             out.put("lines", lineService.brief());
@@ -141,6 +158,8 @@ public class ScreenService {
             list = List.of();
         }
 
+        // 今日产量 + 日目标：一次批量算好（live+DB 口径），给行和总完成率共用
+        Map<String, Double> todayMap = rollup.todayByDevice(list);
         for (DeviceEntity e : list) {
             boolean isOnline = snapshot.runtime(e.getCode()).online;
             int st = -1;
@@ -171,6 +190,13 @@ public class ScreenService {
             row.put("name", e.getName() == null ? e.getCode() : e.getName());
             row.put("state", state);
             row.put("text", text);
+            double today = todayMap.getOrDefault(e.getCode(), 0d);
+            int target = e.getDailyTarget() == null ? 0 : e.getDailyTarget();
+            row.put("today", Math.round(today));
+            row.put("target", target);
+            if (target > 0) {
+                row.put("rate", Math.round(today / target * 1000d) / 10d);
+            }
             d.rows.add(row);
         }
 
