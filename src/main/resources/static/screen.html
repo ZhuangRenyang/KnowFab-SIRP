@@ -82,6 +82,22 @@
   .p-extra{margin-left:auto;font-size:clamp(10px,.7vw,13px);color:var(--muted)}
 
   /* ---------- KPI ---------- */
+  /* ---------- 故障原因横幅（最高优先级：有故障才出现） ---------- */
+  .faultbar{display:flex;align-items:center;gap:1vw;height:5.5vh;flex:none;min-height:0;
+            overflow:hidden;padding:0 1.1vw;border-radius:12px;
+            background:linear-gradient(90deg,rgba(224,75,74,.26),rgba(224,75,74,.05) 70%);
+            border:1px solid rgba(224,75,74,.5)}
+  .faultbar[hidden]{display:none}
+  .fb-tag{flex:none;padding:.3vh .7vw;border-radius:6px;background:rgba(224,75,74,.9);
+          color:#fff;font-size:clamp(10px,.72vw,13px);letter-spacing:.08em;font-weight:600}
+  .fb-main{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+           color:#ffd9d8;font-size:clamp(13px,1.05vw,20px);font-weight:600}
+  .fb-main b{color:#fff}
+  .fb-extra{flex:none;color:var(--muted);font-size:clamp(11px,.82vw,15px);white-space:nowrap}
+  .fb-go{flex:none;color:var(--accent);font-size:clamp(11px,.82vw,15px);text-decoration:none;
+         white-space:nowrap}
+  .fb-go:hover{text-decoration:underline}
+
   .kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:1.1vw;height:17vh;flex:none;min-height:0;overflow:hidden}
   .kpi{background:linear-gradient(180deg,var(--panel),var(--panel2));
        border:1px solid var(--line);border-radius:14px;padding:1.4vh 1vw;
@@ -270,6 +286,13 @@
   </div>
 </header>
 
+<div class="faultbar" id="faultbar" hidden>
+  <span class="fb-tag">故障原因</span>
+  <span class="fb-main" id="fb-main"></span>
+  <span class="fb-extra" id="fb-extra"></span>
+  <a class="fb-go" href="/fault.html">故障屏 ▸</a>
+</div>
+
 <section class="kpis">
   <div class="kpi info">
     <div class="k">今日产量</div>
@@ -450,6 +473,7 @@ function render(d){
   renderDonut(dev);
   renderChart(d.hours || []);
   renderAlarms(al.items || []);
+  renderFaultBar(d.faults || []);
   faultAt = Date.now();
   renderFaults(d.faults || [], d.stopReasons || []);
   renderDevices(d.deviceList || []);
@@ -563,6 +587,43 @@ function renderAlarmPage(){
 }
 
 let faultAll = [], faultPage = 0, faultAt = 0;
+
+/* 故障原因横幅：把最严重的一条「为什么坏」提到大屏最上方。
+   取源优先级：PLC 报警字典原因 → 报警规则 → 通讯/离线原因。 */
+function lvlRank(lv){ return lv === '严重' ? 3 : lv === '重要' ? 2 : 1; }
+
+function renderFaultBar(faults){
+  const bar = $('faultbar');
+  if (!faults || !faults.length){ bar.hidden = true; return; }
+  const items = [];
+  for (const f of faults){
+    const facts = f.facts || {};
+    const words = facts.plcWords || [];
+    const known = words.find(w => w.known && w.cause);
+    const al = (facts.alarms && facts.alarms.items) || [];
+    const worst = al.slice().sort((a, b) => lvlRank(b.levelText) - lvlRank(a.levelText))[0];
+    let reason = '', level = '一般';
+    if (known){
+      reason = known.name + '：' + known.cause + (known.remedy ? ' → ' + known.remedy : '');
+      level = '严重';
+    } else if (worst){
+      reason = worst.rule + (worst.message ? '：' + worst.message : '');
+      level = worst.levelText || '一般';
+    } else if (facts.offline){
+      reason = '设备离线' + (facts.lastError ? '：' + facts.lastError : '');
+      level = '重要';
+    }
+    if (!reason) continue;
+    items.push({ name: f.name || f.code, reason, level, count: al.length || words.length || 1 });
+  }
+  if (!items.length){ bar.hidden = true; return; }
+  items.sort((a, b) => lvlRank(b.level) - lvlRank(a.level));
+  const top = items[0];
+  const total = items.reduce((s, x) => s + x.count, 0);
+  $('fb-main').innerHTML = '<b>' + esc(top.name) + '</b> · ' + esc(top.reason);
+  $('fb-extra').textContent = (items.length > 1 ? ('另有 ' + (items.length - 1) + ' 台设备 · ') : '') + '共 ' + total + ' 条报警';
+  bar.hidden = false;
+}
 
 function renderFaults(list, reasons){
   const title = $('bl-title'), note = $('bl-note'), extra = $('bl-extra');
