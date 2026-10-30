@@ -56,16 +56,32 @@ export const useDevicesStore = defineStore('devices', () => {
     return { total: list.value.length, online, running, alarm }
   })
 
-  async function load() {
-    loading.value = true
+  async function load(silent = false) {
+    if (!silent) loading.value = true
     lastError.value = ''
     try {
       list.value = await http.get<any[]>('/api/devices')
       loaded.value = true
     } catch (e: any) {
-      lastError.value = e?.message || '加载失败'
+      if (!silent) lastError.value = e?.message || '加载失败'
     } finally {
-      loading.value = false
+      if (!silent) loading.value = false
+    }
+  }
+
+  /* 兜底轮询：WS 推送负责秒级，这一道保证即使 WS 断了或推送里没带字段，
+     卡片上的「今日产量」也会自己往前走（静默刷新，不转圈不闪屏） */
+  let autoTimer: number | null = null
+  function startAutoRefresh() {
+    stopAutoRefresh()
+    autoTimer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') load(true)
+    }, 5000)
+  }
+  function stopAutoRefresh() {
+    if (autoTimer !== null) {
+      window.clearInterval(autoTimer)
+      autoTimer = null
     }
   }
 
@@ -108,5 +124,5 @@ export const useDevicesStore = defineStore('devices', () => {
     ws.on('prod', applyProd)
   }
 
-  return { list, loaded, loading, lastError, stats, load, reloadAll, bindWs }
+  return { list, loaded, loading, lastError, stats, load, reloadAll, bindWs, startAutoRefresh, stopAutoRefresh }
 })

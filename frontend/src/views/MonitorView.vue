@@ -72,7 +72,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Refresh, Search, Plus, Connection } from '@element-plus/icons-vue'
 import { useDevicesStore, statusOf, pickKpis, fmt } from '@/stores/devices'
@@ -161,6 +161,14 @@ watch(() => route.query.new, (v) => {
     router.replace({ path: '/' })
   }
 }, { immediate: true })
+
+/* 兜底轮询：WS 推送负责秒级，这一道保证「今日产量」永远自己往前走 */
+onMounted(() => {
+  store.startAutoRefresh()
+})
+onUnmounted(() => {
+  store.stopAutoRefresh()
+})
 </script>
 
 <style scoped>
