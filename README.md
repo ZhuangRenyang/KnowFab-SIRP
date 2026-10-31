@@ -1,6 +1,35 @@
-# KnowFab SIRP · AI-powered Smart Factory Management System
+# KnowFab SIRP · 知造
 
-**English** · [简体中文](README.zh-CN.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [Русский](README.ru.md)
+**让所有机器都报产量** —— 不改 PLC 程序、不装数据库、不要团队、不要年费。一个安装包，把全厂设备接进 ERP。
+
+![车间大屏](docs/promo/shots/screen-full.png)
+
+设备采集 → 产量统计 → 自动入成品仓 → 进销存 / 财务 → 经营报表 → 全员 AI 助手。
+新机老机都能接（Modbus TCP / RTU、OPC UA、串口 485），断网可用，数据不出厂，AGPL-3.0 开源。
+
+**一条命令装好**（目标机器不用预装 Java、数据库、Docker）：
+
+```bash
+# Linux / macOS
+curl -fsSL https://gitee.com/ZhuangRenyang/KnowFab-SIRP/raw/main/tools/portable/install.sh | bash
+```
+
+```powershell
+# Windows（管理员 PowerShell）
+irm https://gitee.com/ZhuangRenyang/KnowFab-SIRP/raw/main/tools/portable/install.ps1 | iex
+```
+
+装完浏览器打开 `http://localhost:8080`，默认账号 `admin` / `123456`（首次登录请改密码）。
+
+[简体中文完整文档](README.zh-CN.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Español](README.es.md) · [Deutsch](README.de.md) · [Русский](README.ru.md)
+
+---
+
+<a id="english"></a>
+
+## English
+
+### AI-powered Smart Factory Management System
 
 [![License: AGPL-3.0](https://img.shields.io/github/license/ZhuangRenyang/KnowFab-SIRP)](LICENSE)
 [![Latest release](https://img.shields.io/github/v/release/ZhuangRenyang/KnowFab-SIRP)](https://github.com/ZhuangRenyang/KnowFab-SIRP/releases)
