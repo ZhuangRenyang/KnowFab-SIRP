@@ -9,7 +9,7 @@
 **Let the machines report their own output — instead of asking workers to scan barcodes.**
 Device-level data acquisition → finished-goods counting per line → automatic stock-in → purchasing /
 inventory / sales / finance in one ledger → business reports → an AI assistant for the whole team.
-It runs on **your own server**. Java 17 + Spring Boot 3 + Vue 3 + MySQL, shipped as a single jar —
+It runs on **your own server**. Java 17 + Spring Boot 3 + Vue 3 + MySQL / MariaDB, shipped as a single jar —
 or use the **self-contained portable build** that bundles Java and the database, so a bare machine
 can start it with one command.
 
@@ -35,7 +35,11 @@ Three options — **① is the recommended one**: nothing to install on the targ
 command, roughly 3–5 minutes on first run (it downloads the JRE and the database; later starts are
 instant). ② and ③ are for machines that already have a server or a database.
 
-### ① Zero-dependency (recommended): one command, no Java / MySQL / Docker
+### ① Zero-dependency (recommended): one command, no Java / no database / no Docker
+
+> The portable build bundles a **MariaDB 11.4** instance (MySQL protocol compatible) on its own
+> port **3307**, so it never touches a MySQL already running on 3306. Path ③ below is for
+> machines that already have MySQL 8 — the app connects to either one.
 
 **Windows** (10 or later):
 
@@ -197,7 +201,7 @@ python tools/smoke-all.py    # 99 API smoke checks — all green means the insta
 |---|---|---|---|
 | Machine data | **protocol-level direct + legacy counting** | none | mostly barcode reporting |
 | Production ↔ inventory | counting posts stock automatically, documents close the loop | manual documents | work-order driven |
-| Getting started | **one command, bundled Java + database** (no Docker/MySQL) | bring your own JDK + MySQL | sign up, data lives in the cloud |
+| Getting started | **one command, bundled Java + database** (no Docker, no DB install) | bring your own JDK + MySQL | sign up, data lives in the cloud |
 | Deployment | self-hosted, one command, data stays inside the plant | deploy it yourself | cloud SaaS |
 | License | AGPL-3.0 + commercial | AGPL-3.0 | closed source |
 
