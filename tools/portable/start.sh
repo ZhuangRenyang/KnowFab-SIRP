@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# 知造 SIRP 便携启动器（Linux / macOS Intel）
+# 知造 SIRP 便携启动器（Linux x86_64 / macOS 走 Homebrew 数据库）
 #
 #   ./start.sh                  默认 8080 端口，数据库 127.0.0.1:3307
 #   PORT=9000 ./start.sh
@@ -29,8 +29,37 @@ LOG_DIR="$RT/logs"
 CONF_DIR="$HERE/config"
 CONF_FILE="$CONF_DIR/application.yml"
 
-JRE_URL="${JRE_URL:-https://mirrors.tuna.tsinghua.edu.cn/Adoptium/17/jre/x64/linux/OpenJDK17U-jre_x64_linux_hotspot_17.0.21_9.tar.gz}"
-DB_URL="${DB_URL:-https://mirrors.aliyun.com/mariadb/mariadb-11.4.13/bintar-linux-systemd-x86_64/mariadb-11.4.13-linux-systemd-x86_64.tar.gz}"
+# ── 平台检测（2026-10-31 新增）────────────────────────────────────────────
+# 之前这里写死了 Linux x64 的下载地址，但注释写着"Linux / macOS"——
+# 在 Mac 上会把 Linux 版 JRE 和 mariadbd 拉下来，然后报一堆看不懂的错。
+# 现在按平台分派：Linux 用便携二进制；macOS 用 macOS 版 JRE + Homebrew 的 MariaDB
+# （MariaDB 官方自 11.x 起不再发布 macOS 二进制包，只能走 brew）。
+OS="$(uname -s)"
+ARCH="$(uname -m)"
+DB_MODE="bundled"
+
+case "$OS" in
+  Linux)
+    if [ "$ARCH" != "x86_64" ]; then
+      die "Linux 便携包只提供 x86_64（检测到 $ARCH）。请用源码方式：java -jar device-hub.jar"
+    fi
+    JRE_URL="${JRE_URL:-https://mirrors.tuna.tsinghua.edu.cn/Adoptium/17/jre/x64/linux/OpenJDK17U-jre_x64_linux_hotspot_17.0.21_9.tar.gz}"
+    DB_URL="${DB_URL:-https://mirrors.aliyun.com/mariadb/mariadb-11.4.13/bintar-linux-systemd-x86_64/mariadb-11.4.13-linux-systemd-x86_64.tar.gz}"
+    ;;
+  Darwin)
+    case "$ARCH" in
+      arm64)  JRE_URL="${JRE_URL:-https://mirrors.tuna.tsinghua.edu.cn/Adoptium/17/jre/aarch64/mac/OpenJDK17U-jre_aarch64_mac_hotspot_17.0.21_9.tar.gz}" ;;
+      x86_64) JRE_URL="${JRE_URL:-https://mirrors.tuna.tsinghua.edu.cn/Adoptium/17/jre/x64/mac/OpenJDK17U-jre_x64_mac_hotspot_17.0.21_9.tar.gz}" ;;
+      *) die "不支持的 Mac 架构：$ARCH（支持 arm64 / x86_64）" ;;
+    esac
+    DB_MODE="brew"
+    DB_URL=""   # macOS 用 Homebrew，不下载便携库
+    ;;
+  *)
+    die "只支持 Linux x86_64 与 macOS（Intel / Apple Silicon）。当前平台：$OS $ARCH
+     其他平台请用源码方式运行：java -jar device-hub.jar（需要 JDK 17+ 与 MySQL/MariaDB）"
+    ;;
+esac
 
 say() { printf '\n== %s\n' "$*"; }
 ok()  { printf '   %s\n' "$*"; }
@@ -85,7 +114,26 @@ fi
 ok "$("$JAVA_BIN" -version 2>&1 | head -1)"
 
 # ---------- 2. MariaDB ----------
-if [ ! -x "$DB_DIR/bin/mariadbd" ]; then
+MARIADBD="$DB_DIR/bin/mariadbd"
+MARIADB_INITDB="$DB_DIR/scripts/mariadb-install-db"
+BASEDIR_ARG="--basedir=$DB_DIR"
+
+if [ "$DB_MODE" = "brew" ]; then
+  # macOS 分支：官方没有 mac 二进制包，用 Homebrew 的 MariaDB
+  command -v brew >/dev/null 2>&1 || die "macOS 上需要 Homebrew 安装 MariaDB：
+     1) 先装 Homebrew：https://brew.sh
+     2) 再执行：brew install mariadb
+     3) 回来重新运行 ./start.sh"
+  if ! command -v mariadbd >/dev/null 2>&1; then
+    say '用 Homebrew 安装 MariaDB（约 2 分钟，只需一次）'
+    brew install mariadb >/dev/null 2>&1 || die 'brew install mariadb 失败，请手动执行后重试'
+  fi
+  MARIADBD="$(command -v mariadbd)"
+  MARIADB_INITDB="$(command -v mariadb-install-db || command -v mysql_install_db || true)"
+  [ -n "$MARIADB_INITDB" ] || die '找不到 mariadb-install-db，请确认 brew install mariadb 成功'
+  BASEDIR_ARG=""
+  ok "MariaDB 使用 Homebrew 版本"
+elif [ ! -x "$MARIADBD" ]; then
   say '首次运行：下载便携 MariaDB（约 120MB，只需一次）'
   download "$DB_URL" "$RT/mariadb.tar.gz"
   need tar
@@ -106,8 +154,8 @@ fi
 if [ ! -d "$DATA_DIR/mysql" ]; then
   say '初始化数据库（第一次约 20 秒）'
   mkdir -p "$DATA_DIR"
-  "$DB_DIR/scripts/mariadb-install-db" --no-defaults \
-    --basedir="$DB_DIR" --datadir="$DATA_DIR" \
+  "$MARIADB_INITDB" --no-defaults \
+    $BASEDIR_ARG --datadir="$DATA_DIR" \
     --auth-root-authentication-method=normal --skip-test-db \
     >"$LOG_DIR/db-init.log" 2>&1 || die "数据库初始化失败，见 runtime/logs/db-init.log"
   ok '数据库初始化完成（root 初始无密码，仅监听 127.0.0.1）'
@@ -117,8 +165,8 @@ if port_busy "$DB_PORT"; then
   ok "数据库已在 $DB_PORT 运行"
 else
   say "启动数据库（127.0.0.1:$DB_PORT）"
-  "$DB_DIR/bin/mariadbd" --no-defaults \
-    --basedir="$DB_DIR" --datadir="$DATA_DIR" \
+  "$MARIADBD" --no-defaults \
+    $BASEDIR_ARG --datadir="$DATA_DIR" \
     --port="$DB_PORT" --bind-address=127.0.0.1 --skip-name-resolve \
     --character-set-server=utf8mb4 --collation-server=utf8mb4_general_ci \
     --socket="$RT/mysql.sock" --pid-file="$RT/mysql.pid" \
