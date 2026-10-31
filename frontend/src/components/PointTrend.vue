@@ -5,17 +5,21 @@
     <!-- 区块标题（2026-10-29 用户截图反馈"这个表没有名字"）：
          图内那行 11px 灰字几乎看不见，改成图外显式标题，把"画的是哪个点位"写清楚 -->
     <div class="trend-head">
-      <b>点位趋势</b>
+      <b>{{ t('trend.title') }}</b>
       <span class="trend-name">{{ pointTitle }}</span>
-      <span class="trend-tip">采集质量曲线 · 不是产量统计</span>
+      <span class="trend-tip">{{ t('trend.tip') }}</span>
     </div>
-    <div v-if="noData" class="trend-empty">数据积累中…（选中设备后自动拉取近 180 条趋势）</div>
+    <div v-if="noData" class="trend-empty">{{ t('trend.empty') }}</div>
     <div v-show="!noData" ref="el" class="trend-canvas" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, onScopeDispose, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
+
 import { useEcharts } from '@/composables/useEcharts'
 import { useWsStore } from '@/stores/ws'
 import { devicesApi } from '@/api/devices'

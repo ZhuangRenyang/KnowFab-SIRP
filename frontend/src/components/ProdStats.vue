@@ -1,25 +1,25 @@
 <template>
   <div class="pstats">
     <div class="ps-head">
-      <span class="ps-title">产量统计</span>
-      <span v-if="st && st.skuName" class="ps-meta">产品：{{ st.skuName }}</span>
+      <span class="ps-title">{{ t('prodStats.title') }}</span>
+      <span v-if="st && st.skuName" class="ps-meta">{{ t('prodStats.product', { name: st.skuName }) }}</span>
       <span v-if="st && st.auto" class="ps-meta">
-        自动入库{{ st.warehouseName ? ' → ' + st.warehouseName : '' }} · 每日 {{ st.resetHour }} 点清零
+        {{ t('prodStats.autoStockin', { wh: st.warehouseName ? ' → ' + st.warehouseName : '', hour: st.resetHour }) }}
       </span>
       <span class="ps-spacer" />
       <el-radio-group v-if="st && (st.hasCount || st.auto)" v-model="mode" size="small">
-        <el-radio-button value="day">日表</el-radio-button>
-        <el-radio-button value="month">月表</el-radio-button>
-        <el-radio-button value="year">年表</el-radio-button>
-        <el-radio-button value="all">综合</el-radio-button>
+        <el-radio-button value="day">{{ t('prodStats.tabDay') }}</el-radio-button>
+        <el-radio-button value="month">{{ t('prodStats.tabMonth') }}</el-radio-button>
+        <el-radio-button value="year">{{ t('prodStats.tabYear') }}</el-radio-button>
+        <el-radio-button value="all">{{ t('prodStats.tabAll') }}</el-radio-button>
       </el-radio-group>
     </div>
 
     <template v-if="st && (st.hasCount || st.auto)">
       <div class="ps-kpis num">
-        <div class="ps-kpi">今日<b>{{ st.today }}</b></div>
-        <div class="ps-kpi">本月<b>{{ st.month }}</b></div>
-        <div class="ps-kpi">今年<b>{{ st.year }}</b></div>
+        <div class="ps-kpi">{{ t('prodStats.today') }}<b>{{ st.today }}</b></div>
+        <div class="ps-kpi">{{ t('prodStats.month') }}<b>{{ st.month }}</b></div>
+        <div class="ps-kpi">{{ t('prodStats.year') }}<b>{{ st.year }}</b></div>
       </div>
       <div class="ps-chart-head">
         <b>{{ chartTitle }}</b>
@@ -28,29 +28,29 @@
       <div ref="el" class="ps-chart" :class="{ tall: mode === 'all' }" />
       <div class="ps-note">
         <template v-if="mode === 'day'">
-          从今日 {{ st.resetHour }} 点（清零时刻）起算的 24 小时，还没到的小时为 0；各小时之和 = 今日
+          {{ t('prodStats.tipDay', { hour: st.resetHour }) }}
         </template>
         <template v-else-if="mode === 'month'">
-          本月整月（{{ st.resetHour }} 点清零切日，未到的天为 0）；各点之和 = 本月
+          {{ t('prodStats.tipMonth', { hour: st.resetHour }) }}
         </template>
         <template v-else-if="mode === 'year'">
-          今年 1-12 月合计；各月之和 = 今年
+          {{ t('prodStats.tipYear') }}
         </template>
         <template v-else>
-          自系统记录这台设备产量以来的全部每日产量：滚轮或拖动下方滑块缩放，年 → 月 → 日；虚线是 7 日均值
+          {{ t('prodStats.tipAll') }}
         </template>
       </div>
     </template>
     <div v-else-if="st" class="ps-empty">
-      该设备未绑定成品，或点表里没有 role=count 的产量点——在「编辑配置 → 生产入库联动」里启用后，
-      每产一件自动入成品仓，这里出日/月/年产量图表。
+      {{ t('prodStats.noSku') }}
     </div>
-    <div v-else class="ps-empty">加载中…</div>
+    <div v-else class="ps-empty">{{ t('prodStats.loading') }}</div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useEcharts } from '@/composables/useEcharts'
 import { prodApi, type ProdStatus } from '@/api/erp'
 
@@ -60,6 +60,7 @@ import { prodApi, type ProdStatus } from '@/api/erp'
    数据源 prod_hourly.output（增量已处理计数器清零与断线补记）。
    四张表与「今日/本月/今年」KPI 同一口径：日表各点之和=今日，月表=本月，年表=今年。 */
 const props = defineProps<{ code: string }>()
+const { t } = useI18n()
 
 type Mode = 'day' | 'month' | 'year' | 'all'
 const mode = ref<Mode>('day')
@@ -68,18 +69,18 @@ const mode = ref<Mode>('day')
    标题说清"这张图统计的是什么"，副标题说清"为什么它在动、为什么刻度会跳" */
 const chartTitle = computed(() => {
   switch (mode.value) {
-    case 'month': return '本月每日产量（折线图）'
-    case 'year': return '今年各月产量（折线图）'
-    case 'all': return '历史每日产量（综合曲线 + 7 日均值）'
-    default: return '今日各小时产量（柱状图）'
+    case 'month': return t('prodStats.chartMonthTitle')
+    case 'year': return t('prodStats.chartYearTitle')
+    case 'all': return t('prodStats.chartAllTitle')
+    default: return t('prodStats.chartDayTitle')
   }
 })
 const chartHint = computed(() => {
   switch (mode.value) {
-    case 'month': return '每个点 = 一天的产量；今天那一点会随生产实时增长'
-    case 'year': return '每个点 = 一个月的合计产量'
-    case 'all': return '每个点 = 一天的产量，虚线为 7 日均值'
-    default: return '每根柱 = 该小时的产量；当前小时会随生产实时增长，纵轴刻度自动缩放属正常'
+    case 'month': return t('prodStats.chartMonthSub')
+    case 'year': return t('prodStats.chartYearSub')
+    case 'all': return t('prodStats.chartAllSub')
+    default: return t('prodStats.chartDaySub')
   }
 })
 const el = ref<HTMLElement>()
@@ -133,7 +134,7 @@ function render(points: { label: string; qty: number }[]) {
   const step = niceStep(maxV)
   const yAxis = {
     type: 'value' as const,
-    name: '产量',
+    name: t('prodStats.seriesOutput'),
     nameTextStyle: { fontSize: 11, opacity: 0.7, padding: [0, 0, 2, 0] },
     max: Math.max(step, Math.ceil(maxV / step) * step),
     interval: step,
@@ -150,7 +151,7 @@ function render(points: { label: string; qty: number }[]) {
       tooltip,
       xAxis: { type: 'category', data: labels },
       yAxis,
-      series: [{ name: '小时产量', type: 'bar', barMaxWidth: 14, data }]
+      series: [{ name: t('prodStats.seriesHourly'), type: 'bar', barMaxWidth: 14, data }]
     })
     return
   }
@@ -161,7 +162,7 @@ function render(points: { label: string; qty: number }[]) {
       xAxis: { type: 'category', data: labels },
       yAxis,
       series: [{
-        name: mode.value === 'month' ? '日产量' : '月产量',
+        name: mode.value === 'month' ? t('prodStats.seriesDaily') : t('prodStats.seriesMonthly'),
         type: 'line', smooth: true, showSymbol: true, symbolSize: 4, data
       }]
     })
@@ -184,9 +185,9 @@ function render(points: { label: string; qty: number }[]) {
       { type: 'slider', height: 16, bottom: 6 }
     ],
     series: [
-      { name: '日产量', type: 'line', smooth: true, showSymbol: false, data,
+      { name: t('prodStats.seriesDaily'), type: 'line', smooth: true, showSymbol: false, data,
         areaStyle: { opacity: 0.08 } },
-      { name: '7日均值', type: 'line', smooth: true, showSymbol: false, data: ma,
+      { name: t('prodStats.seriesMa7'), type: 'line', smooth: true, showSymbol: false, data: ma,
         lineStyle: { width: 1, type: 'dashed' } }
     ]
   })

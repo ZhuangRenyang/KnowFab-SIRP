@@ -3,27 +3,27 @@
     <el-alert v-if="warn" :title="warn" type="warning" show-icon :closable="false" class="warn" />
 
     <div class="kpis">
-      <div class="ebox"><span>待处理</span>
-        <b class="num al">{{ s?.open ?? 0 }}<i>条</i></b><em>未确认 + 已确认未恢复</em></div>
-      <div class="ebox"><span>今日新增</span>
-        <b class="num">{{ s?.todayNew ?? 0 }}<i>条</i></b></div>
-      <div class="ebox"><span>今日恢复</span>
-        <b class="num ok">{{ s?.todayRecovered ?? 0 }}<i>条</i></b></div>
-      <div class="ebox"><span>启用规则</span>
-        <b class="num">{{ s?.ruleEnabled ?? 0 }}<i>条</i></b><em>{{ notifySub }}</em></div>
+      <div class="ebox"><span>{{ t('alarm.open') }}</span>
+        <b class="num al">{{ s?.open ?? 0 }}<i>{{ t('alarm.unit') }}</i></b><em>{{ t('alarm.openHint') }}</em></div>
+      <div class="ebox"><span>{{ t('alarm.todayNew') }}</span>
+        <b class="num">{{ s?.todayNew ?? 0 }}<i>{{ t('alarm.unit') }}</i></b></div>
+      <div class="ebox"><span>{{ t('alarm.todayRecovered') }}</span>
+        <b class="num ok">{{ s?.todayRecovered ?? 0 }}<i>{{ t('alarm.unit') }}</i></b></div>
+      <div class="ebox"><span>{{ t('alarm.ruleEnabled') }}</span>
+        <b class="num">{{ s?.ruleEnabled ?? 0 }}<i>{{ t('alarm.unit') }}</i></b><em>{{ notifySub }}</em></div>
     </div>
 
     <div class="panels">
       <div class="panel">
-        <div class="p-head"><h3>近 7 天告警数</h3><span>条 / 天</span></div>
+        <div class="p-head"><h3>{{ t('alarm.trendTitle') }}</h3><span>{{ t('alarm.trendUnit') }}</span></div>
         <div ref="trendEl" class="trend"></div>
       </div>
       <div class="panel">
-        <div class="p-head"><h3>今日告警最多的设备</h3><span>反复报的设备该去看看</span></div>
+        <div class="p-head"><h3>{{ t('alarm.topTitle') }}</h3><span>{{ t('alarm.topHint') }}</span></div>
         <div class="mini-list">
-          <div v-if="!top.length" class="empty">今日还没有告警</div>
+          <div v-if="!top.length" class="empty">{{ t('alarm.noAlarmToday') }}</div>
           <div v-for="x in top" :key="x.code" class="mini-row">
-            <span>{{ x.name }} <em>{{ x.code }}</em></span><b class="num">{{ x.count }} 次</b>
+            <span>{{ x.name }} <em>{{ x.code }}</em></span><b class="num">{{ t('alarm.times', { n: x.count }) }}</b>
           </div>
         </div>
       </div>
@@ -31,11 +31,11 @@
 
     <div class="panel rec">
       <div class="p-head">
-        <h3>告警记录</h3>
+        <h3>{{ t('alarm.listTitle') }}</h3>
         <div class="acts">
-          <el-button size="small" @click="ruleOpen = true">规则设置</el-button>
-          <el-button size="small" @click="notifyOpen = true">通知设置</el-button>
-          <el-button size="small" @click="ackAll">全部确认</el-button>
+          <el-button size="small" @click="ruleOpen = true">{{ t('alarm.rules') }}</el-button>
+          <el-button size="small" @click="notifyOpen = true">{{ t('alarm.notify') }}</el-button>
+          <el-button size="small" @click="ackAll">{{ t('alarm.ackAll') }}</el-button>
         </div>
       </div>
 
@@ -49,13 +49,13 @@
         <el-select v-model="f.range" style="width:112px" @change="reload">
           <el-option v-for="o in RANGE_OPTS" :key="o.value" :label="o.label" :value="o.value" />
         </el-select>
-        <el-input v-model="q" placeholder="搜索设备 / 告警内容" clearable style="width:200px" @input="onSearch" />
-        <el-button @click="reload">刷新</el-button>
+        <el-input v-model="q" :placeholder="t('alarm.searchPh')" clearable style="width:200px" @input="onSearch" />
+        <el-button @click="reload">{{ t('alarm.refresh') }}</el-button>
       </div>
 
       <div class="list">
         <div v-if="!rows.length" class="empty big-empty">
-          没有符合条件的告警。<br>设备离线、停机超时、数值越限会自动记在这里，不用人盯着。
+          {{ t('alarm.empty') }}<br>{{ t('alarm.emptyHint') }}
         </div>
         <div v-for="e in rows" :key="e.id" class="arow" :class="{ acked: e.state === 'ACKED' }">
           <div class="lvbar" :class="e.level.toLowerCase()"></div>
@@ -66,24 +66,24 @@
               <span class="tag" :class="'st-' + e.state.toLowerCase()">{{ AST[e.state] || e.state }}</span>
               <span>{{ e.deviceName }} <em>{{ e.deviceCode }}</em></span>
               <span v-if="e.location">{{ e.location }}</span>
-              <span>开始 {{ fmtTime(e.startedAt) }}</span>
-              <span>持续 {{ fmtDur(e.durationMs) }}</span>
+              <span>{{ t('alarm.started', { time: fmtTime(e.startedAt) }) }}</span>
+              <span>{{ t('alarm.duration', { dur: fmtDur(e.durationMs) }) }}</span>
               <span v-if="e.clearedAt" class="ok">
-                恢复 {{ fmtTime(e.clearedAt) }}{{ e.clearReason ? `（${e.clearReason}）` : '' }}
+                {{ t('alarm.cleared', { time: fmtTime(e.clearedAt) }) }}{{ e.clearReason ? `（${e.clearReason}）` : '' }}
               </span>
-              <span v-if="e.ackBy">{{ e.ackBy }} 已确认</span>
+              <span v-if="e.ackBy">{{ t('alarm.ackedBy', { user: e.ackBy }) }}</span>
             </div>
           </div>
           <div class="act">
-            <el-button v-if="e.state === 'ACTIVE'" size="small" @click="ack(e)">确认</el-button>
+            <el-button v-if="e.state === 'ACTIVE'" size="small" @click="ack(e)">{{ t('alarm.ack') }}</el-button>
           </div>
         </div>
       </div>
 
       <div class="pager">
-        <el-button size="small" :disabled="page <= 1" @click="go(page - 1)">上一页</el-button>
-        <span>第 <b>{{ page }}</b> / {{ pages }} 页 · 共 <b>{{ total }}</b> 条</span>
-        <el-button size="small" :disabled="page >= pages" @click="go(page + 1)">下一页</el-button>
+        <el-button size="small" :disabled="page <= 1" @click="go(page - 1)">{{ t('alarm.prev') }}</el-button>
+        <span>{{ t('alarm.pageInfo', { page, pages, total }) }}</span>
+        <el-button size="small" :disabled="page >= pages" @click="go(page + 1)">{{ t('alarm.next') }}</el-button>
       </div>
     </div>
 
@@ -94,6 +94,7 @@
 
 <script setup lang="ts">
 import { computed, onScopeDispose, reactive, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useEcharts } from '@/composables/useEcharts'
 import { usePolling } from '@/composables/usePolling'
@@ -105,6 +106,8 @@ import {
 } from '@/api/alarms'
 import RuleDialog from '@/components/alarm/RuleDialog.vue'
 import NotifyDialog from '@/components/alarm/NotifyDialog.vue'
+
+const { t } = useI18n()
 
 const ws = useWsStore()
 const { init, setOption } = useEcharts()
@@ -119,15 +122,14 @@ const trendEl = ref<HTMLElement>()
 
 const top = computed(() => s.value?.topDevices || [])
 const notifySub = computed(() =>
-  s.value?.notifyEnabled ? `通知已启用 · ${s.value.notifyChannels} 个渠道` : '通知未配置')
+  s.value?.notifyEnabled ? t('alarm.notifyOn', { n: s.value.notifyChannels }) : t('alarm.notifyOff'))
 const warn = computed(() => {
   if (!s.value) return ''
   if (!s.value.ruleEnabled) {
-    return '当前没有启用的告警规则，系统不会报警。点右上角「规则设置」打开需要监控的项目。'
+    return t('alarm.noRule')
   }
   if (!s.value.notifyEnabled) {
-    return '通知还没配置，告警只会显示在这个网页上。没人在电脑前的时候不会有人知道。'
-      + '点「通知设置」，加一个企业微信群机器人，五分钟能搞定。'
+    return t('alarm.noNotify')
   }
   return ''
 })
@@ -196,22 +198,22 @@ watch(() => s.value?.trend, (trend) => {
 async function ack(e: AlarmItem) {
   try {
     const r = await alarmsApi.ack(e.id)
-    if (r && r.ok === false) { ElMessage.error(r.message || '操作失败'); return }
+    if (r && r.ok === false) { ElMessage.error(r.message || t('alarm.opFailed')); return }
     refresh()
-  } catch (err: any) { ElMessage.error(err?.message || '操作失败') }
+  } catch (err: any) { ElMessage.error(err?.message || t('alarm.opFailed')) }
 }
 
 async function ackAll() {
   try {
     await ElMessageBox.confirm(
-      '确认当前所有未处理的告警？确认只是表示「人已经知道了」，设备该修还得修。',
-      '全部确认', { type: 'warning', confirmButtonText: '全部确认', cancelButtonText: '取消' }
+      t('alarm.confirmAckAll'),
+      t('alarm.ackAll'), { type: 'warning', confirmButtonText: t('alarm.ackAll'), cancelButtonText: t('common.cancel') }
     )
   } catch { return }
   try {
     await alarmsApi.ackAll()
     refresh()
-  } catch (err: any) { ElMessage.error(err?.message || '操作失败') }
+  } catch (err: any) { ElMessage.error(err?.message || t('alarm.opFailed')) }
 }
 </script>
 
