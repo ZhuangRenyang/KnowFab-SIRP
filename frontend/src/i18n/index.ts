@@ -5,20 +5,15 @@ import { computed, ref } from 'vue'
    否则切到英文后弹窗里还是中文 */
 import epZhCn from 'element-plus/es/locale/lang/zh-cn'
 import epEn from 'element-plus/es/locale/lang/en'
-import epJa from 'element-plus/es/locale/lang/ja'
-import epKo from 'element-plus/es/locale/lang/ko'
-import epEs from 'element-plus/es/locale/lang/es'
-import epDe from 'element-plus/es/locale/lang/de'
-import epRu from 'element-plus/es/locale/lang/ru'
 
 import zhCN from '../locales/zh-CN'
 import enUS from '../locales/en-US'
-import jaJP from '../locales/ja-JP'
-import koKR from '../locales/ko-KR'
-import esES from '../locales/es-ES'
-import deDE from '../locales/de-DE'
-import ruRU from '../locales/ru-RU'
 
+/*
+ * 语言范围：中英双语。
+ * locales/ 下另有 ja-JP / ko-KR / es-ES / de-DE / ru-RU 五份翻译（导航与登录已齐），
+ * 未在此注册，因此不会打进产物；需要时把对应 import 与 LOCALES 条目加回来即可。
+ */
 export interface LocaleOption {
   code: string
   /** 语言自身的写法（下拉框里显示） */
@@ -29,23 +24,15 @@ export interface LocaleOption {
 
 export const LOCALES: LocaleOption[] = [
   { code: 'zh-CN', label: '简体中文', ep: epZhCn },
-  { code: 'en-US', label: 'English', ep: epEn },
-  { code: 'ja-JP', label: '日本語', ep: epJa },
-  { code: 'ko-KR', label: '한국어', ep: epKo },
-  { code: 'es-ES', label: 'Español', ep: epEs },
-  { code: 'de-DE', label: 'Deutsch', ep: epDe },
-  { code: 'ru-RU', label: 'Русский', ep: epRu }
+  { code: 'en-US', label: 'English', ep: epEn }
 ]
 
 const STORAGE_KEY = 'sirp.locale'
 
-/** 首次访问跟随浏览器语言；匹配不到前缀就回落中文 */
+/** 首次访问跟随浏览器语言：中文环境用中文，其余一律英文 */
 function detect(): string {
   const nav = (navigator.language || 'zh-CN').toLowerCase()
-  const exact = LOCALES.find((l) => l.code.toLowerCase() === nav)
-  if (exact) return exact.code
-  const prefix = nav.split('-')[0]
-  return LOCALES.find((l) => l.code.toLowerCase().startsWith(prefix))?.code ?? 'zh-CN'
+  return nav.startsWith('zh') ? 'zh-CN' : 'en-US'
 }
 
 function initial(): string {
@@ -62,12 +49,7 @@ export const i18n = createI18n({
   fallbackLocale: 'zh-CN',
   messages: {
     'zh-CN': zhCN,
-    'en-US': enUS,
-    'ja-JP': jaJP,
-    'ko-KR': koKR,
-    'es-ES': esES,
-    'de-DE': deDE,
-    'ru-RU': ruRU
+    'en-US': enUS
   }
 })
 

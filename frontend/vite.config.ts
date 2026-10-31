@@ -11,6 +11,17 @@ import { fileURLToPath, URL } from 'node:url'
 export default defineConfig({
   base: '/app/',
   plugins: [vue(), Components({ resolvers: [ElementPlusResolver()] })],
+  /*
+   * vue-i18n 的 esm-bundler 版本靠这三个全局常量做条件编译。
+   * 不 define 的话它们保持为未定义的裸变量，esbuild 把相关分支当 falsy 直接裁掉，
+   * 结果「消息编译器」整个消失 —— 运行时 t() 拿不到预编译函数、又没法编译，
+   * 直接抛 SyntaxError，组件渲染中断（设备监控页白屏就是这么来的）。
+   */
+  define: {
+    __VUE_I18N_FULL_INSTALL__: true,
+    __VUE_I18N_LEGACY_API__: false,
+    __INTLIFY_PROD_DEVTOOLS__: false
+  },
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) }
   },

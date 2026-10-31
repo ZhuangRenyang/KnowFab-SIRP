@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { i18n } from '@/i18n'
 import { computed, ref } from 'vue'
 import { http } from '@/api/http'
 
@@ -19,8 +20,9 @@ export const useAuthStore = defineStore('auth', () => {
   const displayName = computed(() => user.value?.displayName || user.value?.username || '--')
   const roleLabel = computed(() => {
     const r = user.value?.role
-    return r === 'ADMIN' ? '管理员' : r === 'MANAGER' ? '车间主任'
-      : r === 'LEADER' ? '班组长' : r === 'SALES' ? '销售' : (r || '--')
+    const key = r === 'ADMIN' ? 'role.admin' : r === 'MANAGER' ? 'role.manager'
+      : r === 'LEADER' ? 'role.leader' : r === 'SALES' ? 'role.sales' : ''
+    return key ? i18n.global.t(key) : (r || '--')
   })
 
   async function ensure(): Promise<boolean> {

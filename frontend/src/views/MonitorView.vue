@@ -1,27 +1,27 @@
 <template>
   <div class="page">
     <div class="toolbar">
-      <el-input v-model="q" placeholder="搜索编码 / 名称 / 位置" clearable :prefix-icon="Search" class="w240" />
+      <el-input v-model="q" :placeholder="t('monitor.searchPh')" clearable :prefix-icon="Search" class="w240" />
       <el-select v-model="st" class="w110">
-        <el-option value="" label="全部状态" />
-        <el-option value="online" label="仅在线" />
-        <el-option value="offline" label="仅离线" />
-        <el-option value="run" label="仅运行" />
-        <el-option value="alarm" label="仅报警" />
+        <el-option value="" :label="t('monitor.allStatus')" />
+        <el-option value="online" :label="t('monitor.onlyOnline')" />
+        <el-option value="offline" :label="t('monitor.onlyOffline')" />
+        <el-option value="run" :label="t('monitor.onlyRun')" />
+        <el-option value="alarm" :label="t('monitor.onlyAlarm')" />
       </el-select>
       <el-select v-model="pageSize" class="w100">
-        <el-option v-for="n in [24, 48, 96, 200]" :key="n" :value="n" :label="`${n} 台/页`" />
+        <el-option v-for="n in [24, 48, 96, 200]" :key="n" :value="n" :label="t('monitor.perPage', { n })" />
       </el-select>
-      <el-button :icon="Refresh" :loading="store.loading" @click="store.load()">刷新</el-button>
+      <el-button :icon="Refresh" :loading="store.loading" @click="store.load()">{{ t('monitor.refresh') }}</el-button>
       <!-- 2026-10-29 用户口径：发现 + 新增设备都收进设备监控页；发现以弹框打开。
            靠右显示：margin-left:auto 把这组推到工具栏最右侧 -->
       <div class="tb-right">
-        <el-button v-if="auth.isAdmin" :icon="Connection" @click="discoVisible = true">设备发现</el-button>
-        <el-button v-if="auth.canWrite" type="primary" :icon="Plus" @click="openNew">新增设备</el-button>
+        <el-button v-if="auth.isAdmin" :icon="Connection" @click="discoVisible = true">{{ t('monitor.discovery') }}</el-button>
+        <el-button v-if="auth.canWrite" type="primary" :icon="Plus" @click="openNew">{{ t('monitor.addDevice') }}</el-button>
       </div>
     </div>
 
-    <div v-if="store.lastError" class="load-err">加载失败：{{ store.lastError }}（自动重试：点「刷新」）</div>
+    <div v-if="store.lastError" class="load-err">{{ t('monitor.loadFailed', { msg: store.lastError }) }}{{ t('monitor.loadFailedTip') }}</div>
 
     <div v-if="paged.length" class="grid">
       <div
@@ -37,11 +37,11 @@
               <span v-if="d.lineName" class="line-tag">{{ d.lineName }} #{{ d.lineSeq }}</span>
             </div>
           </div>
-          <StatusBadge :type="statusOf(d).type" :label="statusOf(d).label" :dot="statusOf(d).type === 'run'" />
+          <StatusBadge :type="statusOf(d).type" :label="t(statusOf(d).labelKey)" :dot="statusOf(d).type === 'run'" />
         </div>
         <div class="kpis">
           <div v-for="p in pickKpis(d)" :key="p.pointKey ?? p.key" class="kpi">
-            <span>{{ p.name }}</span>
+            <span>{{ p.labelKey ? t(p.labelKey) : p.name }}</span>
             <b class="num">{{ fmt(p.value) }}<i v-if="p.unit">{{ p.unit }}</i></b>
           </div>
         </div>
@@ -51,17 +51,17 @@
             <div class="tgt-fill" :class="tgtClass(d)" :style="{ width: Math.min(100, tgtPct(d)) + '%' }"></div>
           </div>
           <span class="tgt-pct num" :class="tgtClass(d)">
-            今日 {{ fmt(d.todayOutput) }}/{{ d.dailyTarget }} · {{ tgtPct(d) }}%
+            {{ t('monitor.todayTarget', { done: fmt(d.todayOutput), target: d.dailyTarget }) }} · {{ tgtPct(d) }}%
           </span>
         </div>
       </div>
     </div>
-    <el-empty v-else :description="store.list.length ? '没有匹配的设备' : '还没有设备，点上方「新增设备」'" />
+    <el-empty v-else :description="store.list.length ? t('monitor.noMatch') : t('monitor.noDevice')" />
 
     <div v-if="filtered.length" class="pager">
-      共 <b>{{ filtered.length }}</b> 台 · 第 <b>{{ page }}</b>/<b>{{ totalPages }}</b> 页
-      <el-button size="small" :disabled="page <= 1" @click="page--">上一页</el-button>
-      <el-button size="small" :disabled="page >= totalPages" @click="page++">下一页</el-button>
+      {{ t('monitor.totalInfo', { total: filtered.length, page, pages: totalPages }) }}
+      <el-button size="small" :disabled="page <= 1" @click="page--">{{ t('monitor.prevPage') }}</el-button>
+      <el-button size="small" :disabled="page >= totalPages" @click="page++">{{ t('monitor.nextPage') }}</el-button>
     </div>
 
     <DeviceDetail v-if="selected" :code="selected" @edit="openEdit" @removed="onRemoved" />
@@ -77,12 +77,15 @@ import { useRoute, useRouter } from 'vue-router'
 import { Refresh, Search, Plus, Connection } from '@element-plus/icons-vue'
 import { useDevicesStore, statusOf, pickKpis, fmt } from '@/stores/devices'
 import { useAuthStore } from '@/stores/auth'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 /* 完成率红绿灯：今日产量 / 日目标。todayOutput 由后端按统计日口径算好 */
 function tgtPct(d: any) {
-  const t = Number(d.dailyTarget) || 0
-  if (t <= 0) return 0
-  return Math.min(999, Math.round(((Number(d.todayOutput) || 0) / t) * 100))
+  const goal = Number(d.dailyTarget) || 0
+  if (goal <= 0) return 0
+  return Math.min(999, Math.round(((Number(d.todayOutput) || 0) / goal) * 100))
 }
 function tgtClass(d: any) {
   const p = tgtPct(d)

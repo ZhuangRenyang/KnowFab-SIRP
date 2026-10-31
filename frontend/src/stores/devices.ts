@@ -5,19 +5,19 @@ import { useWsStore } from './ws'
 
 /* 设备口径（与旧版 statusOf/pickKpis/fmt 逐字对齐，PRD §1.1） */
 
-export function statusOf(d: any): { v: number; label: string; type: 'run' | 'idle' | 'stop' | 'alarm' | 'off' } {
-  if (!d.online) return { v: -1, label: '离线', type: 'off' }
+export function statusOf(d: any): { v: number; label: string; labelKey: string; type: 'run' | 'idle' | 'stop' | 'alarm' | 'off' } {
+  if (!d.online) return { v: -1, label: '离线', labelKey: 'status.offline', type: 'off' }
   const s = (d.points || []).find((p: any) => p.role === 'status' && p.value != null)
-  if (!s) return { v: 2, label: '在线', type: 'run' }
+  if (!s) return { v: 2, label: '在线', labelKey: 'status.online', type: 'run' }
   const n = Number(s.value)
-  const map: Record<number, { label: string; type: 'run' | 'idle' | 'stop' | 'alarm' }> = {
-    0: { label: '停机', type: 'stop' },
-    1: { label: '待机', type: 'idle' },
-    2: { label: '运行', type: 'run' },
-    3: { label: '报警', type: 'alarm' }
+  const map: Record<number, { label: string; labelKey: string; type: 'run' | 'idle' | 'stop' | 'alarm' }> = {
+    0: { label: '停机', labelKey: 'status.stopped', type: 'stop' },
+    1: { label: '待机', labelKey: 'status.idle', type: 'idle' },
+    2: { label: '运行', labelKey: 'status.running', type: 'run' },
+    3: { label: '报警', labelKey: 'status.alarm', type: 'alarm' }
   }
-  const info = map[n] || { label: '未知', type: 'stop' as const }
-  return { v: n, label: info.label, type: info.type }
+  const info = map[n] || { label: '未知', labelKey: 'status.unknown', type: 'stop' as const }
+  return { v: n, label: info.label, labelKey: info.labelKey, type: info.type }
 }
 
 export function pickKpis(d: any) {
@@ -28,7 +28,7 @@ export function pickKpis(d: any) {
      老工厂寄存器里是几十万的累计读数，直接当产量展示会误导。
      其余 count 点保留寄存器值（辅助对照用）。 */
   const mapped = counts.map((p: any, i: number) =>
-    i === 0 ? { ...p, name: '今日产量', value: Number(d.todayOutput ?? 0) } : p
+    i === 0 ? { ...p, name: '今日产量', labelKey: 'device.todayOutput', value: Number(d.todayOutput ?? 0) } : p
   )
   return [...mapped, ...vals].slice(0, 4)
 }

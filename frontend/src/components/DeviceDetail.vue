@@ -4,33 +4,33 @@
       <div>
         <div class="d-name">
           {{ d.name }}
-          <StatusBadge :type="s.type" :label="s.label" :dot="s.type === 'run'" />
+          <StatusBadge :type="s.type" :label="t(s.labelKey)" :dot="s.type === 'run'" />
         </div>
         <div class="d-meta num">
           {{ d.code }} · {{ d.protocol }}<template v-if="d.location"> · {{ d.location }}</template>
-          <template v-if="d.pollIntervalMs"> · 采集周期 {{ d.pollIntervalMs }}ms</template>
+          <template v-if="d.pollIntervalMs"> · {{ t('device.pollInterval', { ms: d.pollIntervalMs }) }}</template>
         </div>
       </div>
       <div v-if="auth.canWrite" class="d-actions">
-        <el-button size="small" @click="emit('edit', d.code)">编辑配置</el-button>
-        <el-button size="small" type="danger" plain @click="removeDevice">删除</el-button>
+        <el-button size="small" @click="emit('edit', d.code)">{{ t('device.editConfig') }}</el-button>
+        <el-button size="small" type="danger" plain @click="removeDevice">{{ t('device.delete') }}</el-button>
       </div>
     </div>
 
     <div class="keybar">
       <template v-if="!d.apiKey">
-        <span class="off">对外接口未启用（没有 API Key，/open/v1 不对外）</span>
-        <el-button size="small" @click="resetKey">生成 Key</el-button>
+        <span class="off">{{ t('device.apiDisabled') }}</span>
+        <el-button size="small" @click="resetKey">{{ t('device.genKey') }}</el-button>
       </template>
       <template v-else>
         <span>API Key</span>
         <code class="num">{{ d.apiKey }}</code>
-        <el-button size="small" @click="copyKey(d.apiKey)">复制</el-button>
-        <el-button size="small" @click="resetKey">重置</el-button>
-        <el-button v-if="d.apiKeyEnabled" size="small" type="danger" plain @click="toggleKey(false)">停用</el-button>
+        <el-button size="small" @click="copyKey(d.apiKey)">{{ t('device.copy') }}</el-button>
+        <el-button size="small" @click="resetKey">{{ t('device.reset') }}</el-button>
+        <el-button v-if="d.apiKeyEnabled" size="small" type="danger" plain @click="toggleKey(false)">{{ t('device.disable') }}</el-button>
         <template v-else>
-          <el-button size="small" @click="toggleKey(true)">启用</el-button>
-          <span class="off">已停用</span>
+          <el-button size="small" @click="toggleKey(true)">{{ t('device.enable') }}</el-button>
+          <span class="off">{{ t('device.disabledTip') }}</span>
         </template>
       </template>
     </div>
@@ -39,7 +39,7 @@
       <div v-for="p in d.points" :key="p.pointKey ?? p.key" class="pt" :class="{ bad: p.quality !== 'GOOD' }">
         <!-- 产量点位只显示「今日产量」：老厂 PLC 寄存器里是几十万的历史累计，
              直接当产量展示会误导 -->
-        <span>{{ p.role === 'count' ? '今日产量' : p.name }}</span>
+        <span>{{ p.role === 'count' ? t('device.todayOutput') : p.name }}</span>
         <b class="num">
           <template v-if="p.role === 'count'">
             {{ fmt(d.todayOutput ?? 0) + (p.unit || '') }}
@@ -52,21 +52,21 @@
     <!-- 远程控制：只显示点表里显式勾了「可写」的点位（默认只读，没配就看不到这块） -->
     <div v-if="writablePoints.length" class="ctrl">
       <div class="ctrl-head">
-        远程控制
-        <span class="ctrl-hint">按下即下发到设备 · 每次都会记审计日志</span>
+        {{ t('device.remoteControl') }}
+        <span class="ctrl-hint">{{ t('device.ctrlHint') }}</span>
       </div>
       <div v-for="p in writablePoints" :key="'w-' + (p.pointKey ?? p.key)" class="ctrl-row">
         <span class="ctrl-name">{{ p.name }}</span>
-        <span class="ctrl-addr">地址 {{ p.address }}</span>
+        <span class="ctrl-addr">{{ t('device.address', { addr: p.address }) }}</span>
         <template v-if="p.functionCode === 1">
-          <el-button size="small" type="success" plain @click="doWrite(p, 1)">开</el-button>
-          <el-button size="small" plain @click="doWrite(p, 0)">关</el-button>
+          <el-button size="small" type="success" plain @click="doWrite(p, 1)">{{ t('device.on') }}</el-button>
+          <el-button size="small" plain @click="doWrite(p, 0)">{{ t('device.off') }}</el-button>
         </template>
         <template v-else>
           <el-input-number v-model="writeVal[p.pointKey ?? p.key]" :min="0" :max="65535"
                            size="small" controls-position="right" style="width: 130px" />
           <el-button size="small" type="primary" plain @click="doWrite(p, writeVal[p.pointKey ?? p.key])">
-            写入
+            {{ t('device.write') }}
           </el-button>
         </template>
       </div>
@@ -78,12 +78,13 @@
     <PointTrend :device="d" :key="d.code" />
     <ProdStats :code="d.code" />
 
-    <div v-if="d.lastError" class="last-err">最后错误：{{ d.lastError }}</div>
+    <div v-if="d.lastError" class="last-err">{{ t('device.lastError', { msg: d.lastError }) }}</div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import { useDevicesStore, statusOf, fmt } from '@/stores/devices'
@@ -92,6 +93,8 @@ import StatusBadge from '@/components/StatusBadge.vue'
 import PointTrend from '@/components/PointTrend.vue'
 import ProdStats from '@/components/ProdStats.vue'
 
+const { t } = useI18n()
+
 const props = defineProps<{ code: string }>()
 const emit = defineEmits<{ edit: [code: string]; removed: [code: string] }>()
 
@@ -99,7 +102,7 @@ const auth = useAuthStore()
 const store = useDevicesStore()
 
 const d = computed(() => store.list.find((x: any) => x.code === props.code))
-const s = computed(() => (d.value ? statusOf(d.value) : { v: -1, label: '--', type: 'off' as const }))
+const s = computed(() => (d.value ? statusOf(d.value) : { v: -1, label: '--', labelKey: 'status.unknown', type: 'off' as const }))
 
 /* ---------- 远程控制 ---------- */
 const writeVal = ref<Record<string, number>>({})
@@ -114,21 +117,21 @@ const writablePoints = computed(() =>
 async function doWrite(p: any, value: number) {
   if (!d.value) return
   const key = p.pointKey ?? p.key
-  const label = p.functionCode === 1 ? (value === 1 ? '开' : '关') : String(value)
+  const label = p.functionCode === 1 ? (value === 1 ? t('device.on') : t('device.off')) : String(value)
   try {
     await ElMessageBox.confirm(
-      `确认向「${d.value.name}」下发：${p.name} → ${label}？\n\n这是真实写入设备，请确认现场安全。`,
-      '远程控制',
-      { type: 'warning', confirmButtonText: '确认下发', cancelButtonText: '取消' }
+      t('device.confirmWrite', { device: d.value.name, point: p.name, value: label }),
+      t('device.confirmWriteTitle'),
+      { type: 'warning', confirmButtonText: t('device.confirmWriteOk'), cancelButtonText: t('common.cancel') }
     )
   } catch { return }
   try {
     const r = await devicesApi.write(d.value.code, key, value)
     ElMessage[r?.ok === false ? 'error' : 'success'](
-      r?.message || (r?.ok === false ? '下发失败' : '已下发')
+      r?.message || (r?.ok === false ? t('device.writeFailed') : t('device.writeOk'))
     )
   } catch (e: any) {
-    ElMessage.error(e?.message || '下发失败')
+    ElMessage.error(e?.message || t('device.writeFailed'))
   }
 }
 
@@ -137,8 +140,8 @@ async function removeDevice() {
   if (!d.value) return
   try {
     await ElMessageBox.confirm(
-      `确定删除设备「${d.value.name}（${d.value.code}）」？\n采集会立即停止，历史缓存也会清掉。`,
-      '删除设备',
+      t('device.confirmDelete', { name: d.value.name, code: d.value.code }),
+      t('device.confirmDeleteTitle'),
       { type: 'warning' }
     )
   } catch { return }
@@ -150,9 +153,9 @@ async function copyKey(key: string) {
   try {
     if (navigator.clipboard && navigator.clipboard.writeText) {
       await navigator.clipboard.writeText(key)
-      ElMessage.success('已复制到剪贴板')
+      ElMessage.success(t('device.copied'))
     } else {
-      window.prompt('手动复制：', key)
+      window.prompt(t('device.copyManual'), key)
     }
   } catch {
     window.prompt('手动复制：', key)
@@ -162,18 +165,18 @@ async function copyKey(key: string) {
 async function resetKey() {
   if (!d.value) return
   try {
-    await ElMessageBox.confirm('重置后旧 Key 立即失效，正在对接的系统会断。确认重置？', '重置 API Key', { type: 'warning' })
+    await ElMessageBox.confirm(t('device.confirmResetKey'), t('device.resetKeyTitle'), { type: 'warning' })
   } catch { return }
   const r = await devicesApi.resetKey(d.value.code)
-  if (!r.ok) { ElMessage.error(r.message || '重置失败'); return }
-  await ElMessageBox.alert(`新 Key：${r.apiKey}\n\n请同步给对接方，旧 Key 已失效。`, '已生成新 Key')
+  if (!r.ok) { ElMessage.error(r.message || t('device.resetFailed')); return }
+  await ElMessageBox.alert(t('device.newKeyBody', { key: r.apiKey }), t('device.newKeyTitle'))
   await store.reloadAll()
 }
 
 async function toggleKey(enabled: boolean) {
   if (!d.value) return
   const r = await devicesApi.toggleKey(d.value.code, enabled)
-  if (!r.ok) { ElMessage.error(r.message || '操作失败'); return }
+  if (!r.ok) { ElMessage.error(r.message || t('device.opFailed')); return }
   await store.reloadAll()
 }
 </script>
