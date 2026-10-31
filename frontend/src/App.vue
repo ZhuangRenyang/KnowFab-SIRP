@@ -1,11 +1,11 @@
 <template>
-  <el-config-provider :locale="zhCn">
+  <el-config-provider :locale="elementLocale">
     <router-view v-if="isLogin" />
     <el-container v-else class="shell">
     <el-aside :width="collapsed ? '56px' : '212px'" class="aside">
       <div class="brand">
         <div class="brand-mark">知</div>
-        <div v-if="!collapsed" class="brand-text"><b>知造 SIRP</b><span>AI 智慧工厂</span></div>
+        <div v-if="!collapsed" class="brand-text"><b>{{ t('login.title') }}</b><span>{{ t('nav.brandSub') }}</span></div>
       </div>
 
       <nav class="nav">
@@ -30,11 +30,20 @@
 
       <div class="foot">
         <!-- 收缩态只留图标：56px 宽度塞不下文字链接，会把主题/收起两个图标挤出容器外 -->
-        <a v-if="!collapsed" class="foot-link" href="/screen.html" target="_blank" title="打开车间大屏（不需要登录）">大屏</a>
-        <el-icon class="foot-icon" :title="theme.light ? '切换深色' : '切换浅色'" @click="theme.toggle()">
+        <a v-if="!collapsed" class="foot-link" href="/screen.html" target="_blank" :title="t('nav.screen')">{{ t('nav.screen') }}</a>
+        <el-dropdown v-if="!collapsed" trigger="click" placement="top-start" @command="onLang">
+          <span class="foot-lang" :title="t('common.language')">{{ langShort }}</span>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item v-for="l in LOCALES" :key="l.code" :command="l.code"
+                :disabled="l.code === currentLocale">{{ l.label }}</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+        <el-icon class="foot-icon" :title="theme.light ? t('nav.themeToDark') : t('nav.themeToLight')" @click="theme.toggle()">
           <Moon v-if="theme.light" /><Sunny v-else />
         </el-icon>
-        <el-icon class="foot-icon" :title="collapsed ? '展开菜单' : '收起菜单'" @click="toggleCollapsed">
+        <el-icon class="foot-icon" :title="collapsed ? t('nav.expand') : t('nav.collapse')" @click="toggleCollapsed">
           <Expand v-if="collapsed" /><Fold v-else />
         </el-icon>
       </div>
@@ -42,20 +51,20 @@
 
     <el-container class="body-col">
       <el-header class="hd" height="52px">
-        <div class="hd-title">知造 SIRP <span>AI 智慧工厂管理系统</span></div>
+        <div class="hd-title">{{ t('login.title') }} <span>{{ t('nav.brandSub') }}</span></div>
         <div v-if="!auth.isSales" class="hd-stats num">
-          <span>设备 <b>{{ devices.stats.total }}</b></span>
-          <span>在线 <b class="c-run">{{ devices.stats.online }}</b></span>
-          <span>运行 <b class="c-run">{{ devices.stats.running }}</b></span>
-          <span>报警 <b class="c-alarm">{{ devices.stats.alarm }}</b></span>
+          <span>{{ t('common.device') }} <b>{{ devices.stats.total }}</b></span>
+          <span>{{ t('common.online') }} <b class="c-run">{{ devices.stats.online }}</b></span>
+          <span>{{ t('common.running') }} <b class="c-run">{{ devices.stats.running }}</b></span>
+          <span>{{ t('nav.alarm') }} <b class="c-alarm">{{ devices.stats.alarm }}</b></span>
         </div>
         <div class="hd-right">
           <span v-if="!auth.isSales" class="ws-pill" :class="ws.connected ? 'on' : 'off'">
-            <i class="dot" />{{ ws.connected ? '实时连接' : '已断开，重连中' }}
+            <i class="dot" />{{ ws.connected ? t('nav.wsOnline') : t('nav.wsOffline') }}
           </span>
           <el-badge v-if="!auth.isSales" :value="alarmsOpen > 99 ? '99+' : alarmsOpen"
             :hidden="alarmsOpen <= 0" :max="99">
-            <el-icon class="hd-icon" title="报警记录" @click="router.push('/alarm')"><Bell /></el-icon>
+            <el-icon class="hd-icon" :title="t('nav.alarm')" @click="router.push('/alarm')"><Bell /></el-icon>
           </el-badge>
           <!-- 2026-10-29：「发现」和「新增设备」已按用户要求移到设备监控页工具栏，
                发现以弹框打开（DiscoveryDialog），页头不再重复放按钮 -->
@@ -66,8 +75,8 @@
             </span>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item command="account">账号与密码</el-dropdown-item>
-                <el-dropdown-item divided command="logout">退出登录</el-dropdown-item>
+                <el-dropdown-item command="account">{{ t('nav.account') }}</el-dropdown-item>
+                <el-dropdown-item divided command="logout">{{ t('nav.logout') }}</el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
@@ -96,7 +105,10 @@ import { useDevicesStore } from '@/stores/devices'
 import { alarmsApi } from '@/api/alarms'
 import { usePolling } from '@/composables/usePolling'
 import AccountDialog from '@/components/AccountDialog.vue'
-import zhCn from 'element-plus/es/locale/lang/zh-cn'
+import { useI18n } from 'vue-i18n'
+import { elementLocale, LOCALES, currentLocale, setLocale } from '@/i18n'
+
+const { t } = useI18n()
 
 const route = useRoute()
 const router = useRouter()
@@ -106,6 +118,10 @@ const ws = useWsStore()
 const devices = useDevicesStore()
 
 const isLogin = computed(() => route.path === '/login')
+
+/* 语言切换：写 localStorage，刷新后保持；未翻译的键回退中文 */
+const langShort = computed(() => currentLocale.value.split('-')[0].toUpperCase())
+function onLang(code: string) { setLocale(code) }
 const acctVisible = ref(false)
 
 /* 侧边栏收缩：沿用 dh-sb-min 键；窗口 <960px 默认收起（PRD §0.1） */
@@ -138,30 +154,30 @@ usePolling(loadAlarmSummary, 20000, { immediate: false })
 onScopeDispose(ws.on('alarms:dirty', () => loadAlarmSummary()))
 
 const baseGroups = computed(() => [
-  { title: '生产监控', items: [
-    { path: '/', label: '设备监控', icon: Monitor },
-    { path: '/alarm', label: '报警', icon: Bell }
+  { title: t('nav.groupMonitor'), items: [
+    { path: '/', label: t('nav.monitor'), icon: Monitor },
+    { path: '/alarm', label: t('nav.alarm'), icon: Bell }
   ] },
-  { title: '分析', items: [
-    { path: '/energy', label: '能耗分析', icon: Lightning },
-    { path: '/report', label: '报表', icon: DataLine },
-    { path: '/digest', label: 'AI 早报', icon: Sunrise },
-    { path: '/ai/chat', label: 'AI 助手', icon: ChatDotRound }
+  { title: t('nav.groupAnalysis'), items: [
+    { path: '/energy', label: t('nav.energy'), icon: Lightning },
+    { path: '/report', label: t('nav.report'), icon: DataLine },
+    { path: '/digest', label: t('nav.digest'), icon: Sunrise },
+    { path: '/ai/chat', label: t('nav.aiChat'), icon: ChatDotRound }
   ] },
-  { title: 'ERP', items: [
-    { path: '/erp/lines', label: '产线管理', icon: OfficeBuilding, disabled: false, tip: '' },
-    { path: '/erp/base', label: '基础资料', icon: Goods, disabled: false, tip: '' },
-    { path: '/erp/purchase', label: '采购管理', icon: ShoppingCart, disabled: false, tip: '' },
-    { path: '/erp/sales', label: '销售管理', icon: Sell, disabled: false, tip: '' },
-    { path: '/erp/stock', label: '库存管理', icon: Box, disabled: false, tip: '' },
-    { path: '/erp/finance', label: '财务管理', icon: Money, disabled: false, tip: '' },
-    { path: '/erp/reports', label: '经营报表', icon: TrendCharts, disabled: false, tip: '' },
-    { path: '/erp/sales-query', label: '销售查询', icon: Search, disabled: false, tip: '' }
+  { title: t('nav.groupErp'), items: [
+    { path: '/erp/lines', label: t('nav.lines'), icon: OfficeBuilding, disabled: false, tip: '' },
+    { path: '/erp/base', label: t('nav.base'), icon: Goods, disabled: false, tip: '' },
+    { path: '/erp/purchase', label: t('nav.purchase'), icon: ShoppingCart, disabled: false, tip: '' },
+    { path: '/erp/sales', label: t('nav.sales'), icon: Sell, disabled: false, tip: '' },
+    { path: '/erp/stock', label: t('nav.stock'), icon: Box, disabled: false, tip: '' },
+    { path: '/erp/finance', label: t('nav.finance'), icon: Money, disabled: false, tip: '' },
+    { path: '/erp/reports', label: t('nav.erpReports'), icon: TrendCharts, disabled: false, tip: '' },
+    { path: '/erp/sales-query', label: t('nav.salesQuery'), icon: Search, disabled: false, tip: '' }
   ] },
   ...(auth.isAdmin
-    ? [{ title: '系统管理', items: [
-        { path: '/system', label: '系统', icon: Setting, disabled: false, tip: '' },
-        { path: '/users', label: '用户管理', icon: User, disabled: false, tip: '' }
+    ? [{ title: t('nav.groupSystem'), items: [
+        { path: '/system', label: t('nav.system'), icon: Setting, disabled: false, tip: '' },
+        { path: '/users', label: t('nav.users'), icon: User, disabled: false, tip: '' }
       ] }]
     : [])
 ])
@@ -169,9 +185,9 @@ const baseGroups = computed(() => [
 const groups = computed(() => {
   // 销售角色只给一个只读页：菜单是权限的第一道说明，别让他点进去再吃 403
   if (auth.isSales) {
-    return [{ title: '销售', items: [
-      { path: '/erp/sales-query', label: '销售查询', icon: Search, disabled: false, tip: '' },
-      { path: '/ai/chat', label: 'AI 助手', icon: ChatDotRound, disabled: false, tip: '' }
+    return [{ title: t('nav.groupSales'), items: [
+      { path: '/erp/sales-query', label: t('nav.salesQuery'), icon: Search, disabled: false, tip: '' },
+      { path: '/ai/chat', label: t('nav.aiChat'), icon: ChatDotRound, disabled: false, tip: '' }
     ] }]
   }
   return baseGroups.value
@@ -226,6 +242,12 @@ function onUserCmd(cmd: string) {
 }
 .foot-link { color: var(--muted); font-size: var(--text-xs); text-decoration: none; }
 .foot-link:hover { color: var(--fg); }
+.foot-lang {
+  font-size: var(--text-2xs); color: var(--muted); cursor: pointer; user-select: none;
+  padding: 2px 5px; border-radius: 5px; letter-spacing: .5px;
+  transition: color var(--motion-fast) var(--ease-standard), background var(--motion-fast) var(--ease-standard);
+}
+.foot-lang:hover { color: var(--fg); background: var(--hover); }
 .foot-icon { margin-left: auto; color: var(--muted); cursor: pointer; }
 .foot-icon + .foot-icon { margin-left: 0; }
 .foot-icon:hover { color: var(--fg); }

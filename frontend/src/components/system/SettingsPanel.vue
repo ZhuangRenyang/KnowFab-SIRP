@@ -4,6 +4,20 @@
       <span v-if="pendingTip" class="pend">{{ pendingTip }}</span>
     </div>
 
+    <!-- 界面语言：前端本地偏好，不走后端设置项 —— 切换即生效、无需重启、不影响其他用户 -->
+    <div class="sect">{{ t('common.language') }}</div>
+    <div class="setrow">
+      <div class="lab">
+        <div class="lt">{{ t('common.language') }}</div>
+        <div class="desc">切换后立即生效，记在本机浏览器；未翻译的文案回退中文。</div>
+      </div>
+      <div class="ctl">
+        <el-select v-model="lang" style="width:180px">
+          <el-option v-for="l in LOCALES" :key="l.code" :label="l.label" :value="l.code" />
+        </el-select>
+      </div>
+    </div>
+
     <div v-if="!groups.length" class="empty">加载中…</div>
     <div v-for="g in groups" :key="g.name" class="group">
       <div class="gname">{{ g.name }}</div>
@@ -55,8 +69,18 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { PURGE_META, systemApi, type PurgeKind, type SettingItem } from '@/api/system'
+import { LOCALES, currentLocale, setLocale } from '@/i18n'
+
+const { t } = useI18n()
+
+/* 语言下拉双向绑定到 i18n 的 currentLocale：选完即写入 localStorage 并切换 */
+const lang = computed({
+  get: () => currentLocale.value,
+  set: (v: string) => setLocale(v)
+})
 
 const groups = ref<{ name: string; items: SettingItem[] }[]>([])
 const readonly = ref<{ label: string; value: string; why: string }[]>([])

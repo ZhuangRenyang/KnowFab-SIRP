@@ -1,40 +1,61 @@
 <template>
   <div class="login-wrap">
+    <!-- 登录页自带语言切换：侧边栏的切换器要登录后才可见 -->
+    <el-dropdown class="lang" trigger="click" @command="onLang">
+      <span class="lang-btn" :title="t('common.language')">{{ langShort }}</span>
+      <template #dropdown>
+        <el-dropdown-menu>
+          <el-dropdown-item v-for="l in LOCALES" :key="l.code" :command="l.code"
+            :disabled="l.code === currentLocale">{{ l.label }}</el-dropdown-item>
+        </el-dropdown-menu>
+      </template>
+    </el-dropdown>
+
     <div class="login-card">
       <div class="logo">知</div>
-      <h1>知造 SIRP</h1>
-      <p class="sub">登录后查看设备、能耗与报警</p>
+      <h1>{{ t('login.title') }}</h1>
+      <p class="sub">{{ t('login.sub') }}</p>
       <el-form label-position="top" @submit.prevent="submit">
         <el-input
-          v-model="username" placeholder="用户名" size="large"
+          v-model="username" :placeholder="t('login.username')" size="large"
           autocomplete="username" autofocus @keyup.enter="submit"
         />
         <el-input
-          v-model="password" type="password" placeholder="密码" size="large"
+          v-model="password" type="password" :placeholder="t('login.password')" size="large"
           autocomplete="current-password" show-password @keyup.enter="submit"
         />
         <el-button type="primary" size="large" :loading="busy" class="submit" @click="submit">
-          {{ busy ? '登录中…' : '登 录' }}
+          {{ busy ? t('login.submitting') : t('login.submit') }}
         </el-button>
         <div v-if="err" class="err">{{ err }}</div>
       </el-form>
-      <div class="hint">忘记密码找管理员重置 · 初始密码在服务器 data/initial-admin.txt</div>
+      <div class="hint">{{ t('login.hint') }}</div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
+import { LOCALES, currentLocale, setLocale } from '@/i18n'
 
 const router = useRouter()
 const auth = useAuthStore()
+const { t } = useI18n()
 
 const username = ref('')
 const password = ref('')
 const busy = ref(false)
 const err = ref('')
+
+const langShort = computed(() => currentLocale.value.split('-')[0].toUpperCase())
+function onLang(code: string) {
+  setLocale(code)
+  /* 切换后清掉上一语言的错误提示，否则中英混排 */
+  err.value = ''
+}
 
 /* 已登录会话直接回主界面，不发第二次登录请求（PRD §7.2） */
 onMounted(async () => {
@@ -44,7 +65,7 @@ onMounted(async () => {
 async function submit() {
   if (busy.value) return
   if (!username.value.trim() || !password.value) {
-    err.value = '请输入用户名和密码'
+    err.value = t('login.needInput')
     return
   }
   busy.value = true
@@ -55,8 +76,8 @@ async function submit() {
   } catch (e: any) {
     /* 网络异常与后端业务错误分开提示（PRD §7.2：429 锁定文案原样透传） */
     err.value = e instanceof TypeError
-      ? '连不上服务器，检查服务是否在跑'
-      : (e?.message || '登录失败')
+      ? t('login.networkError')
+      : (e?.message || t('login.failed'))
   } finally {
     busy.value = false
   }
@@ -65,9 +86,17 @@ async function submit() {
 
 <style scoped>
 .login-wrap {
+  position: relative;
   min-height: 100vh; display: flex; align-items: center; justify-content: center;
   background: var(--bg); padding: var(--space-4);
 }
+.lang { position: absolute; top: 18px; right: 22px; }
+.lang-btn {
+  font-size: var(--text-xs); color: var(--muted); cursor: pointer; user-select: none;
+  padding: 4px 9px; border-radius: 6px; letter-spacing: .5px;
+  transition: color var(--motion-fast) var(--ease-standard), background var(--motion-fast) var(--ease-standard);
+}
+.lang-btn:hover { color: var(--fg); background: var(--hover); }
 .login-card {
   width: 360px; background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius-xl); box-shadow: var(--elev-modal);

@@ -7,6 +7,7 @@ import './styles/tokens.css'
 import 'element-plus/es/components/message/style/css'
 import 'element-plus/es/components/message-box/style/css'
 import App from './App.vue'
+import { i18n } from './i18n'
 import { router } from './router'
 import { useAuthStore } from './stores/auth'
 import { useThemeStore } from './stores/theme'
@@ -16,6 +17,7 @@ import { setUnauthorizedHandler } from './api/http'
 const app = createApp(App)
 const pinia = createPinia()
 app.use(pinia)
+app.use(i18n)
 
 /* 主题首帧应用（防闪烁脚本已在 index.html 抢先执行，这里同步 store 状态） */
 const theme = useThemeStore(pinia)
@@ -29,7 +31,7 @@ setUnauthorizedHandler(() => {
   auth.user = null
   auth.ready = false
   ws.close()
-  ElMessage.warning('登录已过期，请重新登录')
+  ElMessage.warning(i18n.global.t('login.expired'))
   if (router.currentRoute.value.path !== '/login') router.push('/login')
 })
 
