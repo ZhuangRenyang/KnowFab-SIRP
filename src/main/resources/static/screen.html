@@ -410,7 +410,7 @@
       <span class="p-title" id="bl-title">停机原因</span>
       <span class="p-note" id="bl-note">今日累计时长</span>
       <span class="p-extra" id="bl-extra"></span>
-      <span class="pager" id="bl-pager" hidden>
+      <span class="pager" id="bl-pager">
         <span class="pg" data-v="0">停机原因</span>
         <span class="pg" data-v="1">故障看板</span>
       </span>
@@ -679,8 +679,6 @@ function renderFaults(list, reasons){
   renderReasons(reasons || []);
   // 新出现故障时优先切到故障维修看板；已在某视图时不打断
   if (prevLen === 0 && faultAll.length > 0) blView = 1;
-  // 故障全部恢复后回落停机原因，否则标题会一直停在「故障维修看板」（2026-10-31）
-  if (faultAll.length === 0) blView = 0;
   setBlView(blView);
   startBlRotate();
 }
@@ -705,8 +703,11 @@ function setBlView(v){
     extra.textContent = '';
   }
   const pager = $('bl-pager');
-  pager.hidden = !has;
-  pager.querySelectorAll('.pg').forEach((d, i) => d.classList.toggle('on', i === (has ? v : 0)));
+  // 常驻显示（2026-10-31 按用户要求改回）：视图切换是产品功能，不能因为暂时没有故障数据就消失。
+  // 无数据时切过去会显示空状态文案，而不是把入口藏掉。
+  pager.hidden = false;
+  // 高亮跟着当前视图走：无故障时点了"故障看板"也要亮它，否则用户以为没切（2026-10-31）
+  pager.querySelectorAll('.pg').forEach((d, i) => d.classList.toggle('on', i === v));
 }
 
 /* 有故障时两个视图自动轮播（故障看板 ↔ 停机原因） */
