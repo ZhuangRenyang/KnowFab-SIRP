@@ -1,6 +1,6 @@
 {
-  "version": "1.0.5",
-  "notes": "1.0.5 重要修复：报警表空值映射错误导致「故障看板 / 报警列表」查询失败、数据永远为空——clearedAt/ackAt 等字段由原始类型改为包装类型（未恢复/未确认的报警这些列本就是 NULL），修复后 /api/alarms 由 500 恢复正常、大屏 fault 数据可正常呈现；大屏视图切换器：无故障时不再误显示、点击不再无反应、故障恢复后自动回落停机原因。含 1.0.4 远程控制与胶囊切换、1.0.3 升级跨源兜底、1.0.2 大屏与实时性",
-  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.5/device-hub-1.0.5-update.zip",
-  "sha256": "ed97ea74d320adb97aac930dd3be742120fa882dc201375f1c1ed1a958071af9"
+  "version": "1.0.6",
+  "notes": "1.0.6 大屏视图切换：切换器常驻显示（无故障时不再消失，这是产品功能不该藏）、高亮跟随当前视图（原来无故障时永远亮第一个，看着像没切）、故障恢复后不强制回跳。含 1.0.5 报警空值映射修复（故障看板/报警列表恢复正常）、1.0.4 远程控制与胶囊切换、1.0.3 升级跨源兜底",
+  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.6/device-hub-1.0.6-update.zip",
+  "sha256": "2c053f23b5bdb335355fb008d68b2f499897ab19cb57404c30e5cf4aba2d0f13"
 }
