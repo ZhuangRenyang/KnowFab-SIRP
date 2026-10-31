@@ -214,11 +214,16 @@
   .bl-body > .show::-webkit-scrollbar-track{background:rgba(255,255,255,.04);border-radius:99px}
   .bl-body > .show::-webkit-scrollbar-thumb{background:rgba(255,255,255,.22);border-radius:99px}
   .bl-body > .show::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.36)}
-  .pager{display:flex;gap:.45vw;align-items:center;flex:none}
-  .pager .dot{width:.72vh;height:.72vh;border-radius:50%;background:rgba(255,255,255,.16);
-              cursor:pointer;transition:background .25s}
-  .pager .dot:hover{background:rgba(255,255,255,.36)}
-  .pager .dot.on{background:var(--accent)}
+  .pager{display:flex;gap:.4vw;align-items:center;flex:none}
+  /* 视图切换做成带文字的胶囊标签：圆点只有 8px，车间的人根本看不出能点（2026-10-31 改） */
+  .pager .pg{padding:.5vh .85vw;border-radius:99px;
+             font-size:clamp(10px,.72vw,13px);line-height:1.35;
+             color:rgba(255,255,255,.55);background:rgba(255,255,255,.06);
+             border:1px solid rgba(255,255,255,.10);cursor:pointer;
+             white-space:nowrap;user-select:none;
+             transition:color .2s, background .2s, border-color .2s}
+  .pager .pg:hover{color:#fff;background:rgba(255,255,255,.15)}
+  .pager .pg.on{color:#0b1210;background:var(--accent);border-color:transparent;font-weight:600}
   .rs{display:grid;grid-template-columns: 5.4vw 1fr auto;gap:.7vw;align-items:center;
       font-size:clamp(11px,.82vw,15px)}
   .rs .rn{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -405,8 +410,8 @@
       <span class="p-note" id="bl-note">今日累计时长</span>
       <span class="p-extra" id="bl-extra"></span>
       <span class="pager" id="bl-pager" hidden>
-        <i class="dot" data-v="0" title="停机原因"></i>
-        <i class="dot" data-v="1" title="故障维修看板"></i>
+        <span class="pg" data-v="0">停机原因</span>
+        <span class="pg" data-v="1">故障看板</span>
       </span>
     </div>
     <div class="bl-body">
@@ -696,7 +701,7 @@ function setBlView(v){
   }
   const pager = $('bl-pager');
   pager.hidden = !has;
-  pager.querySelectorAll('.dot').forEach((d, i) => d.classList.toggle('on', i === (has ? v : 0)));
+  pager.querySelectorAll('.pg').forEach((d, i) => d.classList.toggle('on', i === (has ? v : 0)));
 }
 
 /* 有故障时两个视图自动轮播（故障看板 ↔ 停机原因） */
@@ -711,12 +716,17 @@ function stopBlRotate(){
   if (blTimer){ clearInterval(blTimer); blTimer = null; }
 }
 
-/* 小圆点：点击手动切换视图，并重置自动轮播计时 */
-document.querySelectorAll('#bl-pager .dot').forEach(d => {
-  d.addEventListener('click', () => {
-    setBlView(parseInt(d.dataset.v, 10) || 0);
+/* 小圆点：点击手动切换视图，并重置自动轮播计时。
+   同时绑 touchstart：车间大屏常是触摸屏，click 在部分安卓 WebView 上有延迟甚至不触发 */
+document.querySelectorAll('#bl-pager .pg').forEach(d => {
+  const act = (e) => {
+    if (e) e.preventDefault();
+    const v = parseInt(d.dataset.v, 10) || 0;
+    setBlView(v);
     startBlRotate();
-  });
+  };
+  d.addEventListener('click', act);
+  d.addEventListener('touchstart', act, { passive: false });
 });
 
 function renderFaultBody(){
