@@ -80,24 +80,32 @@ public class AlarmEvent {
     @Column(name = "threshold")
     private Double threshold;
 
+    /**
+     * 下面几个时间/计数字段用包装类型（Long/Integer）而非原始类型。
+     * 这几列在库里是可空的：未恢复的报警 cleared_at 为 NULL，未确认的 ack_at 为 NULL。
+     * 声明成原始类型时，只要有一行 NULL，Hibernate 就会抛
+     * "Can not set long field ... to null value"，导致整条查询失败；
+     * 大屏的 fetchOpen() 又把这个异常吞掉了，于是故障看板一直是空的（2026-10-31 修）。
+     * 访问器对外仍是 long（NULL 返回 0），调用方无需改动。
+     */
     @Column(name = "started_at")
-    private long startedAt;
+    private Long startedAt;
 
     @Column(name = "cleared_at")
-    private long clearedAt;
+    private Long clearedAt;
 
     @Column(name = "ack_at")
-    private long ackAt;
+    private Long ackAt;
 
     @Column(name = "ack_by", length = 64)
     private String ackBy;
 
     /** 通知发了几次。用来排查「为什么我没收到」 */
     @Column(name = "notify_count")
-    private int notifyCount;
+    private Integer notifyCount;
 
     @Column(name = "last_notify_at")
-    private long lastNotifyAt;
+    private Long lastNotifyAt;
 
     /** 恢复原因：条件恢复 / 设备删除 / 规则停用 / 人工关闭 */
     @Column(name = "clear_reason", length = 64)
@@ -153,8 +161,10 @@ public class AlarmEvent {
      */
     @com.fasterxml.jackson.annotation.JsonProperty("durationMs")
     public long durationMs() {
-        long end = clearedAt > 0 ? clearedAt : System.currentTimeMillis();
-        return Math.max(0L, end - startedAt);
+        // 两个字段都可能为 null（未恢复 / 历史数据），必须先判空再拆箱
+        long start = startedAt == null ? System.currentTimeMillis() : startedAt;
+        long end = (clearedAt == null || clearedAt <= 0L) ? System.currentTimeMillis() : clearedAt;
+        return Math.max(0L, end - start);
     }
 
     /* ==================== getter / setter ==================== */
@@ -256,7 +266,7 @@ public class AlarmEvent {
     }
 
     public long getStartedAt() {
-        return startedAt;
+        return startedAt == null ? 0L : startedAt;
     }
 
     public void setStartedAt(long startedAt) {
@@ -264,7 +274,7 @@ public class AlarmEvent {
     }
 
     public long getClearedAt() {
-        return clearedAt;
+        return clearedAt == null ? 0L : clearedAt;
     }
 
     public void setClearedAt(long clearedAt) {
@@ -272,7 +282,7 @@ public class AlarmEvent {
     }
 
     public long getAckAt() {
-        return ackAt;
+        return ackAt == null ? 0L : ackAt;
     }
 
     public void setAckAt(long ackAt) {
@@ -288,7 +298,7 @@ public class AlarmEvent {
     }
 
     public int getNotifyCount() {
-        return notifyCount;
+        return notifyCount == null ? 0 : notifyCount;
     }
 
     public void setNotifyCount(int notifyCount) {
@@ -296,7 +306,7 @@ public class AlarmEvent {
     }
 
     public long getLastNotifyAt() {
-        return lastNotifyAt;
+        return lastNotifyAt == null ? 0L : lastNotifyAt;
     }
 
     public void setLastNotifyAt(long lastNotifyAt) {
