@@ -27,6 +27,16 @@ export const TPL: Record<string, any[]> = {
     { key: 'power', name: '有功功率', address: 2, functionCode: 3, dataType: 'u32', scale: 0.001, unit: 'kW', role: 'power' },
     { key: 'energy', name: '累计电量', address: 4, functionCode: 3, dataType: 'u32', scale: 0.01, unit: 'kWh', role: 'energy' }
   ],
+  /**
+   * 继电器 / 远程控制模板：线圈（功能码 1）配 writable=true 才能在详情页控制。
+   * 状态反馈走离散输入（功能码 2），只读。
+   */
+  relay: [
+    { key: 'relay1', name: '继电器 1（可控制）', address: 0, functionCode: 1, dataType: 'bool', scale: 1, role: 'value', writable: true },
+    { key: 'relay2', name: '继电器 2（可控制）', address: 1, functionCode: 1, dataType: 'bool', scale: 1, role: 'value', writable: true },
+    { key: 'relay1_st', name: '继电器 1 状态反馈', address: 0, functionCode: 2, dataType: 'bool', scale: 1, role: 'status' },
+    { key: 'relay2_st', name: '继电器 2 状态反馈', address: 1, functionCode: 2, dataType: 'bool', scale: 1, role: 'status' }
+  ],
   empty: []
 }
 
@@ -64,6 +74,10 @@ export const devicesApi = {
   update: (id: number, body: any) => http.put<any>(`/api/devices/${id}`, body),
   remove: (id: number) => http.del(`/api/devices/${id}`),
   reload: () => http.post('/api/devices/reload'),
+  /** 远程写入（控制）：点位必须 writable=true，线圈写 0/1，寄存器写 u16 */
+  write: (code: string, pointKey: string, value: number | string) =>
+    http.post<{ ok: boolean; message?: string }>(`/api/devices/${encodeURIComponent(code)}/write`,
+      { pointKey, value }),
   resetKey: (code: string) =>
     http.post<{ ok: boolean; apiKey?: string; message?: string }>(`/api/devices/${encodeURIComponent(code)}/apikey`),
   toggleKey: (code: string, enabled: boolean) =>

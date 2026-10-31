@@ -1,6 +1,6 @@
 {
-  "version": "1.0.3",
-  "notes": "1.0.3 升级可靠性：升级包下载失败自动跨源重试（Gitee ⇄ GitHub）；企业代理替换证书导致的下载失败自动降级（包仍经 sha256 + 私钥签名校验）。含 1.0.2 全部内容：大屏 24 小时完整产量轴、故障原因置顶横幅、故障看板与停机原因双视图小圆点切换、超量内容滚动；卡片与详情页统一显示今日产量；WS 推送携带今日产量、产量统计补当前小时实时增量、库存余额秒级上账；SPA 壳页禁缓存",
-  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.3/device-hub-1.0.3-update.zip",
-  "sha256": "ca88ced3b2ee3156d6bc502bfb5040d708d54a9a33b36f800b0f62a7fda8af2f"
+  "version": "1.0.4",
+  "notes": "1.0.4 大屏：故障卡片切换改为带文字的胶囊标签（原 8px 圆点点不中，车间大屏点不动）；远程控制加固：点位级可写白名单、值域校验（u16 0-65535）、每次下发记审计日志，前端设备详情新增控制区与「继电器/远程控制」模板，默认全部只读。含 1.0.3：升级包下载失败自动跨源重试（Gitee ⇄ GitHub）、企业代理证书问题自动降级；含 1.0.2：24 小时完整产量轴、故障原因置顶、双视图切换、产量口径统一、库存秒级上账、壳页禁缓存",
+  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.4/device-hub-1.0.4-update.zip",
+  "sha256": "f5977546cfac7ce562b4031835163fa23d77d1b7971d6f4dba2ff7c73a4de770"
 }

@@ -49,6 +49,29 @@
       </div>
     </div>
 
+    <!-- 远程控制：只显示点表里显式勾了「可写」的点位（默认只读，没配就看不到这块） -->
+    <div v-if="writablePoints.length" class="ctrl">
+      <div class="ctrl-head">
+        远程控制
+        <span class="ctrl-hint">按下即下发到设备 · 每次都会记审计日志</span>
+      </div>
+      <div v-for="p in writablePoints" :key="'w-' + (p.pointKey ?? p.key)" class="ctrl-row">
+        <span class="ctrl-name">{{ p.name }}</span>
+        <span class="ctrl-addr">地址 {{ p.address }}</span>
+        <template v-if="p.functionCode === 1">
+          <el-button size="small" type="success" plain @click="doWrite(p, 1)">开</el-button>
+          <el-button size="small" plain @click="doWrite(p, 0)">关</el-button>
+        </template>
+        <template v-else>
+          <el-input-number v-model="writeVal[p.pointKey ?? p.key]" :min="0" :max="65535"
+                           size="small" controls-position="right" style="width: 130px" />
+          <el-button size="small" type="primary" plain @click="doWrite(p, writeVal[p.pointKey ?? p.key])">
+            写入
+          </el-button>
+        </template>
+      </div>
+    </div>
+
     <!-- key=设备编码：切换设备时销毁重建。没有 key 的话，先打开一台无数值点的
          老设备（v-if 让 el 不存在）再切到新设备，onMounted 里的 init 已错过、
          图表永远空白——这已经是本项目第四次踩"图表 div 未挂载就 init"的坑 -->
@@ -60,7 +83,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import { useDevicesStore, statusOf, fmt } from '@/stores/devices'
@@ -77,6 +100,37 @@ const store = useDevicesStore()
 
 const d = computed(() => store.list.find((x: any) => x.code === props.code))
 const s = computed(() => (d.value ? statusOf(d.value) : { v: -1, label: '--', type: 'off' as const }))
+
+/* ---------- 远程控制 ---------- */
+const writeVal = ref<Record<string, number>>({})
+
+/** 只有显式「可写」且是线圈/保持寄存器的点位才出现在控制区 */
+const writablePoints = computed(() =>
+  ((d.value?.points as any[]) || []).filter(
+    (p) => p.writable && (p.functionCode === 1 || p.functionCode === 3)
+  )
+)
+
+async function doWrite(p: any, value: number) {
+  if (!d.value) return
+  const key = p.pointKey ?? p.key
+  const label = p.functionCode === 1 ? (value === 1 ? '开' : '关') : String(value)
+  try {
+    await ElMessageBox.confirm(
+      `确认向「${d.value.name}」下发：${p.name} → ${label}？\n\n这是真实写入设备，请确认现场安全。`,
+      '远程控制',
+      { type: 'warning', confirmButtonText: '确认下发', cancelButtonText: '取消' }
+    )
+  } catch { return }
+  try {
+    const r = await devicesApi.write(d.value.code, key, value)
+    ElMessage[r?.ok === false ? 'error' : 'success'](
+      r?.message || (r?.ok === false ? '下发失败' : '已下发')
+    )
+  } catch (e: any) {
+    ElMessage.error(e?.message || '下发失败')
+  }
+}
 
 /* 危险操作 confirm 文案与旧版逐字一致（PRD 风险 8） */
 async function removeDevice() {
@@ -148,5 +202,19 @@ async function toggleKey(enabled: boolean) {
 .pt span { font-size: var(--text-2xs); color: var(--muted); }
 .pt b { font-size: var(--text-sm); font-weight: 500; }
 .pt.bad b { color: var(--muted); }
+
+/* 远程控制区 */
+.ctrl {
+  margin-top: var(--space-3); padding: 10px 12px; border-radius: var(--radius-md);
+  background: var(--surface-2); border: 1px solid var(--line, var(--border));
+}
+.ctrl-head {
+  font-size: var(--text-sm); font-weight: 600; margin-bottom: 8px;
+  display: flex; align-items: baseline; gap: 8px;
+}
+.ctrl-hint { font-size: var(--text-2xs); color: var(--muted); font-weight: 400; }
+.ctrl-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+.ctrl-name { font-size: var(--text-sm); min-width: 90px; }
+.ctrl-addr { font-size: var(--text-2xs); color: var(--muted); flex: 1; }
 .last-err { margin-top: var(--space-3); color: var(--alarm); font-size: var(--text-sm); }
 </style>

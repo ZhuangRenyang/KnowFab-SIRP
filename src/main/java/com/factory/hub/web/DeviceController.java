@@ -38,6 +38,9 @@ import java.util.Map;
 @RequestMapping("/api")
 public class DeviceController {
 
+    private static final org.slf4j.Logger log =
+            org.slf4j.LoggerFactory.getLogger(DeviceController.class);
+
     private final DeviceService deviceService;
     private final SnapshotStore store;
     private final CollectScheduler scheduler;
@@ -180,15 +183,90 @@ public class DeviceController {
     }
 
     /** 远程下发。演示用，真实项目要加权限控制 */
+    /**
+     * 远程写入（控制）。
+     * <p>
+     * 三道闸，缺一不可：
+     * <ol>
+     *   <li><b>权限</b>：SecurityConfig 限制 POST /api/devices/** 只给 ADMIN / MANAGER</li>
+     *   <li><b>白名单</b>：点位必须显式 {@code writable=true}，且是线圈(1)或保持寄存器(3)；
+     *       没配就是只读——防止手滑改到生产程序里的寄存器</li>
+     *   <li><b>值域</b>：开关量只接受 0/1/true/false，u16 只接受 0~65535，越界直接拒</li>
+     * </ol>
+     * 每次下发都打审计日志（谁、哪台、哪个点、什么值、成没成），现场出问题能倒查。
+     */
     @PostMapping("/devices/{code}/write")
-    public Map<String, Object> write(@PathVariable String code, @RequestBody Map<String, Object> body) {
+    public ResponseEntity<?> write(@PathVariable String code,
+                                   @RequestBody Map<String, Object> body,
+                                   jakarta.servlet.http.HttpServletRequest req) {
         Object pointKey = body.get("pointKey");
         Object value = body.get("value");
         if (pointKey == null) {
-            return Map.of("ok", false, "message", "缺少 pointKey");
+            return ResponseEntity.badRequest().body(Map.of("ok", false, "message", "缺少 pointKey"));
         }
-        boolean ok = scheduler.write(code, String.valueOf(pointKey), value);
-        return Map.of("ok", ok, "message", ok ? "已下发" : "下发失败，设备未在线或点不存在");
+        DeviceEntity d = deviceService.byCode(code);
+        if (d == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("ok", false, "message", "设备不存在"));
+        }
+        String key = String.valueOf(pointKey);
+        PointDef point = deviceService.pointsOf(d).stream()
+                .filter(p -> key.equals(p.getKey()))
+                .findFirst().orElse(null);
+        if (point == null) {
+            return ResponseEntity.badRequest().body(Map.of("ok", false, "message", "点位不存在：" + key));
+        }
+        if (!point.canWrite()) {
+            String why = point.isWritable()
+                    ? "该点位类型不支持写入（只有线圈与保持寄存器可写）"
+                    : "该点位未开启写入（只读）。要在点表里把「可写」勾上才能远程控制";
+            log.warn("拒绝写入：device={} point={} user={} 原因={}", code, key, operatorOf(req), why);
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("ok", false, "message", why));
+        }
+        // 值域校验：开关量归一化，数值点位限 u16 范围（Modbus 单寄存器）
+        Object normalized;
+        if (point.isBitType()) {
+            String s = String.valueOf(value).trim();
+            boolean on = "1".equals(s) || "true".equalsIgnoreCase(s) || "on".equalsIgnoreCase(s)
+                    || Boolean.TRUE.equals(value);
+            normalized = on ? 1 : 0;
+        } else {
+            double num;
+            try {
+                num = Double.parseDouble(String.valueOf(value).trim());
+            } catch (NumberFormatException e) {
+                return ResponseEntity.badRequest().body(Map.of("ok", false, "message", "值必须是数字"));
+            }
+            if (num < 0 || num > 65535) {
+                return ResponseEntity.badRequest()
+                        .body(Map.of("ok", false, "message", "值超出 u16 范围（0~65535）"));
+            }
+            normalized = (int) Math.round(num);
+        }
+        boolean ok = scheduler.write(code, key, normalized);
+        String who = operatorOf(req);
+        log.info("远程写入：user={} device={} point={}({}) value={} → {}",
+                who, code, point.getName(), key, normalized, ok ? "成功" : "失败");
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("ok", ok);
+        out.put("pointKey", key);
+        out.put("value", normalized);
+        out.put("message", ok ? "已下发" : "下发失败：设备未在线或写入无响应");
+        return ok ? ResponseEntity.ok(out) : ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(out);
+    }
+
+    /** 审计日志里记谁下的手 */
+    private String operatorOf(jakarta.servlet.http.HttpServletRequest req) {
+        try {
+            java.security.Principal p = req.getUserPrincipal();
+            if (p != null && p.getName() != null && !p.getName().isBlank()) {
+                return p.getName();
+            }
+            return req.getRemoteAddr();
+        } catch (Exception e) {
+            return "unknown";
+        }
     }
 
     @GetMapping("/system/info")

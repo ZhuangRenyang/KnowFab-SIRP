@@ -126,11 +126,11 @@ Windows / Linux 单文件 jar
 **画面**：Logo + 一行字（**抖音版不出群号二维码**，B 站/公众号版可在此处加群二维码）
 
 **口播**：
-> 「知造 SIRP，**让老机器自己报产量**。这是我做的开源项目，GitHub 和 Gitee 搜 KnowFab-SIRP，源码和安装包都在上面。」
+> 「知造 SIRP，**让所有机器都报产量**。这是我做的开源项目，GitHub 和 Gitee 搜 KnowFab-SIRP，源码和安装包都在上面。」
 
 **字幕**：
 ```
-让老机器自己报产量
+让所有机器都报产量
 KnowFab-SIRP · GitHub / Gitee 可搜
 ```
 

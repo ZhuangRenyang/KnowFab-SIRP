@@ -48,6 +48,18 @@ public class PointDef {
      */
     private String role = "value";
 
+    /**
+     * 是否允许下发写入（远程控制）。
+     * <p>
+     * <b>默认为 false —— 只读。</b>只有显式勾上这个开关的点，才允许通过
+     * {@code POST /api/devices/{code}/write} 写入；这是防止误操作的第一道闸：
+     * 客户没配 = 系统永远只读，不会因为手滑把生产程序里的寄存器改了。
+     * <p>
+     * 只支持「线圈（功能码 1）」与「保持寄存器（功能码 3）」两类点——
+     * 前者用于开关量（继电器、启停、点动），后者用于设定值（频率、计数清零）。
+     */
+    private boolean writable = false;
+
     /** 该点占用的寄存器数量 */
     public int registerCount() {
         String t = dataType == null ? "u16" : dataType.toLowerCase();
@@ -148,5 +160,18 @@ public class PointDef {
 
     public void setRole(String role) {
         this.role = role;
+    }
+
+    public boolean isWritable() {
+        return writable;
+    }
+
+    public void setWritable(boolean writable) {
+        this.writable = writable;
+    }
+
+    /** 下发写入前先校验：线圈（1）与保持寄存器（3）才可写，输入类点位一律拒绝 */
+    public boolean canWrite() {
+        return writable && (functionCode == 1 || functionCode == 3);
     }
 }

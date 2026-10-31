@@ -137,7 +137,13 @@
         <el-button size="small" @click="useTpl('light')">三色灯干接点</el-button>
         <el-button size="small" @click="useTpl('diCounter')">DI 计数（老设备）</el-button>
         <el-button size="small" @click="useTpl('energy')">电表</el-button>
+        <el-button size="small" @click="useTpl('relay')">继电器 / 远程控制</el-button>
         <el-button size="small" @click="useTpl('empty')">清空</el-button>
+      </div>
+      <div class="hint" style="margin-bottom:6px">
+        要远程控制：给对应点位加 <code>"writable": true</code>，
+        只支持线圈（functionCode 1）与保持寄存器（functionCode 3）。
+        <b>不勾就是只读</b>——系统默认永远不会写设备。
       </div>
       <el-input
         v-model="f.pointsText" type="textarea" :rows="12"
