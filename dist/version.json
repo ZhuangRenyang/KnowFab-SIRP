@@ -1,6 +1,6 @@
 {
-  "version": "1.0.4",
-  "notes": "1.0.4 大屏：故障卡片切换改为带文字的胶囊标签（原 8px 圆点点不中，车间大屏点不动）；远程控制加固：点位级可写白名单、值域校验（u16 0-65535）、每次下发记审计日志，前端设备详情新增控制区与「继电器/远程控制」模板，默认全部只读。含 1.0.3：升级包下载失败自动跨源重试（Gitee ⇄ GitHub）、企业代理证书问题自动降级；含 1.0.2：24 小时完整产量轴、故障原因置顶、双视图切换、产量口径统一、库存秒级上账、壳页禁缓存",
-  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.4/device-hub-1.0.4-update.zip",
-  "sha256": "f5977546cfac7ce562b4031835163fa23d77d1b7971d6f4dba2ff7c73a4de770"
+  "version": "1.0.5",
+  "notes": "1.0.5 重要修复：报警表空值映射错误导致「故障看板 / 报警列表」查询失败、数据永远为空——clearedAt/ackAt 等字段由原始类型改为包装类型（未恢复/未确认的报警这些列本就是 NULL），修复后 /api/alarms 由 500 恢复正常、大屏 fault 数据可正常呈现；大屏视图切换器：无故障时不再误显示、点击不再无反应、故障恢复后自动回落停机原因。含 1.0.4 远程控制与胶囊切换、1.0.3 升级跨源兜底、1.0.2 大屏与实时性",
+  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.5/device-hub-1.0.5-update.zip",
+  "sha256": "ed97ea74d320adb97aac930dd3be742120fa882dc201375f1c1ed1a958071af9"
 }
