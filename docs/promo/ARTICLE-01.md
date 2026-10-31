@@ -147,7 +147,7 @@ curl -fsSL https://gitee.com/ZhuangRenyang/KnowFab-SIRP/raw/main/tools/portable/
 
 ## 最后一句
 
-> **让老机器自己报产量。**
+> **让所有机器都报产量。**
 
 工厂里最贵的不是机器，是你不知道它在干什么。
 那些十几年的老设备，还能再干十年——只要有人愿意把它的数据接出来。

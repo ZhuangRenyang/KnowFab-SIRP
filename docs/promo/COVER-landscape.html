@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<style>
+  /* 设计变量：颜色全部走变量，不散落硬编码 */
+  :root {
+    --bg: #0B0F14;
+    --bg-soft: #111820;
+    --ink: #FFFFFF;
+    --ink-dim: #8A94A6;
+    --brand: #4C8DFF;
+    --accent: #22C55E;
+    --line: rgba(255, 255, 255, 0.14);
+    --font: "Microsoft YaHei", "PingFang SC", "Noto Sans SC", system-ui, sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); font-family: var(--font); -webkit-font-smoothing: antialiased; }
+
+  /* ── 竖屏 1080×1920 ── */
+  .cover {
+    position: relative;
+    width: 1920px; height: 1080px;
+    background:
+      radial-gradient(900px 700px at 50% 32%, rgba(76, 141, 255, 0.16), transparent 70%),
+      linear-gradient(180deg, #0B0F14 0%, #0E141C 55%, #0B0F14 100%);
+    overflow: hidden;
+    display: flex; flex-direction: column;
+    padding: 90px 150px 100px;
+  }
+  /* 背景网格：极淡，工业图纸感 */
+  .grid {
+    position: absolute; inset: 0; pointer-events: none;
+    background-image:
+      linear-gradient(to right, rgba(255,255,255,0.035) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255,255,255,0.035) 1px, transparent 1px);
+    background-size: 90px 90px;
+  }
+  /* 右侧 SIRP 水印 */
+  .wm {
+    position: absolute; right: -70px; top: 50%; transform: translateY(-50%) rotate(-90deg);
+    font-size: 260px; font-weight: 900; letter-spacing: 20px;
+    color: rgba(255,255,255,0.028); white-space: nowrap; pointer-events: none;
+  }
+  .brand { position: relative; display: flex; align-items: center; gap: 18px; }
+  .dot { width: 26px; height: 26px; border-radius: 50%; background: var(--accent); }
+  .brand-t { font-size: 44px; font-weight: 700; letter-spacing: 2px; color: var(--ink); }
+  .brand-t em { font-style: normal; color: var(--brand); margin-left: 10px; }
+
+  .main { position: relative; flex: 1; display: flex; flex-direction: column; justify-content: center; }
+  h1 { font-size: 150px; font-weight: 900; line-height: 1.08; letter-spacing: 4px; }
+  h1 .l1 { display: block; color: var(--ink); }
+  h1 .l2 { display: block; color: var(--brand); }
+  .sub {
+    margin-top: 44px; font-size: 40px; font-weight: 500; color: var(--ink-dim);
+    letter-spacing: 3px; line-height: 1.6;
+  }
+  .tags { position: relative; display: flex; flex-wrap: wrap; gap: 22px; margin-top: auto; }
+  .tag {
+    padding: 16px 32px; border-radius: 999px; border: 2px solid var(--line);
+    font-size: 30px; font-weight: 600; color: rgba(255,255,255,0.86);
+    background: rgba(255,255,255,0.03);
+  }
+  .tag.hl { border-color: rgba(76,141,255,0.6); color: var(--brand); background: rgba(76,141,255,0.10); }
+</style>
+</head>
+<body>
+<div class="cover">
+  <div class="grid"></div>
+  <div class="wm">SIRP</div>
+
+  <div class="brand">
+    <div class="dot"></div>
+    <div class="brand-t">知造<em>SIRP</em></div>
+  </div>
+
+  <div class="main">
+    <h1>
+      <span class="l1">让所有机器</span>
+      <span class="l2">都报产量</span>
+    </h1>
+    <div class="sub">不换 PLC · 一个安装包 · 数据不出厂</div>
+  </div>
+
+  <div class="tags">
+    <div class="tag">新机老机都能接</div>
+    <div class="tag hl">继电器也能接</div>
+    <div class="tag">全开源</div>
+  </div>
+</div>
+</body>
+</html>
