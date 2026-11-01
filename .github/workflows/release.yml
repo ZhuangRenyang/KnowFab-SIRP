@@ -51,14 +51,19 @@ jobs:
           mkdir -p tools/keys
           printf '%s\n' "${{ secrets.UPDATE_PRIVATE_KEY }}" > tools/keys/private.key
           chmod 600 tools/keys/private.key
-          test -s tools/keys/private.key || { echo "缺少 UPDATE_PRIVATE_KEY secret"; exit 1; }
+          # 不能用 test -s 判断：secret 为空时文件里只有一个换行也算非空，
+          # 会一路跑到 PackUpdate 才报 Missing key encoding（2026-11-02 踩过）。
+          # 有效私钥（PKCS8 base64）去空白后至少 1500 字符，小于 500 一律视为没配。
+          SIZE=$(tr -d '[:space:]' < tools/keys/private.key | wc -c)
+          echo "私钥长度（去空白）：$SIZE"
+          [ "$SIZE" -gt 500 ] || { echo "UPDATE_PRIVATE_KEY 为空或不是私钥内容：请在仓库 Secrets 里配置 tools/keys/private.key 的完整内容（裸 base64 或 PEM 均可）"; exit 1; }
 
       - name: 构建（前端 + 后端 + 安装包）
         env:
           MVN: mvn
         run: bash tools/make-dist.sh --build
 
-      - name: 产出两份附件（安装包 / 签名升级包）
+      - name: 产出附件（安装包 / 签名升级包 / 便携包）
         run: |
           V="${VERSION#v}"
           mv "dist/device-hub-$V.zip" "dist/device-hub-$V-installer.zip"
@@ -69,6 +74,8 @@ jobs:
             --notes "$NOTES" \
             --key tools/keys/private.key \
             --out "dist/device-hub-$V-update.zip"
+          # 便携包：Windows 一键安装 install.ps1 要靠它（漏了 6 个版本的教训）
+          bash tools/make-portable.sh
 
       - name: 发布 GitHub Release
         uses: softprops/action-gh-release@v2
@@ -77,6 +84,7 @@ jobs:
           files: |
             dist/*-update.zip
             dist/*-installer.zip
+            dist/*-portable.zip
 
       - name: 同步到 Gitee Release
         if: ${{ env.GITEE_TOKEN != '' }}
@@ -86,7 +94,8 @@ jobs:
           V="${VERSION#v}"
           bash tools/gitee-release.sh "$V" "版本 $V（自动构建）" \
             "dist/device-hub-$V-update.zip" \
-            "dist/device-hub-$V-installer.zip"
+            "dist/device-hub-$V-installer.zip" \
+            "dist/device-hub-$V-portable.zip"
 
       - name: 清理私钥
         if: always()
