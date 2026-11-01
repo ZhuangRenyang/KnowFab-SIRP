@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>设备联网监控中心</title>
+<title data-i="title">设备联网监控中心</title>
 <style>
   /* 车间大屏：纯静态、零外部依赖（车间经常没外网，引 CDN 会白屏）。
      配色只表达设备状态：运行绿 / 待机黄 / 停机红 / 离线灰，不玩花活。 */
@@ -298,15 +298,15 @@
   <div class="brand">
     <div class="logo"></div>
     <div>
-      <h1>设备联网监控中心</h1>
-      <div class="sub">REAL-TIME EQUIPMENT MONITOR</div>
+      <h1 data-i="title">设备联网监控中心</h1>
+      <div class="sub" data-i="sub">REAL-TIME EQUIPMENT MONITOR</div>
     </div>
   </div>
   <div class="head-right">
     <div class="link-state" id="link">
-      <span class="dot"></span><span id="link-text">数据正常</span>
+      <span class="dot"></span><span id="link-text" data-i="dataOk">数据正常</span>
     </div>
-    <a class="screen-switch" id="switch" href="/fault.html">切换故障屏 ▸ <small id="rotate-tip"></small></a>
+    <a class="screen-switch" id="switch" href="/fault.html"><span data-i="switchFault">切换故障屏 ▸</span> <small id="rotate-tip"></small></a>
     <div class="clock">
       <span id="clock">--:--:--</span>
       <small id="date">----</small>
@@ -315,55 +315,55 @@
 </header>
 
 <div class="faultbar" id="faultbar" hidden>
-  <span class="fb-tag">故障原因</span>
+  <span class="fb-tag" data-i="faultTag">故障原因</span>
   <span class="fb-main" id="fb-main"></span>
   <span class="fb-extra" id="fb-extra"></span>
-  <a class="fb-go" href="/fault.html">故障屏 ▸</a>
+  <a class="fb-go" href="/fault.html" data-i="faultGo">故障屏 ▸</a>
 </div>
 
 <section class="kpis">
   <div class="kpi info">
-    <div class="k">今日产量</div>
-    <div class="v"><span id="k-output">0</span><i>件</i></div>
-    <div class="s" id="k-output-sub">按设备累计计数</div>
+    <div class="k" data-i="kOutput">今日产量</div>
+    <div class="v"><span id="k-output">0</span><i data-i="unitPiece">件</i></div>
+    <div class="s" id="k-output-sub" data-i="kOutputSub">按设备累计计数</div>
     <div class="s tgt-line" id="k-output-target"></div>
   </div>
   <div class="kpi good">
-    <div class="k">稼动率</div>
+    <div class="k" data-i="kAvail">稼动率</div>
     <div class="v"><span id="k-avail">--</span><i>%</i></div>
-    <div class="s" id="k-avail-sub">运行 ÷ 已记录时长</div>
+    <div class="s" id="k-avail-sub" data-i="kAvailSub">运行 ÷ 已记录时长</div>
   </div>
   <div class="kpi">
-    <div class="k">停机时长</div>
-    <div class="v"><span id="k-stop">0</span><i>分钟</i></div>
-    <div class="s" id="k-stop-sub">今日累计 · 按运行状态统计</div>
+    <div class="k" data-i="kStop">停机时长</div>
+    <div class="v"><span id="k-stop">0</span><i data-i="unitMinute">分钟</i></div>
+    <div class="s" id="k-stop-sub" data-i="kStopSub">今日累计 · 按运行状态统计</div>
   </div>
   <div class="kpi">
-    <div class="k">停机次数</div>
-    <div class="v"><span id="k-stopcnt">0</span><i>次</i></div>
-    <div class="s">来自停机/离线告警</div>
+    <div class="k" data-i="kStopCnt">停机次数</div>
+    <div class="v"><span id="k-stopcnt">0</span><i data-i="unitTimes">次</i></div>
+    <div class="s" data-i="kStopCntSub">来自停机/离线告警</div>
   </div>
   <div class="kpi good">
-    <div class="k">在线设备</div>
+    <div class="k" data-i="kOnline">在线设备</div>
     <div class="v"><span id="k-online">0</span><i id="k-total">/ 0</i></div>
     <div class="s" id="k-rate">在线率 0%</div>
   </div>
   <div class="kpi warn" id="kpi-alarm">
-    <div class="k">未处理报警</div>
-    <div class="v"><span id="k-alarm">0</span><i>条</i></div>
+    <div class="k" data-i="kAlarm">未处理报警</div>
+    <div class="v"><span id="k-alarm">0</span><i data-i="unitAlarms">条</i></div>
     <div class="s" id="k-alarm-sub">严重 0 · 重要 0</div>
   </div>
 </section>
 
 <section class="linebar" id="linebar" hidden>
-  <span class="lb-title">产线产量</span>
+  <span class="lb-title" data-i="lineTitle">产线产量</span>
   <div class="lb-list" id="lb-list"></div>
 </section>
 
 <main>
   <section class="panel">
     <div class="p-head">
-      <span class="p-title">设备状态分布</span>
+      <span class="p-title" data-i="pDonut">设备状态分布</span>
       <span class="p-extra" id="dev-note"></span>
     </div>
     <div class="donut-wrap">
@@ -374,7 +374,7 @@
         </svg>
         <div class="center">
           <b id="donut-total">0</b>
-          <span>台设备</span>
+          <span data-i="donutCenter">台设备</span>
         </div>
       </div>
       <div class="legend" id="legend"></div>
@@ -383,8 +383,8 @@
 
   <section class="panel">
     <div class="p-head">
-      <span class="p-title">今日产量趋势</span>
-      <span class="p-note">每小时合计</span>
+      <span class="p-title" data-i="pChart">今日产量趋势</span>
+      <span class="p-note" data-i="pChartNote">每小时合计</span>
       <span class="p-extra" id="chart-note"></span>
     </div>
     <div class="chart" id="chart">
@@ -396,8 +396,8 @@
 
   <section class="panel">
     <div class="p-head">
-      <span class="p-title">实时报警</span>
-      <span class="p-note">按严重程度排序</span>
+      <span class="p-title" data-i="pAlarm">实时报警</span>
+      <span class="p-note" data-i="pAlarmNote">按严重程度排序</span>
       <span class="p-extra" id="alarm-note"></span>
     </div>
     <div class="alarms" id="alarms"></div>
@@ -407,12 +407,12 @@
 <footer>
   <section class="panel">
     <div class="p-head">
-      <span class="p-title" id="bl-title">停机原因</span>
-      <span class="p-note" id="bl-note">今日累计时长</span>
+      <span class="p-title" id="bl-title" data-i="blReason">停机原因</span>
+      <span class="p-note" id="bl-note" data-i="blReasonNote">今日累计时长</span>
       <span class="p-extra" id="bl-extra"></span>
       <span class="pager" id="bl-pager">
-        <span class="pg" data-v="0">停机原因</span>
-        <span class="pg" data-v="1">故障看板</span>
+        <span class="pg" data-v="0" data-i="pgReason">停机原因</span>
+        <span class="pg" data-v="1" data-i="pgFault">故障看板</span>
       </span>
     </div>
     <div class="bl-body">
@@ -423,26 +423,130 @@
 
   <section class="panel">
     <div class="p-head">
-      <span class="p-title">设备状态</span>
-      <span class="p-note">绿 运行 · 黄 待机 · 红 停机 · 灰 离线</span>
+      <span class="p-title" data-i="pDevices">设备状态</span>
+      <span class="p-note" data-i="pDevicesNote">绿 运行 · 黄 待机 · 红 停机 · 灰 离线</span>
     </div>
     <div class="devgrid" id="devgrid"></div>
   </section>
 </footer>
 
 <div class="ticker">
-  <span class="tag">最新动态</span>
-  <div class="roll"><span id="ticker">系统启动中…</span></div>
+  <span class="tag" data-i="tickerTag">最新动态</span>
+  <div class="roll"><span id="ticker" data-i="boot">系统启动中…</span></div>
 </div>
 
-<div class="offline-mask" id="mask"><div id="mask-text">与服务器断开，正在重试…</div></div>
+<div class="offline-mask" id="mask"><div id="mask-text" data-i="maskRetry0">与服务器断开，正在重试…</div></div>
 
 <script>
 /* 车间大屏脚本：只读、不登录、5 秒拉一次。
    断网时保留最后一屏数据（大屏不能变白板），只在中间压一条提示。 */
 const $ = id => document.getElementById(id);
 const COLORS = { run:'#9be35a', idle:'#e2b34c', stop:'#ff8f87', alarm:'#ff7a71', offline:'#6c7679' };
-const STATE_TEXT = { run:'运行', idle:'待机', stop:'停机', alarm:'报警', offline:'离线' };
+
+/* ---------- 双语（2026-11-01）：语言取 ?lang= 或设置页同一键 sirp.locale。
+   只翻界面框架与状态词；规则名 / 报警内容 / 停机原因等后端数据保持原文。 ---------- */
+const LANG = (new URLSearchParams(location.search).get('lang'))
+  || localStorage.getItem('sirp.locale') || 'zh-CN';
+const IS_EN = LANG.indexOf('en') === 0;
+
+const SCR = {
+  title: '设备联网监控中心', sub: 'REAL-TIME EQUIPMENT MONITOR',
+  dataOk: '数据正常', dataBad: '连接中断',
+  switchFault: '切换故障屏 ▸', switchMain: '返回主屏 ▸', rotateIn: '后切故障屏',
+  faultTag: '故障原因', faultGo: '故障屏 ▸',
+  kOutput: '今日产量', unitPiece: '件', kOutputSub: '按设备累计计数', kOutputSubNone: '今日暂无产量数据',
+  targetLine: '目标 {sum} 件 · 完成 {rate}%',
+  kAvail: '稼动率', kAvailSub: '运行 ÷ 已记录时长',
+  kStop: '停机时长', unitMinute: '分钟', kStopSub: '今日累计 · 按运行状态统计',
+  kStopCnt: '停机次数', unitTimes: '次', kStopCntSub: '来自停机/离线告警',
+  kOnline: '在线设备', rateLine: '在线率 {rate}%',
+  kAlarm: '未处理报警', unitAlarms: '条', kAlarmSub: '严重 {c} · 重要 {m}',
+  lineTitle: '产线产量', lineToday: '件 今日', lineTip: '{on}/{tot} 台在线',
+  pDonut: '设备状态分布', donutTotal: '共 {n} 台', noDevices: '未接入设备', donutCenter: '台设备',
+  pChart: '今日产量趋势', pChartNote: '每小时合计', peak: '峰值 {n} 件/时', emptyChart: '今日暂无产量数据',
+  pAlarm: '实时报警', pAlarmNote: '按严重程度排序', alarmCount: '共 {n} 条', alarmPage: ' · 第 {p}/{pages} 页',
+  noAlarms: '暂无未处理报警', acked: '已确认', justNow: '刚刚', minAgo: '{n} 分钟',
+  blReason: '停机原因', blReasonNote: '今日累计时长',
+  blFault: '故障维修看板', blFaultNote: '报警设备 {n} 台', blNoFault: '今日无故障',
+  pagerInfo: '第 {p}/{n} 台 · 自动轮播',
+  pgReason: '停机原因', pgFault: '故障看板',
+  pDevices: '设备状态', pDevicesNote: '绿 运行 · 黄 待机 · 红 停机 · 灰 离线',
+  tickerTag: '最新动态', boot: '系统启动中…',
+  tickerAlarm: '{dev}：{rule}（{lv}，已持续 {min} 分钟）',
+  tickerAllOk: '全部 {n} 台设备无未处理报警，今日产量 {out} 件。',
+  tickerNone: '尚未接入设备，请先在「设备监控」里添加设备。',
+  maskRetry0: '与服务器断开，正在重试…',
+  maskRetry: '与服务器断开（已重试 {n} 次），', maskOld: '当前显示的是 {s} 秒前的数据', maskConn: '正在连接…',
+  stRun: '运行', stIdle: '待机', stStop: '停机', stAlarm: '报警', stOffline: '离线',
+  lvCritical: '严重', lvMajor: '重要', lvMinor: '一般',
+  week: '周日|周一|周二|周三|周四|周五|周六',
+  offlineReason: '设备离线',
+  noAlarmPoint: '该设备未配置报警字点位（点表里加 role=alarm）',
+  plcNormal: '正常（全部为 0）', plcUnknown: '（未收录，查品牌手册）',
+  commSec: '通讯与端口', slave: '从站', poll: '轮询', timeout: '超时',
+  online: '在线', offline: '离线', lastErr: '最后错误：',
+  plcSec: '伺服 / PLC 报警字', alarmsUnit: '条报警',
+  aiAi: 'AI 分析 · 仅供参考', aiPending: 'AI 分析生成中…', aiLocal: '本地建议 · 未启用 AI',
+  fixTip: '处理：', noStopRec: '今日没有停机记录', noFaultRec: '今日没有故障记录'
+};
+const SCR_EN = {
+  title: 'Equipment Monitor', sub: 'REAL-TIME EQUIPMENT MONITOR',
+  dataOk: 'Data OK', dataBad: 'Connection lost',
+  switchFault: 'Fault screen ▸', switchMain: 'Main screen ▸', rotateIn: 'to fault screen',
+  faultTag: 'Fault cause', faultGo: 'Fault screen ▸',
+  kOutput: 'Output today', unitPiece: 'pcs', kOutputSub: 'Cumulative device counters', kOutputSubNone: 'No output data today',
+  targetLine: 'Target {sum} pcs · {rate}% done',
+  kAvail: 'Availability', kAvailSub: 'Running ÷ recorded time',
+  kStop: 'Stop time', unitMinute: 'min', kStopSub: 'Today · by run status',
+  kStopCnt: 'Stop count', unitTimes: 'x', kStopCntSub: 'From stop/offline alarms',
+  kOnline: 'Devices online', rateLine: 'Online {rate}%',
+  kAlarm: 'Open alarms', unitAlarms: '', kAlarmSub: 'Critical {c} · Major {m}',
+  lineTitle: 'Line output', lineToday: 'pcs today', lineTip: '{on}/{tot} online',
+  pDonut: 'Device status', donutTotal: '{n} devices', noDevices: 'No devices', donutCenter: 'devices',
+  pChart: 'Output today', pChartNote: 'Hourly total', peak: 'Peak {n}/h', emptyChart: 'No output data today',
+  pAlarm: 'Live alarms', pAlarmNote: 'Sorted by severity', alarmCount: '{n} total', alarmPage: ' · Page {p}/{pages}',
+  noAlarms: 'No open alarms', acked: 'acknowledged', justNow: 'now', minAgo: '{n} min',
+  blReason: 'Stop reasons', blReasonNote: 'Total time today',
+  blFault: 'Fault board', blFaultNote: '{n} devices alarming', blNoFault: 'No faults today',
+  pagerInfo: '{p}/{n} · auto',
+  pgReason: 'Stop reasons', pgFault: 'Fault board',
+  pDevices: 'Devices', pDevicesNote: 'Green run · Yellow idle · Red stop · Grey offline',
+  tickerTag: 'LATEST', boot: 'Starting…',
+  tickerAlarm: '{dev}: {rule} ({lv}, {min} min)',
+  tickerAllOk: 'All {n} devices OK, output today {out} pcs.',
+  tickerNone: 'No devices yet — add devices in Device Monitor first.',
+  maskRetry0: 'Disconnected from server, retrying…',
+  maskRetry: 'Disconnected (retried {n} times), ', maskOld: 'showing data from {s}s ago', maskConn: 'connecting…',
+  stRun: 'Run', stIdle: 'Idle', stStop: 'Stop', stAlarm: 'Alarm', stOffline: 'Offline',
+  lvCritical: 'Critical', lvMajor: 'Major', lvMinor: 'Minor',
+  week: 'Sun|Mon|Tue|Wed|Thu|Fri|Sat',
+  offlineReason: 'Device offline',
+  noAlarmPoint: 'No alarm-word point configured (add role=alarm in the point table)',
+  plcNormal: 'Normal (all 0)', plcUnknown: ' (not in dict, check brand manual)',
+  commSec: 'COMM AND PORT', slave: 'Slave', poll: 'Poll', timeout: 'Timeout',
+  online: 'Online', offline: 'Offline', lastErr: 'Last error: ',
+  plcSec: 'Servo / PLC alarm words', alarmsUnit: ' alarms',
+  aiAi: 'AI analysis · for reference', aiPending: 'AI analysis generating…', aiLocal: 'Local advice · AI off',
+  fixTip: 'Fix: ', noStopRec: 'No stop records today', noFaultRec: 'No faults today'
+};
+function T(key, p){
+  let s = (IS_EN ? SCR_EN[key] : SCR[key]) ?? SCR[key] ?? key;
+  if (p) for (const k in p) s = s.split('{' + k + '}').join(String(p[k]));
+  return s;
+}
+/* 后端下发的中文级别/状态词 → 当前语言（数据原文不改动，只翻译显示） */
+const LV_EN = { '严重': 'Critical', '重要': 'Major', '一般': 'Minor', '提示': 'Minor' };
+function lvText(lv){ const s = String(lv || ''); return IS_EN ? (LV_EN[s] || s) : s; }
+function stText(s){
+  const map = { '运行': 'stRun', '待机': 'stIdle', '停机': 'stStop', '报警': 'stAlarm', '离线': 'stOffline',
+    run: 'stRun', idle: 'stIdle', stop: 'stStop', alarm: 'stAlarm', offline: 'stOffline' };
+  const k = map[s];
+  return k ? T(k) : (s == null ? '' : s);
+}
+function applyStatic(){
+  document.querySelectorAll('[data-i]').forEach(el => { el.textContent = T(el.getAttribute('data-i')); });
+}
+
 let lastOk = 0, failures = 0, chartMax = 1, lastSnapshot = null;
 
 function num(n){ return (n == null || isNaN(n)) ? '0' : Number(n).toLocaleString('zh-CN'); }
@@ -452,9 +556,10 @@ function tickClock(){
   const d = new Date();
   const p = n => String(n).padStart(2,'0');
   $('clock').textContent = p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());
-  const w = ['周日','周一','周二','周三','周四','周五','周六'][d.getDay()];
+  const w = T('week').split('|')[d.getDay()];
   $('date').textContent = d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+w;
 }
+applyStatic();
 setInterval(tickClock, 1000); tickClock();
 
 /* ---------- 双屏自动轮换：?rotate=N 分钟后跳去故障屏 ---------- */
@@ -467,7 +572,7 @@ setInterval(tickClock, 1000); tickClock();
   setInterval(() => {
     const left = Math.max(0, deadline - Date.now());
     const m = Math.floor(left / 60000), s = Math.floor(left % 60000 / 1000);
-    $('rotate-tip').textContent = m + ':' + String(s).padStart(2,'0') + ' 后切故障屏';
+    $('rotate-tip').textContent = m + ':' + String(s).padStart(2,'0') + ' ' + T('rotateIn');
   }, 1000);
   setTimeout(() => { location.href = target; }, mins * 60000);
 })();
@@ -477,7 +582,7 @@ function render(d){
   // KPI
   const p = d.prod || {};
   $('k-output').textContent = num(p.output);
-  $('k-output-sub').textContent = p.hasData ? '按设备累计计数' : '今日暂无产量数据';
+  $('k-output-sub').textContent = p.hasData ? T('kOutputSub') : T('kOutputSubNone');
   // 目标完成率：有设备设了日目标才显示（targetRate 为 null 时整行留空）
   const tEl = $('k-output-target');
   if (p.targetRate == null) {
@@ -485,7 +590,7 @@ function render(d){
     tEl.className = 's tgt-line';
   } else {
     const rate = Number(p.targetRate);
-    tEl.textContent = `目标 ${num(p.targetSum)} 件 · 完成 ${rate}%`;
+    tEl.textContent = T('targetLine', { sum: num(p.targetSum), rate: rate });
     tEl.className = 's tgt-line ' + (rate >= 100 ? 't-good' : rate >= 60 ? 't-mid' : 't-low');
   }
   $('k-avail').textContent = (p.availability == null) ? '--' : p.availability.toFixed(1);
@@ -497,11 +602,11 @@ function render(d){
   const dev = d.device || {};
   $('k-online').textContent = num(dev.online);
   $('k-total').textContent = '/ ' + num(dev.total);
-  $('k-rate').textContent = '在线率 ' + (dev.onlineRate == null ? 0 : dev.onlineRate) + '%';
+  $('k-rate').textContent = T('rateLine', { rate: dev.onlineRate == null ? 0 : dev.onlineRate });
 
   const al = d.alarms || {};
   $('k-alarm').textContent = num(al.open);
-  $('k-alarm-sub').textContent = '严重 ' + num(al.critical) + ' · 重要 ' + num(al.major);
+  $('k-alarm-sub').textContent = T('kAlarmSub', { c: num(al.critical), m: num(al.major) });
   $('kpi-alarm').classList.toggle('warn', (al.open || 0) > 0);
 
   renderLines(d.lines || []);
@@ -529,8 +634,8 @@ function renderLines(lines){
   bar.hidden = false;
   list.innerHTML = lines.map(l => {
     const off = (l.devices || 0) > 0 && (l.online || 0) === 0;
-    return `<div class="lb" title="${esc(l.workshop || '')} · ${num(l.online)}/${num(l.devices)} 台在线">
-      <span>${esc(l.name)}</span><b${off ? ' style="color:var(--dim)"' : ''}>${num(l.today)}</b><em>件 今日</em></div>`;
+    return `<div class="lb" title="${esc(l.workshop || '')} · ${T('lineTip', { on: num(l.online), tot: num(l.devices) })}">
+      <span>${esc(l.name)}</span><b${off ? ' style="color:var(--dim)"' : ''}>${num(l.today)}</b><em>${T('lineToday')}</em></div>`;
   }).join('');
 }
 
@@ -541,7 +646,7 @@ function renderDonut(dev){
   ];
   const total = dev.total || 0;
   $('donut-total').textContent = total;
-  $('dev-note').textContent = total ? ('共 ' + total + ' 台') : '未接入设备';
+  $('dev-note').textContent = total ? T('donutTotal', { n: total }) : T('noDevices');
 
   const C = 2 * Math.PI * 62;
   let acc = 0, html = '';
@@ -557,7 +662,7 @@ function renderDonut(dev){
 
   $('legend').innerHTML = segs.map(([k, v]) =>
     `<div class="lg"><span class="sw" style="background:${COLORS[k]}"></span>
-       <span class="name">${STATE_TEXT[k]}</span>
+       <span class="name">${stText(k)}</span>
        <span class="val">${v}</span></div>`).join('');
 }
 
@@ -578,7 +683,7 @@ function renderChart(hours){
   chartMax = Math.max(1, peak);
   const nowH = new Date().getHours();
   if (!vals.length){
-    box.innerHTML += '<div class="empty" style="position:absolute;inset:0">今日暂无产量数据</div>';
+    box.innerHTML += '<div class="empty" style="position:absolute;inset:0">' + T('emptyChart') + '</div>';
   }
   for (let i = 0; i < 24; i++){
     const has = Object.prototype.hasOwnProperty.call(map, i);
@@ -595,7 +700,7 @@ function renderChart(hours){
       `<span class="h">${label}</span>`;
     box.appendChild(div);
   }
-  $('chart-note').textContent = peak ? ('峰值 ' + num(peak) + ' 件/时') : '';
+  $('chart-note').textContent = peak ? T('peak', { n: num(peak) }) : '';
 }
 
 let alarmAll = [], alarmPage = 0, ALARM_PER_PAGE = 6;
@@ -611,23 +716,26 @@ function renderAlarmPage(){
   const total = alarmAll.length;
   if (!total){
     $('alarm-note').textContent = '';
-    box.innerHTML = '<div class="empty">暂无未处理报警</div>';
+    box.innerHTML = '<div class="empty">' + T('noAlarms') + '</div>';
     return;
   }
   const pages = Math.ceil(total / ALARM_PER_PAGE);
-  $('alarm-note').textContent = '共 ' + total + ' 条' +
-    (pages > 1 ? (' · 第 ' + (alarmPage + 1) + '/' + pages + ' 页') : '');
+  $('alarm-note').textContent = T('alarmCount', { n: total }) +
+    (pages > 1 ? T('alarmPage', { p: alarmPage + 1, pages: pages }) : '');
   const items = alarmAll.slice(alarmPage * ALARM_PER_PAGE, (alarmPage + 1) * ALARM_PER_PAGE);
-  box.innerHTML = items.map(a => `
+  box.innerHTML = items.map(a => {
+    const lv = lvText(a.levelText);
+    return `
     <div class="alarm-row ${(a.level || 'minor').toLowerCase()}">
-      <span class="lv ${(a.level || 'minor').toLowerCase()}">${a.levelText || ''}</span>
+      <span class="lv ${(a.level || 'minor').toLowerCase()}">${esc(lv)}</span>
       <div class="a-main">
         <div class="a-dev">${esc(a.device)}</div>
-        <div class="a-rule">${esc(a.rule)}${a.acked ? ' · 已确认' : ''}</div>
+        <div class="a-rule">${esc(a.rule)}${a.acked ? ' · ' + T('acked') : ''}</div>
       </div>
       <span class="a-since">${esc(a.since || '')}</span>
-      <span class="a-min">${a.minutes < 1 ? '刚刚' : a.minutes + ' 分钟'}</span>
-    </div>`).join('');
+      <span class="a-min">${a.minutes < 1 ? T('justNow') : T('minAgo', { n: a.minutes })}</span>
+    </div>`;
+  }).join('');
 }
 
 let faultAll = [], faultPage = 0, faultAt = 0;
@@ -636,7 +744,7 @@ let blView = 0, blTimer = null;
 
 /* 故障原因横幅：把最严重的一条「为什么坏」提到大屏最上方。
    取源优先级：PLC 报警字典原因 → 报警规则 → 通讯/离线原因。 */
-function lvlRank(lv){ return lv === '严重' ? 3 : lv === '重要' ? 2 : 1; }
+function lvlRank(lv){ const s = String(lv || ''); return (s === '严重' || s === 'Critical') ? 3 : (s === '重要' || s === 'Major') ? 2 : 1; }
 
 function renderFaultBar(faults){
   const bar = $('faultbar');
@@ -648,16 +756,16 @@ function renderFaultBar(faults){
     const known = words.find(w => w.known && w.cause);
     const al = (facts.alarms && facts.alarms.items) || [];
     const worst = al.slice().sort((a, b) => lvlRank(b.levelText) - lvlRank(a.levelText))[0];
-    let reason = '', level = '一般';
+    let reason = '', level = T('lvMinor');
     if (known){
       reason = known.name + '：' + known.cause + (known.remedy ? ' → ' + known.remedy : '');
-      level = '严重';
+      level = T('lvCritical');
     } else if (worst){
       reason = worst.rule + (worst.message ? '：' + worst.message : '');
-      level = worst.levelText || '一般';
+      level = lvText(worst.levelText) || T('lvMinor');
     } else if (facts.offline){
-      reason = '设备离线' + (facts.lastError ? '：' + facts.lastError : '');
-      level = '重要';
+      reason = T('offlineReason') + (facts.lastError ? '：' + facts.lastError : '');
+      level = T('lvMajor');
     }
     if (!reason) continue;
     items.push({ name: f.name || f.code, reason, level, count: al.length || words.length || 1 });
@@ -667,7 +775,7 @@ function renderFaultBar(faults){
   const top = items[0];
   const total = items.reduce((s, x) => s + x.count, 0);
   $('fb-main').innerHTML = '<b>' + esc(top.name) + '</b> · ' + esc(top.reason);
-  $('fb-extra').textContent = (items.length > 1 ? ('另有 ' + (items.length - 1) + ' 台设备 · ') : '') + '共 ' + total + ' 条报警';
+  $('fb-extra').textContent = (items.length > 1 ? ('+ ' + (items.length - 1) + ' · ') : '') + T('alarmCount', { n: total });
   bar.hidden = false;
 }
 
@@ -694,12 +802,12 @@ function setBlView(v){
   $('fault-body').classList.toggle('show', showFault);
   const title = $('bl-title'), note = $('bl-note'), extra = $('bl-extra');
   if (showFault){
-    title.textContent = '故障维修看板';
-    note.textContent = has ? ('报警设备 ' + faultAll.length + ' 台') : '今日无故障';
-    extra.textContent = faultAll.length > 1 ? ('第 ' + (faultPage+1) + '/' + faultAll.length + ' 台 · 自动轮播') : '';
+    title.textContent = T('blFault');
+    note.textContent = has ? T('blFaultNote', { n: faultAll.length }) : T('blNoFault');
+    extra.textContent = faultAll.length > 1 ? T('pagerInfo', { p: faultPage + 1, n: faultAll.length }) : '';
   } else {
-    title.textContent = '停机原因';
-    note.textContent = '今日累计时长';
+    title.textContent = T('blReason');
+    note.textContent = T('blReasonNote');
     extra.textContent = '';
   }
   const pager = $('bl-pager');
@@ -737,37 +845,40 @@ document.querySelectorAll('#bl-pager .pg').forEach(d => {
 
 function renderFaultBody(){
   if (!faultAll.length){
-    $('fault-body').innerHTML = '<div class="empty">今日没有故障记录</div>';
+    $('fault-body').innerHTML = '<div class="empty">' + T('noFaultRec') + '</div>';
     return;
   }
   const list = faultAll;
   const f = list[faultPage];
 
   const comm = f.comm || {};
-  const lines = (f.alarms || []).map(a =>
-    `<div class="f-al"><span class="lv ${(a.levelText==='严重'?'critical':a.levelText==='重要'?'major':'minor')}">${a.levelText}</span>` +
+  const lines = (f.alarms || []).map(a => {
+    const lv = lvText(a.levelText);
+    const lvCls = a.levelText === '严重' ? 'critical' : a.levelText === '重要' ? 'major' : 'minor';
+    return `<div class="f-al"><span class="lv ${lvCls}">${esc(lv)}</span>` +
     `<span class="fr">${esc(a.rule)}</span>` +
     `<span class="fm">${esc(a.message || '')}</span>` +
-    `<span class="a-min">${a.minutes < 1 ? '刚刚' : a.minutes + ' 分'}</span></div>`).join('');
+    `<span class="a-min">${a.minutes < 1 ? T('justNow') : T('minAgo', { n: a.minutes })}</span></div>`;
+  }).join('');
 
   const an = f.analysis || {};
   const srcCls = an.source === 'AI' ? '' : 'local';
-  const srcText = an.source === 'AI' ? 'AI 分析 · 仅供参考'
-                : an.source === 'PENDING' ? 'AI 分析生成中…'
-                : '本地建议 · 未启用 AI';
+  const srcText = an.source === 'AI' ? T('aiAi')
+                : an.source === 'PENDING' ? T('aiPending')
+                : T('aiLocal');
   const aiHtml = `<div class="f-ai ${an.source === 'PENDING' ? 'pending' : ''}">` +
     `<span class="src ${srcCls}">${srcText}</span>${esc(an.text || '')}</div>`;
 
   const plc = (f.plcWords || []);
   let plcText;
   if (!f.plcHasPoint){
-    plcText = '该设备未配置报警字点位（点表里加 role=alarm）';
+    plcText = T('noAlarmPoint');
   } else if (!plc.length){
-    plcText = '正常（全部为 0）';
+    plcText = T('plcNormal');
   } else {
     plcText = plc.map(w =>
       `${esc(w.key)} = ${w.code}` +
-      (w.known ? `（${esc(w.name)}）` : '（未收录，查品牌手册）')
+      (w.known ? `（${esc(w.name)}）` : T('plcUnknown'))
     ).join('，');
   }
   const brandText = plc.length && plc[0].brandText ? esc(plc[0].brandText) : '';
@@ -775,24 +886,24 @@ function renderFaultBody(){
   $('fault-body').innerHTML = `
     <div class="fault">
       <div class="f-top"><b>${esc(f.name)}</b>
-        <span class="st">${esc(f.state)}</span>
+        <span class="st">${esc(stText(f.state))}</span>
         ${f.location ? `<span class="st">${esc(f.location)}</span>` : ''}
-        <span class="st" style="color:var(--alarm)">${(f.alarms||[]).length} 条报警</span>
+        <span class="st" style="color:var(--alarm)">${(f.alarms||[]).length}${T('alarmsUnit')}</span>
       </div>
       <div>${lines}</div>
       <div class="f-kv">
-        <div class="f-sec">通讯与端口</div>
+        <div class="f-sec">${T('commSec')}</div>
         <b>${esc(comm.protocol || '')}</b> ${esc(comm.target || '')}
-        · 从站 ${comm.unitId == null ? '-' : comm.unitId}
-        · 轮询 ${comm.pollMs == null ? '-' : comm.pollMs}ms
-        · 超时 ${comm.timeoutMs == null ? '-' : comm.timeoutMs}ms
-        · <b style="color:${comm.online ? 'var(--run)' : 'var(--alarm)'}">${comm.online ? '在线' : '离线'}</b>
-        ${comm.lastError ? `<br><span class="err">最后错误：${esc(comm.lastError)}</span>` : ''}
+        · ${T('slave')} ${comm.unitId == null ? '-' : comm.unitId}
+        · ${T('poll')} ${comm.pollMs == null ? '-' : comm.pollMs}ms
+        · ${T('timeout')} ${comm.timeoutMs == null ? '-' : comm.timeoutMs}ms
+        · <b style="color:${comm.online ? 'var(--run)' : 'var(--alarm)'}">${comm.online ? T('online') : T('offline')}</b>
+        ${comm.lastError ? `<br><span class="err">${T('lastErr')}${esc(comm.lastError)}</span>` : ''}
       </div>
-      <div class="f-kv"><div class="f-sec">伺服 / PLC 报警字${brandText ? ' · ' + brandText : ''}</div>
+      <div class="f-kv"><div class="f-sec">${T('plcSec')}${brandText ? ' · ' + brandText : ''}</div>
         <b style="color:${plc.length ? 'var(--alarm)' : 'var(--run)'}">${plcText}</b>
         ${plc.length ? plc.map(w => w.known
-            ? `<br><span style="color:var(--muted)" title="处理：${esc(w.remedy || '')}">${esc(w.name)}：${esc(w.cause || '')}｜处理：${esc(w.remedy || '')}</span>`
+            ? `<br><span style="color:var(--muted)" title="${T('fixTip')}${esc(w.remedy || '')}">${esc(w.name)}：${esc(w.cause || '')}｜${T('fixTip')}${esc(w.remedy || '')}</span>`
             : '').join('') : ''}
       </div>
       <div class="f-ai-wrap">${aiHtml}</div>
@@ -802,7 +913,7 @@ function renderFaultBody(){
 function renderReasons(list){
   const box = $('reasons');
   if (!list.length){
-    box.innerHTML = '<div class="empty">今日没有停机记录</div>';
+    box.innerHTML = '<div class="empty">' + T('noStopRec') + '</div>';
     return;
   }
   const max = Math.max(1, ...list.map(r => r.totalMin || 0));
@@ -810,14 +921,14 @@ function renderReasons(list){
     <div class="rs">
       <span class="rn" title="${esc(r.reason)}">${esc(r.reason)}</span>
       <span class="track"><span class="barfill" style="width:${(r.totalMin||0)/max*100}%"></span></span>
-      <span class="rv">${r.totalMin} 分 · ${r.count} 次</span>
+      <span class="rv">${r.totalMin} ${T('unitMinute')} · ${r.count} ${T('unitTimes')}</span>
     </div>`).join('');
 }
 
 function renderDevices(list){
   const box = $('devgrid');
   if (!list.length){
-    box.innerHTML = '<div class="empty">未接入设备</div>';
+    box.innerHTML = '<div class="empty">' + T('noDevices') + '</div>';
     return;
   }
   box.innerHTML = list.map(d => {
@@ -828,7 +939,7 @@ function renderDevices(list){
     <div class="chip ${d.state}">
       <span class="cd"></span>
       <span class="cn" title="${esc(d.code)}">${esc(d.name)}</span>
-      <span class="cs">${d.text}</span>${tgt}
+      <span class="cs">${esc(stText(d.state))}</span>${tgt}
     </div>`;
   }).join('');
 }
@@ -841,11 +952,11 @@ function renderTicker(d){
   const al = (d.alarms || {}).items || [];
   let text;
   if (al.length){
-    text = al.slice(0, 4).map(a => `${a.device}：${a.rule}（${a.levelText}，已持续 ${a.minutes} 分钟）`).join('　｜　');
+    text = al.slice(0, 4).map(a => T('tickerAlarm', { dev: a.device, rule: a.rule, lv: lvText(a.levelText), min: a.minutes })).join('　｜　');
   } else if ((d.device || {}).total){
-    text = `全部 ${d.device.total} 台设备无未处理报警，今日产量 ${d.prod ? d.prod.output : 0} 件。`;
+    text = T('tickerAllOk', { n: d.device.total, out: d.prod ? d.prod.output : 0 });
   } else {
-    text = '尚未接入设备，请先在「设备监控」里添加设备。';
+    text = T('tickerNone');
   }
   $('ticker').textContent = text;
 }
@@ -857,7 +968,7 @@ function esc(s){
 
 function setLink(ok){
   $('link').classList.toggle('bad', !ok);
-  $('link-text').textContent = ok ? '数据正常' : '连接中断';
+  $('link-text').textContent = ok ? T('dataOk') : T('dataBad');
 }
 
 /* ---------- 拉数据 ---------- */
@@ -878,8 +989,8 @@ async function pull(){
     // 连续两次失败才压提示：一次抖动就糊一层遮罩，看起来像系统挂了
     if (failures >= 2){
       $('mask').classList.add('show');
-      $('mask-text').textContent = '与服务器断开（已重试 ' + failures + ' 次），' +
-        (lastOk ? '当前显示的是 ' + Math.round((Date.now()-lastOk)/1000) + ' 秒前的数据' : '正在连接…');
+      $('mask-text').textContent = T('maskRetry', { n: failures }) +
+        (lastOk ? T('maskOld', { s: Math.round((Date.now()-lastOk)/1000) }) : T('maskConn'));
     }
   }
 }

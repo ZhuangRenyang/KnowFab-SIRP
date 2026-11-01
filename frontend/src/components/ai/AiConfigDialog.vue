@@ -1,57 +1,59 @@
 <template>
-  <el-dialog :model-value="modelValue" title="AI 设置（早报与助手共用）" width="640px"
+  <el-dialog :model-value="modelValue" :title="t('aiCfg.title')" width="640px"
              :close-on-click-modal="false" @update:model-value="emit('update:modelValue', $event)"
              @open="open">
     <div class="hint lead">
-      用 OpenAI 兼容接口（DeepSeek / 通义千问 / 智谱 / Moonshot / 本地 Ollama 都行）。
-      <b>没配也能用</b>：早报会退成本地统计模板，只是没有分析和建议。
+      {{ t('aiCfg.lead') }}<b>{{ t('aiCfg.leadBold') }}</b>{{ t('aiCfg.leadTail') }}
     </div>
 
-    <el-checkbox v-model="fm.enabled">启用 AI 润色</el-checkbox>
+    <el-checkbox v-model="fm.enabled">{{ t('aiCfg.enable') }}</el-checkbox>
 
     <div class="field">
-      <label>接口地址（到 /v1 为止）</label>
+      <label>{{ t('aiCfg.baseUrl') }}</label>
       <el-input v-model="fm.baseUrl" placeholder="https://api.deepseek.com/v1" />
     </div>
     <div class="field">
-      <label>API Key</label>
+      <label>{{ t('aiCfg.apiKey') }}</label>
       <el-input v-model="fm.apiKey" placeholder="sk-..." show-password />
     </div>
     <div class="row c2">
-      <div class="field"><label>模型</label>
+      <div class="field"><label>{{ t('aiCfg.model') }}</label>
         <el-input v-model="fm.model" placeholder="deepseek-chat" /></div>
-      <div class="field"><label>最大输出 tokens</label>
+      <div class="field"><label>{{ t('aiCfg.maxTokens') }}</label>
         <el-input v-model.number="fm.maxTokens" type="number" /></div>
     </div>
     <div class="row c3">
-      <div class="field"><label>每天几点</label>
+      <div class="field"><label>{{ t('aiCfg.hour') }}</label>
         <el-input v-model.number="fm.hour" type="number" min="0" max="23" /></div>
-      <div class="field"><label>几分</label>
+      <div class="field"><label>{{ t('aiCfg.minute') }}</label>
         <el-input v-model.number="fm.minute" type="number" min="0" max="59" /></div>
-      <div class="field"><label>温度</label>
+      <div class="field"><label>{{ t('aiCfg.temp') }}</label>
         <el-input v-model.number="fm.temperature" type="number" step="0.1" /></div>
     </div>
-    <el-checkbox v-model="fm.pushToWechat">生成后推到企业微信/钉钉（复用报警通知渠道）</el-checkbox>
+    <el-checkbox v-model="fm.pushToWechat">{{ t('aiCfg.push') }}</el-checkbox>
 
     <div class="field">
-      <label>提示词（留空用内置的）</label>
+      <label>{{ t('aiCfg.prompt') }}</label>
       <el-input v-model="fm.systemPrompt" type="textarea" :rows="5" />
     </div>
 
     <div class="msg" :class="{ ok: msgOk }">{{ msg }}</div>
 
     <template #footer>
-      <el-button :loading="testing" @click="test">测试连接</el-button>
-      <el-button @click="emit('update:modelValue', false)">取消</el-button>
-      <el-button type="primary" :loading="saving" @click="save">保存</el-button>
+      <el-button :loading="testing" @click="test">{{ t('aiCfg.test') }}</el-button>
+      <el-button @click="emit('update:modelValue', false)">{{ t('aiCfg.cancel') }}</el-button>
+      <el-button type="primary" :loading="saving" @click="save">{{ t('aiCfg.save') }}</el-button>
     </template>
   </el-dialog>
 </template>
 
 <script setup lang="ts">
 import { reactive, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { aiApi, type AiConfig } from '@/api/ai'
+
+const { t } = useI18n()
 
 const props = defineProps<{ modelValue: boolean }>()
 const emit = defineEmits<{ (e: 'update:modelValue', v: boolean): void; (e: 'saved'): void }>()
@@ -99,9 +101,9 @@ async function open() {
       pushToWechat: c.pushToWechat !== false,
       systemPrompt: c.systemPrompt || ''
     })
-    msg.value = (j.warnings || []).join('；')
+    msg.value = (j.warnings || []).join(' · ')
     msgOk.value = false
-  } catch (e: any) { ElMessage.error(e?.message || 'AI 配置加载失败') }
+  } catch (e: any) { ElMessage.error(e?.message || t('aiCfg.loadFail')) }
 }
 
 async function save() {
@@ -109,27 +111,27 @@ async function save() {
   try {
     const r = await aiApi.saveConfig(readForm())
     msgOk.value = !(r && r.ok === false)
-    msg.value = (r.message || '') + ((r.warnings || []).length ? '；' + r.warnings.join('；') : '')
+    msg.value = (r.message || '') + ((r.warnings || []).length ? ' · ' + r.warnings.join(' · ') : '')
     if (!r || r.ok !== false) {
       emit('saved')
       window.setTimeout(() => emit('update:modelValue', false), 800)
     }
   } catch (e: any) {
-    msg.value = '保存失败：' + (e?.message || ''); msgOk.value = false
+    msg.value = t('aiCfg.saveFail') + (e?.message || ''); msgOk.value = false
   } finally { saving.value = false }
 }
 
 async function test() {
   testing.value = true
-  msg.value = '正在调用模型…'; msgOk.value = false
+  msg.value = t('aiCfg.calling'); msgOk.value = false
   try {
     /* 先保存再测，否则测的是旧配置，客户会以为新 key 不行（旧版语义逐字保留） */
     await aiApi.saveConfig(readForm())
     const r = await aiApi.test()
     msgOk.value = !!r.ok
-    msg.value = (r.message || '') + (r.tokens ? `（${r.tokens} tokens）` : '')
+    msg.value = (r.message || '') + (r.tokens ? ` (${r.tokens} tokens)` : '')
   } catch (e: any) {
-    msg.value = '调用失败：' + (e?.message || ''); msgOk.value = false
+    msg.value = t('aiCfg.callFail') + (e?.message || ''); msgOk.value = false
   } finally { testing.value = false }
 }
 </script>

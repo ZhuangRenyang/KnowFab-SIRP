@@ -1,23 +1,23 @@
 <template>
   <el-dialog
     v-model="open"
-    title="库存盘点"
+    :title="t('stocktake.title')"
     width="760px"
     :close-on-click-modal="false"
     @open="onOpen"
   >
     <div class="bar">
       <label class="fld">
-        <span>盘点仓库</span>
-        <el-select v-model="whId" placeholder="选择仓库" filterable style="width:200px" @change="load">
+        <span>{{ t('stocktake.wh') }}</span>
+        <el-select v-model="whId" :placeholder="t('stocktake.whPh')" filterable style="width:200px" @change="load">
           <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
         </el-select>
       </label>
       <label class="fld grow">
-        <span>盘点说明</span>
-        <el-input v-model="remark" placeholder="选填，如 10 月末全仓盘点" />
+        <span>{{ t('stocktake.remark') }}</span>
+        <el-input v-model="remark" :placeholder="t('stocktake.remarkPh')" />
       </label>
-      <el-button :icon="Refresh" :loading="loading" @click="load">重新取账面</el-button>
+      <el-button :icon="Refresh" :loading="loading" @click="load">{{ t('stocktake.reload') }}</el-button>
     </div>
 
     <el-alert
@@ -25,54 +25,57 @@
       :closable="false"
       show-icon
       class="tip"
-      title="填“实盘数量”，系统只对差异生成盘点调整单：盘盈入账、盘亏出账，账面一致的行不会落单。"
+      :title="t('stocktake.tip')"
     />
 
     <el-table :data="rows" v-loading="loading" max-height="380" stripe>
-      <el-table-column label="编码" width="110">
+      <el-table-column :label="t('stocktake.colCode')" width="110">
         <template #default="{ row }"><span class="num">{{ row.code }}</span></template>
       </el-table-column>
-      <el-table-column label="商品" min-width="150">
+      <el-table-column :label="t('stocktake.colSku')" min-width="150">
         <template #default="{ row }">
           {{ row.name }}<span v-if="row.spec" class="spec">{{ row.spec }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="单位" width="60">
+      <el-table-column :label="t('stocktake.colUnit')" width="60">
         <template #default="{ row }">{{ row.unit || '--' }}</template>
       </el-table-column>
-      <el-table-column label="账面" width="100" align="right">
+      <el-table-column :label="t('stocktake.colBook')" width="100" align="right">
         <template #default="{ row }"><span class="num dim">{{ qty(row.book) }}</span></template>
       </el-table-column>
-      <el-table-column label="实盘" width="130">
+      <el-table-column :label="t('stocktake.colCounted')" width="130">
         <template #default="{ row }">
           <el-input v-model="row.counted" inputmode="decimal" class="w100 inp-r" />
         </template>
       </el-table-column>
-      <el-table-column label="差异" width="110" align="right">
+      <el-table-column :label="t('stocktake.colDiff')" width="110" align="right">
         <template #default="{ row }">
           <span class="num" :class="diffClass(row)">{{ diffText(row) }}</span>
         </template>
       </el-table-column>
     </el-table>
-    <el-empty v-if="!rows.length && !loading" description="这个仓库还没有库存流水，没有可盘的商品" />
+    <el-empty v-if="!rows.length && !loading" :description="t('stocktake.empty')" />
 
     <div class="foot">
-      <span>共 <b class="num">{{ rows.length }}</b> 项，差异 <b class="num" :class="{ warn: diffCount > 0 }">{{ diffCount }}</b> 项</span>
+      <span>{{ t('stocktake.total', { n: rows.length, d: diffCount }) }}</span>
     </div>
 
     <template #footer>
-      <el-button @click="open = false">取消</el-button>
-      <el-button type="primary" :loading="saving" :disabled="!diffCount" @click="submit">生成盘点单</el-button>
+      <el-button @click="open = false">{{ t('stocktake.cancel') }}</el-button>
+      <el-button type="primary" :loading="saving" :disabled="!diffCount" @click="submit">{{ t('stocktake.submit') }}</el-button>
     </template>
   </el-dialog>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
 import { stockApi, warehouseApi, type ErpWarehouse, type StockBalance } from '@/api/erp'
 import { qty } from '@/utils/format'
+
+const { t } = useI18n()
 
 const props = defineProps<{ modelValue: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [boolean]; saved: [] }>()
@@ -122,7 +125,7 @@ async function onOpen() {
     whId.value = warehouses.value.find((w) => w.default)?.id ?? warehouses.value[0]?.id ?? null
     if (whId.value) await load()
   } catch (e: any) {
-    ElMessage.error(e?.message || '加载失败')
+    ElMessage.error(e?.message || t('stocktake.loadFail'))
   }
 }
 
@@ -142,7 +145,7 @@ async function load() {
       touched: false
     }))
   } catch (e: any) {
-    ElMessage.error(e?.message || '取账面库存失败')
+    ElMessage.error(e?.message || t('stocktake.bookFail'))
   } finally {
     loading.value = false
   }
@@ -154,21 +157,21 @@ async function submit() {
     .filter((r) => Math.abs(Number(r.counted) - r.book) > 0.00005)
     .map((r) => ({ skuId: r.skuId, qty: Number(r.counted) }))
   if (!lines.length) {
-    ElMessage.warning('没有差异，不需要生成盘点单')
+    ElMessage.warning(t('stocktake.noDiff'))
     return
   }
   saving.value = true
   try {
     const res = await stockApi.stocktake({ warehouseId: whId.value, remark: remark.value, lines })
     if (!res.ok) {
-      ElMessage.error(res.message || '盘点失败')
+      ElMessage.error(res.message || t('stocktake.fail'))
       return
     }
-    ElMessage.success(res.message || '盘点单已生成')
+    ElMessage.success(res.message || t('stocktake.done'))
     emit('saved')
     open.value = false
   } catch (e: any) {
-    ElMessage.error(e?.message || '盘点失败')
+    ElMessage.error(e?.message || t('stocktake.fail'))
   } finally {
     saving.value = false
   }

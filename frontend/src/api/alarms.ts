@@ -125,34 +125,47 @@ export function newRule(): AlarmRule {
   }
 }
 
-/* ---------- 时间/时长（读法与后端 AlarmNotifier.fmtDuration 一致） ---------- */
+/* ---------- 时间/时长（中文读法与后端 AlarmNotifier.fmtDuration 一致；传 t 则按语言输出） ---------- */
+export type TT = (key: string, params?: Record<string, unknown>) => string
+
 export function fmtTime(ts?: number | null): string {
   if (!ts) return '--'
   const d = new Date(ts), p = (n: number) => String(n).padStart(2, '0')
   return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
-export function fmtDur(ms?: number | null): string {
-  if (!ms || ms < 0) return '0 秒'
+export function fmtDur(ms?: number | null, t?: TT): string {
+  /* 无 t：回退中文（与旧版/后端一致） */
+  if (!t) {
+    if (!ms || ms < 0) return '0 秒'
+    const s0 = Math.floor(ms / 1000)
+    if (s0 < 60) return s0 + ' 秒'
+    const m0 = Math.floor(s0 / 60)
+    if (m0 < 60) return s0 % 60 ? `${m0} 分 ${s0 % 60} 秒` : `${m0} 分钟`
+    const h0 = Math.floor(m0 / 60)
+    if (h0 < 24) return m0 % 60 ? `${h0} 小时 ${m0 % 60} 分` : `${h0} 小时`
+    return `${Math.floor(h0 / 24)} 天 ${h0 % 24} 小时`
+  }
+  if (!ms || ms < 0) return t('alarm.dur.s', { n: 0 })
   const s = Math.floor(ms / 1000)
-  if (s < 60) return s + ' 秒'
+  if (s < 60) return t('alarm.dur.s', { n: s })
   const m = Math.floor(s / 60)
-  if (m < 60) return s % 60 ? `${m} 分 ${s % 60} 秒` : `${m} 分钟`
+  if (m < 60) return s % 60 ? t('alarm.dur.minSec', { m, s: s % 60 }) : t('alarm.dur.min', { n: m })
   const h = Math.floor(m / 60)
-  if (h < 24) return m % 60 ? `${h} 小时 ${m % 60} 分` : `${h} 小时`
-  return `${Math.floor(h / 24)} 天 ${h % 24} 小时`
+  if (h < 24) return m % 60 ? t('alarm.dur.hourMin', { h, m: m % 60 }) : t('alarm.dur.hour', { n: h })
+  return t('alarm.dur.dayHour', { d: Math.floor(h / 24), h: h % 24 })
 }
 
-export function ruleDesc(r: AlarmRule): string {
-  const p = [RULE_TYPES[r.type] || r.type]
-  if (r.type === 'STOP') p.push('状态值 = ' + (r.threshold ?? 0))
+export function ruleDesc(r: AlarmRule, t: TT): string {
+  const p = [t('alarmDict.ruleType.' + r.type)]
+  if (r.type === 'STOP') p.push(t('alarmDict.stopEq', { v: r.threshold ?? 0 }))
   if (r.type === 'THRESHOLD') p.push(r.pointKey + ' ' + r.op + ' ' + r.threshold)
-  if (r.type === 'FLAG') p.push(r.pointKey ? r.pointKey : '任一报警位')
-  p.push('持续 ' + fmtDur(r.forSeconds * 1000))
-  p.push(r.deviceCodes ? '设备 ' + r.deviceCodes : '全部设备')
-  if (r.schedule) p.push('时段 ' + r.schedule)
-  if (r.days) p.push('周 ' + r.days)
-  if (!r.notify) p.push('不通知')
+  if (r.type === 'FLAG') p.push(r.pointKey ? r.pointKey : t('alarmDict.anyFlag'))
+  p.push(t('alarmDict.forDur', { dur: fmtDur(r.forSeconds * 1000, t) }))
+  p.push(r.deviceCodes ? t('alarmDict.deviceScope', { codes: r.deviceCodes }) : t('alarmDict.allDevices'))
+  if (r.schedule) p.push(t('alarmDict.sched', { s: r.schedule }))
+  if (r.days) p.push(t('alarmDict.week', { d: r.days }))
+  if (!r.notify) p.push(t('alarmDict.noNotify'))
   return p.join(' · ')
 }
 
@@ -164,10 +177,10 @@ export const alarmsApi = {
       `/api/alarms?state=${f.state}&level=${f.level}&range=${f.range}` +
       `&q=${encodeURIComponent(f.q)}&page=${f.page}&size=${f.size}`
     ),
-  ack: (id: number) =>
-    http.post<{ ok: boolean; message?: string }>(`/api/alarms/${id}/ack`, { by: '值班人员' }),
-  ackAll: () =>
-    http.post<{ ok: boolean; message?: string }>('/api/alarms/ack-all', { by: '值班人员' }),
+  ack: (id: number, by: string) =>
+    http.post<{ ok: boolean; message?: string }>(`/api/alarms/${id}/ack`, { by }),
+  ackAll: (by: string) =>
+    http.post<{ ok: boolean; message?: string }>('/api/alarms/ack-all', { by }),
   rules: () => http.get<{ items: { rule: AlarmRule; error?: string }[] }>('/api/alarms/rules'),
   saveRule: (r: AlarmRule) =>
     http.post<{ ok: boolean; message?: string }>('/api/alarms/rules', r),

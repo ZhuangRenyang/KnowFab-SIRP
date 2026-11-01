@@ -46,6 +46,20 @@ export interface DeviceTpl {
   points: PointTpl[]
 }
 
+/* UI 展示层翻译映射：数据里的中文保留（点表 name 会落库成设备配置），
+ * 下拉分组/型号/说明等显示文本走 locales 的 devTpl.* 命名空间（2026-11-01） */
+export const TPL_I18N: Record<string, { brand: string; model: string; note: string }> = {
+  'siemens-s7-200-smart-demo': { brand: 'brandSiemens', model: 'mSiemensDemo', note: 'nSiemensDemo' },
+  'siemens-s7-200-smart-status': { brand: 'brandSiemens', model: 'mSiemensStatus', note: 'nSiemensStatus' },
+  'delta-dvp': { brand: 'brandDelta', model: 'mDeltaDvp', note: 'nDeltaDvp' },
+  'mitsubishi-fx5u': { brand: 'brandMitsubishi', model: 'mMitsubishi', note: 'nMitsubishi' },
+  'inovance-h3u': { brand: 'brandInovance', model: 'mInovance', note: 'nInovance' },
+  'meter-3phase': { brand: 'brandGeneric', model: 'mMeter', note: 'nMeter' },
+  'vfd-generic': { brand: 'brandGeneric', model: 'mVfd', note: 'nVfd' },
+  'temp-controller': { brand: 'brandGeneric', model: 'mTemp', note: 'nTemp' },
+  'modbus-rtu-generic': { brand: 'brandGeneric', model: 'mRtu', note: 'nRtu' }
+}
+
 export const DEVICE_TEMPLATES: DeviceTpl[] = [
   {
     id: 'siemens-s7-200-smart-demo',

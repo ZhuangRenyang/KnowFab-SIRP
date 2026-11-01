@@ -41,13 +41,13 @@
 
       <div class="toolbar">
         <el-select v-model="f.state" style="width:120px" @change="reload">
-          <el-option v-for="o in STATE_OPTS" :key="o.value" :label="o.label" :value="o.value" />
+          <el-option v-for="o in stateOpts" :key="o.value" :label="o.label" :value="o.value" />
         </el-select>
         <el-select v-model="f.level" style="width:112px" @change="reload">
-          <el-option v-for="o in LEVEL_OPTS" :key="o.value" :label="o.label" :value="o.value" />
+          <el-option v-for="o in levelOpts" :key="o.value" :label="o.label" :value="o.value" />
         </el-select>
         <el-select v-model="f.range" style="width:112px" @change="reload">
-          <el-option v-for="o in RANGE_OPTS" :key="o.value" :label="o.label" :value="o.value" />
+          <el-option v-for="o in rangeOpts" :key="o.value" :label="o.label" :value="o.value" />
         </el-select>
         <el-input v-model="q" :placeholder="t('alarm.searchPh')" clearable style="width:200px" @input="onSearch" />
         <el-button @click="reload">{{ t('alarm.refresh') }}</el-button>
@@ -62,14 +62,14 @@
           <div class="body">
             <div class="msg">{{ e.message || e.ruleName }}</div>
             <div class="meta">
-              <span class="tag" :class="'lv-' + e.level.toLowerCase()">{{ LV[e.level] || e.level }}</span>
+              <span class="tag" :class="'lv-' + e.level.toLowerCase()">{{ t('alarmDict.lv.' + e.level.toLowerCase()) }}</span>
               <span class="tag" :class="'st-' + e.state.toLowerCase()">{{ t('status.alarm' + e.state.charAt(0) + e.state.slice(1).toLowerCase()) }}</span>
               <span>{{ e.deviceName }} <em>{{ e.deviceCode }}</em></span>
               <span v-if="e.location">{{ e.location }}</span>
               <span>{{ t('alarm.started', { time: fmtTime(e.startedAt) }) }}</span>
-              <span>{{ t('alarm.duration', { dur: fmtDur(e.durationMs) }) }}</span>
+              <span>{{ t('alarm.duration', { dur: fmtDur(e.durationMs, t) }) }}</span>
               <span v-if="e.clearedAt" class="ok">
-                {{ t('alarm.cleared', { time: fmtTime(e.clearedAt) }) }}{{ e.clearReason ? `（${e.clearReason}）` : '' }}
+                {{ t('alarm.cleared', { time: fmtTime(e.clearedAt) }) }}{{ e.clearReason ? t('alarm.clearReason', { r: e.clearReason }) : '' }}
               </span>
               <span v-if="e.ackBy">{{ t('alarm.ackedBy', { user: e.ackBy }) }}</span>
             </div>
@@ -100,7 +100,7 @@ import { useEcharts } from '@/composables/useEcharts'
 import { usePolling } from '@/composables/usePolling'
 import { useWsStore } from '@/stores/ws'
 import {
-  alarmsApi, AST, LEVEL_OPTS, LV, RANGE_OPTS, STATE_OPTS,
+  alarmsApi, STATE_OPTS, LEVEL_OPTS, RANGE_OPTS,
   fmtDur, fmtTime,
   type AlarmItem, type AlarmSummary
 } from '@/api/alarms'
@@ -119,6 +119,11 @@ const f = reactive({ state: 'OPEN', level: 'ALL', range: '7d' })
 const q = ref('')
 const ruleOpen = ref(false), notifyOpen = ref(false)
 const trendEl = ref<HTMLElement>()
+
+/* 下拉字典：值不变，标签走 i18n */
+const stateOpts = computed(() => STATE_OPTS.map((o) => ({ value: o.value, label: t('alarmDict.stateOpt.' + o.value.toLowerCase()) })))
+const levelOpts = computed(() => LEVEL_OPTS.map((o) => ({ value: o.value, label: t('alarmDict.levelOpt.' + o.value.toLowerCase()) })))
+const rangeOpts = computed(() => RANGE_OPTS.map((o) => ({ value: o.value, label: t('alarmDict.rangeOpt.' + o.value.toLowerCase()) })))
 
 const top = computed(() => s.value?.topDevices || [])
 const notifySub = computed(() =>
@@ -197,7 +202,7 @@ watch(() => s.value?.trend, (trend) => {
 
 async function ack(e: AlarmItem) {
   try {
-    const r = await alarmsApi.ack(e.id)
+    const r = await alarmsApi.ack(e.id, t('alarmDict.onDuty'))
     if (r && r.ok === false) { ElMessage.error(r.message || t('alarm.opFailed')); return }
     refresh()
   } catch (err: any) { ElMessage.error(err?.message || t('alarm.opFailed')) }
@@ -211,7 +216,7 @@ async function ackAll() {
     )
   } catch { return }
   try {
-    await alarmsApi.ackAll()
+    await alarmsApi.ackAll(t('alarmDict.onDuty'))
     refresh()
   } catch (err: any) { ElMessage.error(err?.message || t('alarm.opFailed')) }
 }

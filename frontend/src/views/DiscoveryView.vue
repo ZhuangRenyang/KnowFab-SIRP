@@ -103,8 +103,8 @@
           <span class="hint" style="margin-left:0">{{ t('disc.tplLabel') }}</span>
           <el-select v-model="tplId" :placeholder="t('disc.tplPh')" clearable style="width:300px" @change="applyTpl">
             <el-option-group v-for="g in tplGroups" :key="g.brand" :label="g.brand">
-              <el-option v-for="t in g.list" :key="t.id" :value="t.id"
-                         :label="`${t.model}${t.confidence === 'verified' ? t('disc.verified') : ''}`" />
+              <el-option v-for="tp in g.list" :key="tp.id" :value="tp.id"
+                         :label="`${modelText(tp)}${tp.confidence === 'verified' ? t('disc.verified') : ''}`" />
             </el-option-group>
           </el-select>
           <span class="hint">{{ tplNote }}</span>
@@ -131,7 +131,7 @@ import { ElMessage } from 'element-plus'
 import { discoveryApi, type ProbeArgs } from '@/api/discovery'
 
 const { t } = useI18n()
-import { DEVICE_TEMPLATES, type DeviceTpl } from '@/api/deviceTemplates'
+import { DEVICE_TEMPLATES, TPL_I18N, type DeviceTpl } from '@/api/deviceTemplates'
 
 // prefixes 初始留空：打开页面就用后端探测的本机网段预填（2026-10-29）。
 // 原来写死 192.168.1，设备在 192.168.0.x 时点扫描扫的是空段，
@@ -153,21 +153,26 @@ const found = ref<{ ip: string; port: number }[]>([])
 /* 扫描结果套模板：IP/端口/从站号来自扫描，点表语义来自模板（2026-10-29） */
 const tplId = ref('')
 const tplNote = ref('')
+/* 模板展示文本走 i18n（数据中文保留，TPL_I18N 映射见 deviceTemplates.ts） */
+const modelText = (tp: DeviceTpl) => TPL_I18N[tp.id] ? t('devTpl.' + TPL_I18N[tp.id].model) : tp.model
+const noteText = (tp: DeviceTpl) => TPL_I18N[tp.id] ? t('devTpl.' + TPL_I18N[tp.id].note) : tp.note
+
 const tplGroups = computed(() => {
   const m = new Map<string, DeviceTpl[]>()
-  for (const t of DEVICE_TEMPLATES) {
-    if (!m.has(t.brand)) m.set(t.brand, [])
-    m.get(t.brand)!.push(t)
+  for (const tp of DEVICE_TEMPLATES) {
+    const brand = TPL_I18N[tp.id] ? t('devTpl.' + TPL_I18N[tp.id].brand) : tp.brand
+    if (!m.has(brand)) m.set(brand, [])
+    m.get(brand)!.push(tp)
   }
   return [...m.entries()].map(([brand, list]) => ({ brand, list }))
 })
 
 function applyTpl(id: string) {
-  const t = DEVICE_TEMPLATES.find((x) => x.id === id)
-  if (!t) { tplNote.value = ''; return }
+  const tpl = DEVICE_TEMPLATES.find((x) => x.id === id)
+  if (!tpl) { tplNote.value = ''; return }
   tplId.value = id
-  jsonText.value = JSON.stringify(t.points, null, 2)
-  tplNote.value = t.note
+  jsonText.value = JSON.stringify(tpl.points, null, 2)
+  tplNote.value = noteText(tpl)
 }
 
 const p = reactive<ProbeArgs & { ip: string }>({

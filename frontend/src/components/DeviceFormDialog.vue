@@ -121,11 +121,11 @@
         <el-select v-model="tplId" :placeholder="t('devForm.tplPh')" clearable
                    style="width:340px" @change="applyTpl">
           <el-option-group v-for="g in tplGroups" :key="g.brand" :label="g.brand">
-            <el-option v-for="t in g.list" :key="t.id" :value="t.id"
-                       :label="`${t.model}${t.confidence === 'verified' ? ' · ' + verifiedLabel : ''}`" />
+            <el-option v-for="tp in g.list" :key="tp.id" :value="tp.id"
+                       :label="`${modelText(tp)}${tp.confidence === 'verified' ? ' · ' + verifiedLabel : ''}`" />
           </el-option-group>
           <el-option-group v-if="customTpls.length" :label="t('devForm.myTpls')">
-            <el-option v-for="t in customTpls" :key="'c' + t.id" :value="'c' + t.id" :label="t.name" />
+            <el-option v-for="tp in customTpls" :key="'c' + tp.id" :value="'c' + tp.id" :label="tp.name" />
           </el-option-group>
         </el-select>
         <el-button size="small" @click="saveAsTpl">{{ t('devForm.saveTpl') }}</el-button>
@@ -164,7 +164,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { ApiError } from '@/api/http'
 import { devicesApi, genKey, PROTOCOLS, BRANDS, TPL } from '@/api/devices'
 import { skuApi, warehouseApi } from '@/api/erp'
-import { DEVICE_TEMPLATES, deviceTplApi, type DeviceTpl, type CustomTpl } from '@/api/deviceTemplates'
+import { DEVICE_TEMPLATES, deviceTplApi, TPL_I18N, type DeviceTpl, type CustomTpl } from '@/api/deviceTemplates'
 import { useDevicesStore } from '@/stores/devices'
 
 const { t } = useI18n()
@@ -214,11 +214,17 @@ const tplNote = ref('')
 const customTpls = ref<CustomTpl[]>([])
 const isCustomTpl = computed(() => tplId.value.startsWith('c'))
 
+/* 模板展示文本走 i18n（数据中文保留，TPL_I18N 映射见 deviceTemplates.ts） */
+const verifiedLabel = computed(() => t('devForm.verified'))
+const modelText = (tp: DeviceTpl) => TPL_I18N[tp.id] ? t('devTpl.' + TPL_I18N[tp.id].model) : tp.model
+const noteText = (tp: DeviceTpl) => TPL_I18N[tp.id] ? t('devTpl.' + TPL_I18N[tp.id].note) : tp.note
+
 const tplGroups = computed(() => {
   const m = new Map<string, DeviceTpl[]>()
-  for (const t of DEVICE_TEMPLATES) {
-    if (!m.has(t.brand)) m.set(t.brand, [])
-    m.get(t.brand)!.push(t)
+  for (const tp of DEVICE_TEMPLATES) {
+    const brand = TPL_I18N[tp.id] ? t('devTpl.' + TPL_I18N[tp.id].brand) : tp.brand
+    if (!m.has(brand)) m.set(brand, [])
+    m.get(brand)!.push(tp)
   }
   return [...m.entries()].map(([brand, list]) => ({ brand, list }))
 })
@@ -278,36 +284,36 @@ async function delTpl() {
 function applyTpl(key: string) {
   // 我的模板：key = 'c<id>'
   if (key.startsWith('c')) {
-    const t = customTpls.value.find((x) => 'c' + x.id === key)
-    if (!t) { tplNote.value = ''; return }
-    f.protocol = t.protocol
-    f.port = t.port
-    f.unitId = t.unitId
-    f.pollIntervalMs = t.pollIntervalMs
-    f.timeoutMs = t.timeoutMs
-    if (t.serialPort) f.serialPort = t.serialPort
-    if (t.baudRate) f.baudRate = t.baudRate
-    if (t.dataBits) f.dataBits = t.dataBits
-    if (t.stopBits) f.stopBits = t.stopBits
-    if (t.parity != null) f.parity = t.parity
-    f.pointsText = t.pointsJson
-    tplNote.value = `${t.name}${t.note ? '：' + t.note : ''}`
+    const ct = customTpls.value.find((x) => 'c' + x.id === key)
+    if (!ct) { tplNote.value = ''; return }
+    f.protocol = ct.protocol
+    f.port = ct.port
+    f.unitId = ct.unitId
+    f.pollIntervalMs = ct.pollIntervalMs
+    f.timeoutMs = ct.timeoutMs
+    if (ct.serialPort) f.serialPort = ct.serialPort
+    if (ct.baudRate) f.baudRate = ct.baudRate
+    if (ct.dataBits) f.dataBits = ct.dataBits
+    if (ct.stopBits) f.stopBits = ct.stopBits
+    if (ct.parity != null) f.parity = ct.parity
+    f.pointsText = ct.pointsJson
+    tplNote.value = `${ct.name}${ct.note ? ' · ' + ct.note : ''}`
     return
   }
-  const t = DEVICE_TEMPLATES.find((x) => x.id === key)
-  if (!t) { tplNote.value = ''; return }
-  f.protocol = t.protocol
-  f.port = t.port
-  f.unitId = t.unitId
-  f.pollIntervalMs = t.pollIntervalMs
-  f.timeoutMs = t.timeoutMs
-  if (t.serialPort) f.serialPort = t.serialPort
-  if (t.baudRate) f.baudRate = t.baudRate
-  if (t.dataBits) f.dataBits = t.dataBits
-  if (t.stopBits) f.stopBits = t.stopBits
-  if (t.parity != null) f.parity = t.parity
-  f.pointsText = JSON.stringify(t.points, null, 2)
-  tplNote.value = t.note
+  const tpl = DEVICE_TEMPLATES.find((x) => x.id === key)
+  if (!tpl) { tplNote.value = ''; return }
+  f.protocol = tpl.protocol
+  f.port = tpl.port
+  f.unitId = tpl.unitId
+  f.pollIntervalMs = tpl.pollIntervalMs
+  f.timeoutMs = tpl.timeoutMs
+  if (tpl.serialPort) f.serialPort = tpl.serialPort
+  if (tpl.baudRate) f.baudRate = tpl.baudRate
+  if (tpl.dataBits) f.dataBits = tpl.dataBits
+  if (tpl.stopBits) f.stopBits = tpl.stopBits
+  if (tpl.parity != null) f.parity = tpl.parity
+  f.pointsText = JSON.stringify(tpl.points, null, 2)
+  tplNote.value = noteText(tpl)
 }
 
 function resetDefaults() {
