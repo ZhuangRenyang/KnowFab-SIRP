@@ -1,16 +1,23 @@
-# 推 tag 即发版：构建 → 签名升级包 → GitHub Release → 同步 Gitee Release
+# 发版方式（2026-11-02 定稿）：**主流程是本机 tools/release.sh**（手动跑，可控）。
+# 这个 workflow 只是没有本机环境时的备用：在 Actions 页面手动触发，填入要发布
+# 已有的 tag（例如 v1.0.10）。不再随 push tag 自动触发——否则本机 release.sh
+# push tag 后会再跑一遍，两套流程抢同一个 Release。
 #
 # 为什么不用 Gitee「仓库镜像」：Gitee 镜像只同步代码（分支/tag），
 # **不会同步 Release 附件**，所以 Gitee 侧必须由本项目调用 API 建发行版并上传。
 #
 # 需要在仓库 Secrets 里配两项：
-#   UPDATE_PRIVATE_KEY   tools/keys/private.key 的完整内容（PEM，含 BEGIN/END 行）
+#   UPDATE_PRIVATE_KEY   tools/keys/private.key 的完整内容（裸 base64 或 PEM 均可）
 #   GITEE_TOKEN          Gitee 私人令牌（设置 → 私人令牌，勾 projects）
 name: release
 
 on:
-  push:
-    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要发布的 tag（例如 v1.0.10，必须是已存在的 tag）'
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -19,9 +26,11 @@ jobs:
   release:
     runs-on: ubuntu-latest
     env:
-      VERSION: ${{ github.ref_name }}
+      VERSION: ${{ inputs.tag }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
 
       - uses: actions/setup-java@v4
         with:
