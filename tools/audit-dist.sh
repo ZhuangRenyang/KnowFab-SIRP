@@ -168,25 +168,25 @@ except Exception as e:
     print("ERROR " + str(e))
 PY
 )"
-  if printf '%s' "$JAR_LIST" | grep -q '^ERROR'; then
+  if printf '%s' "$JAR_LIST" | grep '^ERROR' >/dev/null 2>&1; then
     fail "jar 打不开，可能损坏"
   else
-    printf '%s\n' "$JAR_LIST" | grep -q 'BOOT-INF/classes/static/app/index.html' \
+    printf '%s\n' "$JAR_LIST" | grep 'BOOT-INF/classes/static/app/index.html' >/dev/null 2>&1 \
       && pass "含前端页面" || fail "jar 里没有 static/app/index.html（页面会 404）"
-    printf '%s\n' "$JAR_LIST" | grep -q 'META-INF/spring.factories' \
+    printf '%s\n' "$JAR_LIST" | grep 'META-INF/spring.factories' >/dev/null 2>&1 \
       && pass "含 spring.factories（数据库迁移靠它注册）" \
       || fail "jar 里没有 META-INF/spring.factories（升级时迁移不会执行）"
-    if printf '%s\n' "$JAR_LIST" | grep -qiE 'private\.key|\.p12$|\.jks$'; then
+    if printf '%s\n' "$JAR_LIST" | grep -iE 'private\.key|\.p12$|\.jks$' >/dev/null 2>&1; then
       fail "jar 里打进密钥文件"
     fi
-    if printf '%s\n' "$JAR_LIST" | grep -qE '\.java$'; then
+    if printf '%s\n' "$JAR_LIST" | grep -E '\.java$' >/dev/null 2>&1; then
       fail "jar 里打进 .java 源码"
     fi
     # MySQL 驱动必在（H2 已废弃 2026-10-27），PG 可选；H2 驱动出现反而是事故
-    if printf '%s\n' "$JAR_LIST" | grep -qE 'BOOT-INF/lib/h2-'; then
+    if printf '%s\n' "$JAR_LIST" | grep -E 'BOOT-INF/lib/h2-' >/dev/null 2>&1; then
       fail "jar 里还有 H2 驱动（已废弃，应从 pom 移除）"
     fi
-    printf '%s\n' "$JAR_LIST" | grep -qE 'BOOT-INF/lib/mysql-connector' \
+    printf '%s\n' "$JAR_LIST" | grep -E 'BOOT-INF/lib/mysql-connector' >/dev/null 2>&1 \
       && pass "含 MySQL 驱动" \
       || fail "jar 里没有 MySQL 驱动（默认库连不上）"
   fi

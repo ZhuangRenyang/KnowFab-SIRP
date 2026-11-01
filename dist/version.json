@@ -1,6 +1,6 @@
 {
-  "version": "1.0.6",
-  "notes": "1.0.6 大屏视图切换：切换器常驻显示（无故障时不再消失，这是产品功能不该藏）、高亮跟随当前视图（原来无故障时永远亮第一个，看着像没切）、故障恢复后不强制回跳。含 1.0.5 报警空值映射修复（故障看板/报警列表恢复正常）、1.0.4 远程控制与胶囊切换、1.0.3 升级跨源兜底",
-  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.6/device-hub-1.0.6-update.zip",
-  "sha256": "2c053f23b5bdb335355fb008d68b2f499897ab19cb57404c30e5cf4aba2d0f13"
+  "version": "1.0.7",
+  "notes": "中英双语全量完成：系统全部页面、弹窗与车间大屏支持中英文切换（设置页一键切换）；修复单据弹窗打开报错、报表 AI 解读、产线图表关闭报错、报表明细列显示、设备协议切换 5 处问题；代码质量检查清零",
+  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.7/device-hub-1.0.7-update.zip",
+  "sha256": "242e9980dafd19fb9a3ea2d4d517290ce86177b4d2505ffd0c5645e4d9e990b0"
 }
