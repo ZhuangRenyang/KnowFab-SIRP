@@ -1,6 +1,6 @@
 {
-  "version": "1.0.7",
-  "notes": "中英双语全量完成：系统全部页面、弹窗与车间大屏支持中英文切换（设置页一键切换）；修复单据弹窗打开报错、报表 AI 解读、产线图表关闭报错、报表明细列显示、设备协议切换 5 处问题；代码质量检查清零",
-  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.7/device-hub-1.0.7-update.zip",
-  "sha256": "242e9980dafd19fb9a3ea2d4d517290ce86177b4d2505ffd0c5645e4d9e990b0"
+  "version": "1.0.8",
+  "notes": "初始管理员密码改为固定的 123456（默认账号 admin/123456，登录后请在系统→用户管理里改掉）；客户装机不用再去 data/initial-admin.txt 找随机密码；代码质量与类型检查保持清零",
+  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.8/device-hub-1.0.8-update.zip",
+  "sha256": "68e24164294deafe5fbab88d8d052faad828ad3f7a735497edd4ec30fab3f772"
 }
