@@ -20,10 +20,13 @@ import java.util.Optional;
 /**
  * 用户与密码。
  * <p>
- * <b>首次启动自动建管理员</b>：密码取配置 {@code system.admin.password}；
- * 没配就随机生成一个，写进日志和 {@code data/initial-admin.txt}。
- * 为什么不在代码里写死 admin123：客户服务器上装完就是这个密码，
- * 一年后交接时没人记得改，等于门一直开着。
+ * <b>首次启动自动建管理员</b>：密码取配置 {@code system.admin.password}，默认 {@code 123456}。
+ * <p>
+ * <b>为什么默认 123456（而不是随机密码）</b>：随机密码要客户去 data/initial-admin.txt
+ * 里找文件，现场装机的师傅经常卡在这一步（2026-11-01 实测反馈）。
+ * 默认密码写死为客户能直接记住的 123456，客户装完即用；
+ * 风险用两道措施兜住：① 登录后系统提示改密码，且修改时强制 ≥8 位；
+ * ② 交付前可在 config/application.yml 或环境变量里覆盖成更强的密码。
  * <p>
  * <b>最后一道保险：不能把最后一个启用的管理员停用/降级/删除。</b>
  * 真发生了客户就得改数据库才能救回来，这种事故一次都不该有。
@@ -41,7 +44,7 @@ public class UserService {
     @Value("${system.admin.username:admin}")
     private String initUsername;
 
-    @Value("${system.admin.password:}")
+    @Value("${system.admin.password:123456}")
     private String initPassword;
 
     @Value("${system.admin.display-name:系统管理员}")
@@ -59,39 +62,21 @@ public class UserService {
             if (repo.count() > 0) {
                 return;
             }
-            String raw = initPassword == null ? "" : initPassword.trim();
-            boolean generated = raw.length() < MIN_PASSWORD;
-            if (generated) {
-                raw = randomPassword();
-            }
+            String raw = (initPassword == null || initPassword.isBlank()) ? "123456" : initPassword.trim();
             UserAccount admin = new UserAccount(initUsername, initDisplayName,
                     encoder.encode(raw), UserAccount.ROLE_ADMIN);
             repo.save(admin);
 
-            if (generated) {
-                Path p = Paths.get("data", "initial-admin.txt");
-                Files.createDirectories(p.getParent());
-                Files.writeString(p, "用户名：" + initUsername + "\n密码：" + raw
-                        + "\n\n首次登录后请立刻在「系统 → 用户管理」里改掉，然后删除本文件。\n");
-                log.warn("已创建管理员 {}，随机初始密码 {}（也写在 {}）。登录后请立刻改密码",
-                        initUsername, raw, p.toAbsolutePath());
-            } else {
-                log.warn("已按配置创建管理员 {}，密码来自 system.admin.password。"
-                        + "登录后请立刻改掉，别让它留在配置文件里", initUsername);
-            }
+            Path p = Paths.get("data", "initial-admin.txt");
+            Files.createDirectories(p.getParent());
+            Files.writeString(p, "用户名：" + initUsername + "\n密码：" + raw
+                    + "\n\n这是默认密码，拿到安装包的人都可能知道。"
+                    + "首次登录后请立刻在「系统 → 用户管理」里改掉，然后删除本文件。\n");
+            log.warn("已创建管理员 {}，初始密码 {}（也写在 {}）。登录后请立刻改密码",
+                    initUsername, raw, p.toAbsolutePath());
         } catch (Exception e) {
             log.error("初始化管理员失败: {}", e.getMessage());
         }
-    }
-
-    private String randomPassword() {
-        String alphabet = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-        SecureRandom rnd = new SecureRandom();
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < 12; i++) {
-            sb.append(alphabet.charAt(rnd.nextInt(alphabet.length())));
-        }
-        return sb.toString();
     }
 
     /* ==================== 查询 ==================== */
