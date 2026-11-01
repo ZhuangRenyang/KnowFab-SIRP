@@ -114,9 +114,10 @@ async function save() {
   try {
     const r = await systemApi.saveSettings({ ...edits })
     msgOk.value = !(r && r.ok === false)
+    const es = r.errors || [], ws = r.warnings || []
     msg.value = (r.message || '') +
-      ((r.errors || []).length ? '；' + r.errors.join('；') : '') +
-      ((r.warnings || []).length ? '；' + r.warnings.join('；') : '')
+      (es.length ? '；' + es.join('；') : '') +
+      (ws.length ? '；' + ws.join('；') : '')
     if (r && r.ok !== false) await load()
   } catch (e: any) {
     msg.value = t('sys.saveFailed') + (e?.message || ''); msgOk.value = false

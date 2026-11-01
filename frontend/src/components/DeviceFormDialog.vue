@@ -193,13 +193,19 @@ const f = reactive({
   code: '', name: '', location: '', pollIntervalMs: 1000,
   protocol: 'modbus-tcp', host: '', port: 502,
   serialPort: 'COM3', baudRate: 9600, dataBits: 8, stopBits: 1, parity: 0,
-  unitId: 1, unitId2: 1,
+  unitId: 1, unitId2: 1, timeoutMs: 800,
   apiKey: '', apiKeyEnabled: true, servoBrand: '',
   pointsText: JSON.stringify(TPL.machine, null, 2),
   prodSkuId: undefined as number | undefined, prodWarehouseId: undefined as number | undefined,
   prodResetHour: 0, prodAutoStockin: false,
   dailyTarget: undefined as number | undefined
 })
+
+/* 切协议时给行业默认端口：TCP 族 502；RTU 走串口不动端口（模板里 @change 引用，
+   此函数 2026-11-01 补上——第一版基座就只有模板引用没有实现） */
+function onProto() {
+  if (f.protocol === 'modbus-tcp' || f.protocol === 'modbus-rtu-tcp') f.port = 502
+}
 
 const skuList = ref<any[]>([])
 const whList = ref<any[]>([])
@@ -321,7 +327,7 @@ function resetDefaults() {
     code: '', name: '', location: '', pollIntervalMs: 1000,
     protocol: 'modbus-tcp', host: '', port: 502,
     serialPort: 'COM3', baudRate: 9600, dataBits: 8, stopBits: 1, parity: 0,
-    unitId: 1, unitId2: 1, apiKey: '', apiKeyEnabled: true, servoBrand: '',
+    unitId: 1, unitId2: 1, timeoutMs: 800, apiKey: '', apiKeyEnabled: true, servoBrand: '',
     pointsText: JSON.stringify(TPL.machine, null, 2),
     prodSkuId: undefined, prodWarehouseId: undefined, prodResetHour: 0, prodAutoStockin: false,
     dailyTarget: undefined

@@ -153,7 +153,10 @@ async function loadAlarmSummary() {
 usePolling(loadAlarmSummary, 20000, { immediate: false })
 onScopeDispose(ws.on('alarms:dirty', () => loadAlarmSummary()))
 
-const baseGroups = computed(() => [
+/* 菜单项统一类型：disabled/tip 可选（只读角色组的项带这两个字段，普通项省略） */
+interface NavItem { path: string; label: string; icon: any; disabled?: boolean; tip?: string }
+
+const baseGroups = computed<{ title: string; items: NavItem[] }[]>(() => [
   { title: t('nav.groupMonitor'), items: [
     { path: '/', label: t('nav.monitor'), icon: Monitor },
     { path: '/alarm', label: t('nav.alarm'), icon: Bell }

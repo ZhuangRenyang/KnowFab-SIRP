@@ -62,6 +62,14 @@ export function useEcharts() {
     chart?.setOption(o, true)
   }
 
+  /* 显式销毁（抽屉关闭等场景复用容器前调用；onScopeDispose 是兜底） */
+  function dispose() {
+    ro?.disconnect()
+    ro = null
+    chart?.dispose()
+    chart = null
+  }
+
   /* 主题翻转：销毁重建，保证 canvas 取色与页面一致 */
   watch(() => theme.light, () => {
     if (!target) return
@@ -76,5 +84,5 @@ export function useEcharts() {
     chart = null
   })
 
-  return { init, setOption }
+  return { init, setOption, dispose }
 }

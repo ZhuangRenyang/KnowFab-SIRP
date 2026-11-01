@@ -349,11 +349,13 @@ import { warehouseApi, type ErpWarehouse } from '@/api/erp'
 import { useEcharts } from '@/composables/useEcharts'
 import { chatApi } from '@/api/ai'
 import { useAuthStore } from '@/stores/auth'
+import { useErpLabel } from '@/composables/useErpLabel'
 import { dayText, money, qty } from '@/utils/format'
 
 const { t } = useI18n()
 
 const auth = useAuthStore()
+const { billType } = useErpLabel()
 
 const pad = (n: number) => String(n).padStart(2, '0')
 const fmt = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`

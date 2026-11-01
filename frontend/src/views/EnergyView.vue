@@ -156,11 +156,13 @@ const barW = (kwh: number) => {
 }
 const demandTitle = computed(() => {
   /* 变量名不能叫 t：会遮蔽 i18n 的 t() */
-  const td = dm.value?.today || {}
+  const td: any = dm.value?.today || {}
   return td.fallback
     ? t('energy.demandFallback', { date: td.date || '--' })
     : t('energy.demandTitle')
 })
+/* 今日需量数据缺省时（旧数据无 today 字段）标题退回区间文案——模板 37 行用 */
+const todayFallback = computed(() => !!((dm.value?.today || {}) as any).fallback)
 const detailTitle = computed(() => detail.value
   ? `${detail.value.name || picked.value} · ${detail.value.date} · ${num(detail.value.kwh, 1)} kWh · ¥${num(detail.value.cost, 2)}` : '')
 
