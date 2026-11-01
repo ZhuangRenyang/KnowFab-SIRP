@@ -571,7 +571,7 @@ onMounted(async () => {
 .grid-2 { display: grid; grid-template-columns: 1.4fr 1fr; gap: var(--space-3); margin-bottom: var(--space-3); }
 .panel { background: var(--surface); border: 1px solid var(--border-soft); border-radius: var(--radius-md);
   padding: var(--space-3) var(--space-4); }
-.p-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: var(--space-2); }
+.p-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: var(--space-2); }
 .p-head h3 { margin: 0; font-size: var(--text-md); font-weight: 600; }
 .p-head span { font-size: var(--text-2xs); color: var(--meta); }
 .chart { height: 230px; }
