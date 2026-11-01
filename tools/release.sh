@@ -6,9 +6,10 @@
 #   bash tools/release.sh 1.0.2 "..." --no-build      # 用现有 jar，快速重发
 #   bash tools/release.sh 1.0.2 "..." --dry-run       # 只构建+打包，不上传不打 tag
 #
-# 产出两个附件（名字有讲究，别改）：
+# 产出三个附件（名字有讲究，别改）：
 #   device-hub-<版本>-update.zip      签名升级包（检查更新只认这个）
 #   device-hub-<版本>-installer.zip   新客户安装包（含 install.sh/README）
+#   device-hub-<版本>-portable.zip    便携包（Windows 一键安装 install.ps1 依赖它）
 #
 # 为什么必须分开命名：两者都以 device-hub- 开头 .zip 结尾，混用会让客户机
 # 下载到安装包去验签，直接失败（UpdateService 已优先挑 update 附件，但命名仍要规范）。
@@ -98,6 +99,13 @@ java tools/PackUpdate.java \
 [ -f "$ZIP_UPDATE" ] || die "升级包没生成"
 ok "$ZIP_UPDATE（$(du -h "$ZIP_UPDATE" | cut -f1)）"
 
+# ---------- 3.5 便携包（Windows 一键安装 install.ps1 依赖它，1.0.2~1.0.7 漏了 6 个版本） ----------
+say "生成便携包（portable）"
+bash tools/make-portable.sh >/dev/null 2>&1 || die "便携包生成失败（make-portable.sh）"
+ZIP_PORTABLE="dist/device-hub-$VERSION-portable.zip"
+[ -f "$ZIP_PORTABLE" ] || die "便携包没生成：$ZIP_PORTABLE"
+ok "$ZIP_PORTABLE（$(du -h "$ZIP_PORTABLE" | cut -f1)）"
+
 # version.json 指向签名升级包（version.json 模式镜像源用得到）
 python - "$VERSION" "$NOTES" "$ZIP_UPDATE" <<'PY'
 import hashlib, io, json, os, sys
@@ -140,16 +148,16 @@ if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
 else
   # 没有 gh 就用 REST API（令牌取 git 凭据，本机 push 过就可用）
   echo "   未检测到 gh，改用 REST API 发布"
-  bash tools/github-release.sh "$VERSION" "$NOTES" "$ZIP_UPDATE" "$ZIP_INSTALLER"
+  bash tools/github-release.sh "$VERSION" "$NOTES" "$ZIP_UPDATE" "$ZIP_INSTALLER" "$ZIP_PORTABLE"
 fi
 
 # ---------- 6. Gitee Release（同步） ----------
 say "同步到 Gitee Release"
 if [ -n "${GITEE_TOKEN:-}" ]; then
-  bash tools/gitee-release.sh "$VERSION" "$NOTES" "$ZIP_UPDATE" "$ZIP_INSTALLER"
+  bash tools/gitee-release.sh "$VERSION" "$NOTES" "$ZIP_UPDATE" "$ZIP_INSTALLER" "$ZIP_PORTABLE"
 else
   echo "   未设置 GITEE_TOKEN，跳过。补发命令："
-  echo "   GITEE_TOKEN=你的令牌 bash tools/gitee-release.sh $VERSION \"$NOTES\" $ZIP_UPDATE $ZIP_INSTALLER"
+  echo "   GITEE_TOKEN=你的令牌 bash tools/gitee-release.sh $VERSION \"$NOTES\" $ZIP_UPDATE $ZIP_INSTALLER $ZIP_PORTABLE"
 fi
 
 cat <<EOF
