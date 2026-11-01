@@ -1,6 +1,6 @@
 {
-  "version": "1.0.9",
-  "notes": "彻底废弃初始密码文件：默认账号 admin/123456（数据库内置），安装完直接登录，不再生成 data/initial-admin.txt；老版本已装的机器可设环境变量 DEVICEHUB_RESET_ADMIN=1 启动一次把密码重置为默认值",
-  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.9/device-hub-1.0.9-update.zip",
-  "sha256": "217574c449af6354f6cfd9d56c0795657e5a363495e27a9f23c5001048842f1a"
+  "version": "1.0.10",
+  "notes": "便携版升级体验：网页点「应用升级」后服务自动重启并生效（进程守护，崩溃自愈）；彻底停止请用 stop.bat；修复装了 Git Bash 的机器上数据库解压报 Cannot connect to D: 的问题；Linux 安装脚本默认开启网页一键重启",
+  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.10/device-hub-1.0.10-update.zip",
+  "sha256": "ffc47028135f25dd2111663e666f654b10a44d419c4be641d459c96fec8db0a5"
 }
