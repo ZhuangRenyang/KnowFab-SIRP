@@ -8,9 +8,6 @@ import org.springframework.context.event.EventListener;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.security.SecureRandom;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -59,24 +56,35 @@ public class UserService {
     @EventListener(ApplicationReadyEvent.class)
     public void seed() {
         try {
+            /* 旧库救援：设环境变量 DEVICEHUB_RESET_ADMIN=1 启动一次，把管理员密码
+               重置为默认值（默认关闭——不给日常运行留后门）。用于 1.0.8 之前
+               随机密码时代装的老库，客户忘了密码时兜底。 */
+            boolean reset = "1".equals(System.getenv("DEVICEHUB_RESET_ADMIN"));
             if (repo.count() > 0) {
+                if (!reset) {
+                    return;
+                }
+                Optional<UserAccount> existing = repo.findByUsername(initUsername);
+                if (existing.isPresent()) {
+                    UserAccount u = existing.get();
+                    u.setPasswordHash(encoder.encode(defaultPassword()));
+                    repo.save(u);
+                    log.warn("已按 DEVICEHUB_RESET_ADMIN=1 把管理员 {} 的密码重置为默认值", initUsername);
+                }
                 return;
             }
-            String raw = (initPassword == null || initPassword.isBlank()) ? "123456" : initPassword.trim();
             UserAccount admin = new UserAccount(initUsername, initDisplayName,
-                    encoder.encode(raw), UserAccount.ROLE_ADMIN);
+                    encoder.encode(defaultPassword()), UserAccount.ROLE_ADMIN);
             repo.save(admin);
-
-            Path p = Paths.get("data", "initial-admin.txt");
-            Files.createDirectories(p.getParent());
-            Files.writeString(p, "用户名：" + initUsername + "\n密码：" + raw
-                    + "\n\n这是默认密码，拿到安装包的人都可能知道。"
-                    + "首次登录后请立刻在「系统 → 用户管理」里改掉，然后删除本文件。\n");
-            log.warn("已创建管理员 {}，初始密码 {}（也写在 {}）。登录后请立刻改密码",
-                    initUsername, raw, p.toAbsolutePath());
+            log.warn("已创建管理员 {}，密码为默认值（登录后请立刻在「系统 → 用户管理」改掉）", initUsername);
         } catch (Exception e) {
             log.error("初始化管理员失败: {}", e.getMessage());
         }
+    }
+
+    /** 初始密码：配置 system.admin.password 可覆盖，默认 123456 */
+    private String defaultPassword() {
+        return (initPassword == null || initPassword.isBlank()) ? "123456" : initPassword.trim();
     }
 
     /* ==================== 查询 ==================== */

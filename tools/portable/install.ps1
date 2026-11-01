@@ -78,4 +78,4 @@ Say '启动'
 $bat = Join-Path $Dest 'start.bat'
 if (-not (Test-Path $bat)) { throw "缺少 start.bat：$bat" }
 Start-Process -FilePath $bat -WorkingDirectory $Dest
-Write-Host "`n已启动。浏览器访问 http://localhost:8080/app/ ，管理员密码在 $Dest\data\initial-admin.txt" -ForegroundColor Green
+Write-Host "`n已启动。浏览器访问 http://localhost:8080/app/ ，默认账号 admin / 密码 123456（登录后请立刻改掉）" -ForegroundColor Green
