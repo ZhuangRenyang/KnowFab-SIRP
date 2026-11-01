@@ -111,7 +111,8 @@ async function save() {
   try {
     const r = await aiApi.saveConfig(readForm())
     msgOk.value = !(r && r.ok === false)
-    msg.value = (r.message || '') + ((r.warnings || []).length ? ' · ' + r.warnings.join(' · ') : '')
+    const ws = r.warnings || []
+    msg.value = (r.message || '') + (ws.length ? ' · ' + ws.join(' · ') : '')
     if (!r || r.ok !== false) {
       emit('saved')
       window.setTimeout(() => emit('update:modelValue', false), 800)

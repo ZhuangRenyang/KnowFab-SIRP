@@ -81,7 +81,7 @@ const CH_KEYS = ['WECOM_BOT', 'SERVERCHAN', 'PUSHPLUS', 'DINGTALK', 'FEISHU', 'W
 const MIN_LEVEL_KEYS = ['CRITICAL', 'MAJOR', 'MINOR'] as const
 
 const cfg = reactive({ enabled: false, quietHours: '', repeatMinutes: 0 })
-const channels = ref<NotifyChannel[]>([])
+const channels = ref<(NotifyChannel & { error?: string | null })[]>([])
 const msg = ref('')
 const msgOk = ref(false)
 const testing = ref(-1)

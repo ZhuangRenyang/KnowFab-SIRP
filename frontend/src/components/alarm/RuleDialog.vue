@@ -6,7 +6,7 @@
     <div v-if="view === 'list'">
       <div class="hint lead">{{ t('alarmRule.lead') }}</div>
       <div v-if="!rules.length" class="empty">{{ t('alarmRule.empty') }}</div>
-      <div v-for="x in rules" :key="x.rule.id" class="rule-card" :class="{ off: !x.rule.enabled }">
+      <div v-for="x in rules" :key="x.rule.id ?? ''" class="rule-card" :class="{ off: !x.rule.enabled }">
         <div class="body">
           <div class="rn">{{ x.rule.name }}
             <span class="tag" :class="'lv-' + x.rule.level.toLowerCase()">{{ t('alarmDict.lv.' + x.rule.level.toLowerCase()) }}</span>

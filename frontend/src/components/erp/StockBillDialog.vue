@@ -202,7 +202,7 @@ async function onPartnerScope() {
 }
 
 async function onOpen() {
-  type.value = props.defaultType && TYPE_LABELS[props.defaultType] ? props.defaultType : 'PO_IN'
+  type.value = props.defaultType && TYPE_KEY[props.defaultType] ? props.defaultType : 'PO_IN'
   lines.value = [{ skuId: null, qty: 1, unitPrice: null }]
   remark.value = ''
   bizDate.value = today()

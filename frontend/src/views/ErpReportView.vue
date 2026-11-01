@@ -347,6 +347,7 @@ import {
 } from '@/api/erpReport'
 import { warehouseApi, type ErpWarehouse } from '@/api/erp'
 import { useEcharts } from '@/composables/useEcharts'
+import { chatApi } from '@/api/ai'
 import { useAuthStore } from '@/stores/auth'
 import { dayText, money, qty } from '@/utils/format'
 
