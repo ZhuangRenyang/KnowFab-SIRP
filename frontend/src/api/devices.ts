@@ -40,21 +40,22 @@ export const TPL: Record<string, any[]> = {
   empty: []
 }
 
+/* label 保留中文作为兜底，labelKey 供界面按当前语言取 */
 export const PROTOCOLS = [
-  { value: 'modbus-tcp', label: 'modbus-tcp（网口 · 标准 Modbus TCP）' },
-  { value: 'modbus-rtu-tcp', label: 'modbus-rtu-tcp（串口服务器透传）' },
-  { value: 'modbus-rtu', label: 'modbus-rtu（本地 485 / 串口）' },
-  { value: 'sim', label: 'sim（模拟，没硬件也能试）' }
+  { value: 'modbus-tcp', label: 'modbus-tcp（网口 · 标准 Modbus TCP）', labelKey: 'protocol.modbusTcp' },
+  { value: 'modbus-rtu-tcp', label: 'modbus-rtu-tcp（串口服务器透传）', labelKey: 'protocol.rtuTcp' },
+  { value: 'modbus-rtu', label: 'modbus-rtu（本地 485 / 串口）', labelKey: 'protocol.rtu' },
+  { value: 'sim', label: 'sim（模拟，没硬件也能试）', labelKey: 'protocol.sim' }
 ]
 
 export const BRANDS = [
-  { value: '', label: '未指定（只显示原始码）' },
-  { value: 'mitsubishi', label: '三菱伺服' },
-  { value: 'delta', label: '台达伺服' },
-  { value: 'yaskawa', label: '安川伺服' },
-  { value: 'panasonic', label: '松下伺服' },
-  { value: 'huichuan', label: '汇川伺服' },
-  { value: 'plc', label: 'PLC 自定义报警字' }
+  { value: '', label: '未指定（只显示原始码）', labelKey: 'brand.none' },
+  { value: 'mitsubishi', label: '三菱伺服', labelKey: 'brand.mitsubishi' },
+  { value: 'delta', label: '台达伺服', labelKey: 'brand.delta' },
+  { value: 'yaskawa', label: '安川伺服', labelKey: 'brand.yaskawa' },
+  { value: 'panasonic', label: '松下伺服', labelKey: 'brand.panasonic' },
+  { value: 'huichuan', label: '汇川伺服', labelKey: 'brand.huichuan' },
+  { value: 'plc', label: 'PLC 自定义报警字', labelKey: 'brand.plc' }
 ]
 
 /** 与旧版 genKey 算法逐字一致（PRD §1.1） */
