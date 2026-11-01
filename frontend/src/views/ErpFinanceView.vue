@@ -2,226 +2,226 @@
   <div class="finance">
     <div class="kpis">
       <div class="kpi">
-        <span>应收未收</span>
+        <span>{{ t('erpFin.ar') }}</span>
         <b class="num">¥{{ money(summary?.arOutstanding) }}</b>
-        <em>逾期 <i class="al">¥{{ money(summary?.arOverdue) }}</i> · 预收 ¥{{ money(summary?.arPre) }}</em>
+        <em>{{ t('erpFin.arEm', { v: money(summary?.arOverdue), v2: money(summary?.arPre) }) }}</em>
       </div>
       <div class="kpi">
-        <span>应付未付</span>
+        <span>{{ t('erpFin.ap') }}</span>
         <b class="num">¥{{ money(summary?.apOutstanding) }}</b>
-        <em>逾期 <i class="al">¥{{ money(summary?.apOverdue) }}</i> · 预付 ¥{{ money(summary?.apPre) }}</em>
+        <em>{{ t('erpFin.apEm', { v: money(summary?.apOverdue), v2: money(summary?.apPre) }) }}</em>
       </div>
       <div class="kpi">
-        <span>本月收款</span>
+        <span>{{ t('erpFin.inMonth') }}</span>
         <b class="num up">+¥{{ money(summary?.monthIn) }}</b>
-        <em>累计已收 ¥{{ money(summary?.arPaid) }}</em>
+        <em>{{ t('erpFin.inMonthEm', { v: money(summary?.arPaid) }) }}</em>
       </div>
       <div class="kpi">
-        <span>本月付款</span>
+        <span>{{ t('erpFin.outMonth') }}</span>
         <b class="num down">-¥{{ money(summary?.monthOut) }}</b>
-        <em>累计已付 ¥{{ money(summary?.apPaid) }}</em>
+        <em>{{ t('erpFin.outMonthEm', { v: money(summary?.apPaid) }) }}</em>
       </div>
     </div>
 
     <el-card shadow="never">
       <el-tabs v-model="tab" @tab-change="onTab">
-        <el-tab-pane label="应收明细" name="ar">
+        <el-tab-pane :label="t('erpFin.tabAr')" name="ar">
           <div class="aging">
             <div v-for="(a, i) in summary?.arAging || []" :key="a.bucket" class="aging-cell" :class="'b' + i">
-              <span>{{ a.bucket }} 天</span>
+              <span>{{ t('erpFin.bucketDays', { bucket: a.bucket }) }}</span>
               <b class="num">¥{{ money(a.amount) }}</b>
             </div>
-            <div class="aging-tip">账龄从订单日期算，默认账期 {{ summary?.creditDays || 30 }} 天</div>
+            <div class="aging-tip">{{ t('erpFin.agingTip', { n: summary?.creditDays || 30 }) }}</div>
           </div>
 
           <div class="tab-toolbar">
-            <el-select v-model="arPartner" placeholder="全部客户" clearable filterable style="width:180px" @change="loadAr">
+            <el-select v-model="arPartner" :placeholder="t('erpFin.allCustomers')" clearable filterable style="width:180px" @change="loadAr">
               <el-option v-for="p in customers" :key="p.id" :label="p.name" :value="p.id" />
             </el-select>
-            <el-switch v-model="arOnlyOpen" active-text="只看未收" @change="loadAr" />
-            <el-input v-model="arKw" placeholder="订单号 / 客户" clearable :prefix-icon="Search" style="width:200px"
+            <el-switch v-model="arOnlyOpen" :active-text="t('erpFin.onlyUnpaidIn')" @change="loadAr" />
+            <el-input v-model="arKw" :placeholder="t('erpFin.searchAr')" clearable :prefix-icon="Search" style="width:200px"
               @keyup.enter="loadAr" @clear="loadAr" />
-            <el-button :icon="Refresh" :loading="arLoading" @click="loadAr">刷新</el-button>
+            <el-button :icon="Refresh" :loading="arLoading" @click="loadAr">{{ t('erpFin.refresh') }}</el-button>
             <span class="spacer" />
-            <el-button v-if="auth.canWrite" type="primary" :icon="Money" @click="openPay('IN')">登记收款</el-button>
+            <el-button v-if="auth.canWrite" type="primary" :icon="Money" @click="openPay('IN')">{{ t('erpFin.recordIn') }}</el-button>
           </div>
 
           <el-table :data="arRows" v-loading="arLoading" stripe show-summary :summary-method="sumAr">
-            <el-table-column prop="orderNo" label="订单号" min-width="165">
+            <el-table-column prop="orderNo" :label="t('erpFin.colOrder')" min-width="165">
               <template #default="{ row }"><span class="num">{{ row.orderNo }}</span></template>
             </el-table-column>
-            <el-table-column prop="partnerName" label="客户" min-width="150" show-overflow-tooltip />
-            <el-table-column label="单据日期" width="104">
+            <el-table-column prop="partnerName" :label="t('erpFin.colCustomer')" min-width="150" show-overflow-tooltip />
+            <el-table-column :label="t('erpFin.colDate')" width="104">
               <template #default="{ row }"><span class="num dim">{{ dayText(row.orderDate) }}</span></template>
             </el-table-column>
-            <el-table-column prop="totalAmount" label="订单金额" width="112" align="right">
+            <el-table-column prop="totalAmount" :label="t('erpFin.colOrderAmount')" width="112" align="right">
               <template #default="{ row }"><span class="num dim">{{ money(row.totalAmount) }}</span></template>
             </el-table-column>
-            <el-table-column prop="billedAmount" label="应收（已发货）" width="130" align="right">
+            <el-table-column prop="billedAmount" :label="t('erpFin.colArBilled')" width="130" align="right">
               <template #default="{ row }"><span class="num">{{ money(row.billedAmount) }}</span></template>
             </el-table-column>
-            <el-table-column prop="paidAmount" label="已收" width="112" align="right">
+            <el-table-column prop="paidAmount" :label="t('erpFin.colPaidIn')" width="112" align="right">
               <template #default="{ row }"><span class="num dim">{{ money(row.paidAmount) }}</span></template>
             </el-table-column>
-            <el-table-column prop="outstanding" label="未收" width="122" align="right">
+            <el-table-column prop="outstanding" :label="t('erpFin.colOutstandingIn')" width="122" align="right">
               <template #default="{ row }">
                 <b class="num" :class="{ al: row.overdue }">{{ money(row.outstanding) }}</b>
               </template>
             </el-table-column>
-            <el-table-column label="账龄" width="104">
+            <el-table-column :label="t('erpFin.colAging')" width="104">
               <template #default="{ row }">
-                <span class="num" :class="row.overdue ? 'al' : 'dim'">{{ row.days }} 天</span>
+                <span class="num" :class="row.overdue ? 'al' : 'dim'">{{ t('erpFin.days', { n: row.days }) }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="92" align="right">
+            <el-table-column :label="t('erpFin.colAction')" width="92" align="right">
               <template #default="{ row }">
                 <el-button v-if="auth.canWrite && row.outstanding > 0" size="small" text type="primary"
-                  @click="openPay('IN', row)">收款</el-button>
+                  @click="openPay('IN', row)">{{ t('erpFin.payIn') }}</el-button>
                 <span v-else class="dim">--</span>
               </template>
             </el-table-column>
           </el-table>
-          <el-empty v-if="!arRows.length && !arLoading" description="没有应收：销售订单发货后才会产生应收" />
+          <el-empty v-if="!arRows.length && !arLoading" :description="t('erpFin.arEmpty')" />
           <div class="pager">
             <el-pagination layout="total, prev, pager, next" :total="arTotal" :page-size="pageSize"
               :current-page="arPage" @current-change="(p: number) => { arPage = p; loadAr() }" />
           </div>
         </el-tab-pane>
 
-        <el-tab-pane label="应付明细" name="ap" lazy>
+        <el-tab-pane :label="t('erpFin.tabAp')" name="ap" lazy>
           <div class="aging">
             <div v-for="(a, i) in summary?.apAging || []" :key="a.bucket" class="aging-cell" :class="'b' + i">
-              <span>{{ a.bucket }} 天</span>
+              <span>{{ t('erpFin.bucketDays', { bucket: a.bucket }) }}</span>
               <b class="num">¥{{ money(a.amount) }}</b>
             </div>
-            <div class="aging-tip">账龄从订单日期算，默认账期 {{ summary?.creditDays || 30 }} 天</div>
+            <div class="aging-tip">{{ t('erpFin.agingTip', { n: summary?.creditDays || 30 }) }}</div>
           </div>
 
           <div class="tab-toolbar">
-            <el-select v-model="apPartner" placeholder="全部供应商" clearable filterable style="width:180px" @change="loadAp">
+            <el-select v-model="apPartner" :placeholder="t('erpFin.allSuppliers')" clearable filterable style="width:180px" @change="loadAp">
               <el-option v-for="p in suppliers" :key="p.id" :label="p.name" :value="p.id" />
             </el-select>
-            <el-switch v-model="apOnlyOpen" active-text="只看未付" @change="loadAp" />
-            <el-input v-model="apKw" placeholder="订单号 / 供应商" clearable :prefix-icon="Search" style="width:200px"
+            <el-switch v-model="apOnlyOpen" :active-text="t('erpFin.onlyUnpaidOut')" @change="loadAp" />
+            <el-input v-model="apKw" :placeholder="t('erpFin.searchAp')" clearable :prefix-icon="Search" style="width:200px"
               @keyup.enter="loadAp" @clear="loadAp" />
-            <el-button :icon="Refresh" :loading="apLoading" @click="loadAp">刷新</el-button>
+            <el-button :icon="Refresh" :loading="apLoading" @click="loadAp">{{ t('erpFin.refresh') }}</el-button>
             <span class="spacer" />
-            <el-button v-if="auth.canWrite" type="primary" :icon="Money" @click="openPay('OUT')">登记付款</el-button>
+            <el-button v-if="auth.canWrite" type="primary" :icon="Money" @click="openPay('OUT')">{{ t('erpFin.recordOut') }}</el-button>
           </div>
 
           <el-table :data="apRows" v-loading="apLoading" stripe show-summary :summary-method="sumAp">
-            <el-table-column prop="orderNo" label="订单号" min-width="165">
+            <el-table-column prop="orderNo" :label="t('erpFin.colOrder')" min-width="165">
               <template #default="{ row }"><span class="num">{{ row.orderNo }}</span></template>
             </el-table-column>
-            <el-table-column prop="partnerName" label="供应商" min-width="150" show-overflow-tooltip />
-            <el-table-column label="单据日期" width="104">
+            <el-table-column prop="partnerName" :label="t('erpFin.colSupplier')" min-width="150" show-overflow-tooltip />
+            <el-table-column :label="t('erpFin.colDate')" width="104">
               <template #default="{ row }"><span class="num dim">{{ dayText(row.orderDate) }}</span></template>
             </el-table-column>
-            <el-table-column prop="totalAmount" label="订单金额" width="112" align="right">
+            <el-table-column prop="totalAmount" :label="t('erpFin.colOrderAmount')" width="112" align="right">
               <template #default="{ row }"><span class="num dim">{{ money(row.totalAmount) }}</span></template>
             </el-table-column>
-            <el-table-column prop="billedAmount" label="应付（已入库）" width="130" align="right">
+            <el-table-column prop="billedAmount" :label="t('erpFin.colApBilled')" width="130" align="right">
               <template #default="{ row }"><span class="num">{{ money(row.billedAmount) }}</span></template>
             </el-table-column>
-            <el-table-column prop="paidAmount" label="已付" width="112" align="right">
+            <el-table-column prop="paidAmount" :label="t('erpFin.colPaidOut')" width="112" align="right">
               <template #default="{ row }"><span class="num dim">{{ money(row.paidAmount) }}</span></template>
             </el-table-column>
-            <el-table-column prop="outstanding" label="未付" width="122" align="right">
+            <el-table-column prop="outstanding" :label="t('erpFin.colOutstandingOut')" width="122" align="right">
               <template #default="{ row }">
                 <b class="num" :class="{ al: row.overdue }">{{ money(row.outstanding) }}</b>
               </template>
             </el-table-column>
-            <el-table-column label="账龄" width="104">
+            <el-table-column :label="t('erpFin.colAging')" width="104">
               <template #default="{ row }">
-                <span class="num" :class="row.overdue ? 'al' : 'dim'">{{ row.days }} 天</span>
+                <span class="num" :class="row.overdue ? 'al' : 'dim'">{{ t('erpFin.days', { n: row.days }) }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="92" align="right">
+            <el-table-column :label="t('erpFin.colAction')" width="92" align="right">
               <template #default="{ row }">
                 <el-button v-if="auth.canWrite && row.outstanding > 0" size="small" text type="primary"
-                  @click="openPay('OUT', row)">付款</el-button>
+                  @click="openPay('OUT', row)">{{ t('erpFin.payOut') }}</el-button>
                 <span v-else class="dim">--</span>
               </template>
             </el-table-column>
           </el-table>
-          <el-empty v-if="!apRows.length && !apLoading" description="没有应付：采购订单入库后才会产生应付" />
+          <el-empty v-if="!apRows.length && !apLoading" :description="t('erpFin.apEmpty')" />
           <div class="pager">
             <el-pagination layout="total, prev, pager, next" :total="apTotal" :page-size="pageSize"
               :current-page="apPage" @current-change="(p: number) => { apPage = p; loadAp() }" />
           </div>
         </el-tab-pane>
 
-        <el-tab-pane label="收付款记录" name="pay" lazy>
+        <el-tab-pane :label="t('erpFin.tabPay')" name="pay" lazy>
           <div class="tab-toolbar">
-            <el-select v-model="payDir" placeholder="全部方向" clearable style="width:120px" @change="reloadPay">
-              <el-option label="收款" value="IN" />
-              <el-option label="付款" value="OUT" />
+            <el-select v-model="payDir" :placeholder="t('erpFin.allDir')" clearable style="width:120px" @change="reloadPay">
+              <el-option :label="t('erpFin.dirIn')" value="IN" />
+              <el-option :label="t('erpFin.dirOut')" value="OUT" />
             </el-select>
-            <el-select v-model="payPartner" placeholder="全部往来单位" clearable filterable style="width:180px" @change="reloadPay">
+            <el-select v-model="payPartner" :placeholder="t('erpFin.allPartners')" clearable filterable style="width:180px" @change="reloadPay">
               <el-option v-for="p in allPartners" :key="p.id" :label="p.name" :value="p.id" />
             </el-select>
             <el-date-picker v-model="payRange" type="daterange" unlink-panels range-separator="→"
-              start-placeholder="开始日" end-placeholder="结束日" value-format="YYYY-MM-DD"
+              :start-placeholder="t('erpFin.startDate')" :end-placeholder="t('erpFin.endDate')" value-format="YYYY-MM-DD"
               style="width:240px" @change="reloadPay" />
-            <el-input v-model="payKw" placeholder="单号 / 往来单位 / 订单" clearable :prefix-icon="Search"
+            <el-input v-model="payKw" :placeholder="t('erpFin.searchPay')" clearable :prefix-icon="Search"
               style="width:210px" @keyup.enter="reloadPay" @clear="reloadPay" />
-            <el-checkbox v-model="withVoided" @change="reloadPay">含作废</el-checkbox>
-            <el-button :icon="Refresh" :loading="payLoading" @click="reloadPay">刷新</el-button>
+            <el-checkbox v-model="withVoided" @change="reloadPay">{{ t('erpFin.withVoided') }}</el-checkbox>
+            <el-button :icon="Refresh" :loading="payLoading" @click="reloadPay">{{ t('erpFin.refresh') }}</el-button>
             <span class="spacer" />
-            <el-button v-if="auth.canWrite" type="primary" :icon="Plus" @click="openPay('IN')">新建收付款</el-button>
+            <el-button v-if="auth.canWrite" type="primary" :icon="Plus" @click="openPay('IN')">{{ t('erpFin.newPay') }}</el-button>
           </div>
 
           <el-table :data="payRows" v-loading="payLoading" stripe>
-            <el-table-column label="单号" min-width="150">
+            <el-table-column :label="t('erpFin.colBill')" min-width="150">
               <template #default="{ row }"><span class="num" :class="{ strike: row.voided }">{{ row.payNo }}</span></template>
             </el-table-column>
-            <el-table-column label="方向" width="80">
+            <el-table-column :label="t('erpFin.colDir')" width="80">
               <template #default="{ row }">
                 <el-tag size="small" effect="plain" :type="row.direction === 'IN' ? 'success' : 'warning'">
                   {{ row.directionLabel }}
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="往来单位" min-width="140" show-overflow-tooltip>
+            <el-table-column :label="t('erpFin.colPartner')" min-width="140" show-overflow-tooltip>
               <template #default="{ row }">{{ row.partnerName || '--' }}</template>
             </el-table-column>
-            <el-table-column label="关联订单" min-width="160">
+            <el-table-column :label="t('erpFin.colOrderLinked')" min-width="160">
               <template #default="{ row }">
                 <span v-if="row.orderNo" class="num">{{ row.orderNo }}</span>
-                <span v-else class="dim">{{ row.direction === 'IN' ? '预收' : '预付' }}</span>
+                <span v-else class="dim">{{ row.direction === 'IN' ? t('erpFin.preIn') : t('erpFin.preOut') }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="金额" width="132" align="right">
+            <el-table-column :label="t('erpFin.colAmount')" width="132" align="right">
               <template #default="{ row }">
                 <b class="num" :class="row.direction === 'IN' ? 'up' : 'down'">
                   {{ row.direction === 'IN' ? '+' : '-' }}{{ money(row.amount) }}
                 </b>
               </template>
             </el-table-column>
-            <el-table-column label="方式" width="104">
+            <el-table-column :label="t('erpFin.colMethod')" width="104">
               <template #default="{ row }"><span class="dim">{{ row.method || '--' }}</span></template>
             </el-table-column>
-            <el-table-column label="日期" width="104">
+            <el-table-column :label="t('erpFin.colTime')" width="104">
               <template #default="{ row }"><span class="num dim">{{ dayText(row.payDate) }}</span></template>
             </el-table-column>
-            <el-table-column label="操作人" width="92">
+            <el-table-column :label="t('erpFin.colOperator')" width="92">
               <template #default="{ row }"><span class="dim">{{ row.operator || '--' }}</span></template>
             </el-table-column>
-            <el-table-column label="状态" width="80">
+            <el-table-column :label="t('erpFin.colStatus')" width="80">
               <template #default="{ row }">
-                <el-tag v-if="row.voided" size="small" type="danger" effect="plain">已作废</el-tag>
-                <span v-else class="dim">有效</span>
+                <el-tag v-if="row.voided" size="small" type="danger" effect="plain">{{ t('erpFin.voided') }}</el-tag>
+                <span v-else class="dim">{{ t('erpFin.valid') }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="80" align="right">
+            <el-table-column :label="t('erpFin.colAction')" width="80" align="right">
               <template #default="{ row }">
                 <el-button v-if="auth.canWrite && !row.voided" size="small" text type="danger"
-                  @click="doVoid(row)">作废</el-button>
+                  @click="doVoid(row)">{{ t('erpFin.voidBtn') }}</el-button>
                 <span v-else class="dim">--</span>
               </template>
             </el-table-column>
           </el-table>
-          <el-empty v-if="!payRows.length && !payLoading" description="还没有收付款记录" />
+          <el-empty v-if="!payRows.length && !payLoading" :description="t('erpFin.payEmpty')" />
           <div class="pager">
             <el-pagination layout="total, prev, pager, next" :total="payTotal" :page-size="pageSize"
               :current-page="payPage" @current-change="(p: number) => { payPage = p; loadPay() }" />
@@ -237,6 +237,7 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Money, Plus, Refresh, Search } from '@element-plus/icons-vue'
 import { partnerApi, type ErpPartner } from '@/api/erp'
@@ -244,6 +245,8 @@ import { financeApi, type FinanceRow, type FinanceSummary, type PaymentRow } fro
 import { useAuthStore } from '@/stores/auth'
 import { dayText, money } from '@/utils/format'
 import PaymentDialog from '@/components/erp/PaymentDialog.vue'
+
+const { t } = useI18n()
 
 const auth = useAuthStore()
 const tab = ref('ar')
@@ -298,7 +301,7 @@ async function loadSummary() {
   try {
     summary.value = await financeApi.summary()
   } catch (e: any) {
-    ElMessage.error(e?.message || '财务汇总加载失败')
+    ElMessage.error(e?.message || t('erpFin.summaryFailed'))
   }
 }
 
@@ -312,7 +315,7 @@ async function loadAr() {
     arRows.value = r.rows || []
     arTotal.value = r.total || 0
   } catch (e: any) {
-    ElMessage.error(e?.message || '应收加载失败')
+    ElMessage.error(e?.message || t('erpFin.arFailed'))
   } finally {
     arLoading.value = false
   }
@@ -328,7 +331,7 @@ async function loadAp() {
     apRows.value = r.rows || []
     apTotal.value = r.total || 0
   } catch (e: any) {
-    ElMessage.error(e?.message || '应付加载失败')
+    ElMessage.error(e?.message || t('erpFin.apFailed'))
   } finally {
     apLoading.value = false
   }
@@ -350,7 +353,7 @@ async function loadPay() {
     payRows.value = r.rows || []
     payTotal.value = r.total || 0
   } catch (e: any) {
-    ElMessage.error(e?.message || '收付款记录加载失败')
+    ElMessage.error(e?.message || t('erpFin.payFailed'))
   } finally {
     payLoading.value = false
   }
@@ -372,7 +375,7 @@ function sumOf(rows: FinanceRow[], prop: string) {
 }
 function summaryRow(columns: any[], rows: FinanceRow[], props: string[]) {
   return columns.map((c: any, i: number) => {
-    if (i === 0) return '本页合计'
+    if (i === 0) return t('erpFin.pageTotal')
     if (props.includes(c.property)) return money(sumOf(rows, c.property))
     return ''
   })
@@ -389,8 +392,8 @@ function openPay(dir: 'IN' | 'OUT', row?: FinanceRow) {
 
 async function doVoid(row: PaymentRow) {
   try {
-    await ElMessageBox.confirm(`作废后这笔${row.directionLabel}不再计入核销，单据保留可查。确定作废？`, '作废收付款单', {
-      type: 'warning', confirmButtonText: '作废', cancelButtonText: '取消'
+    await ElMessageBox.confirm(t('erpFin.voidConfirm', { kind: row.direction === 'IN' ? t('erpFin.dirIn') : t('erpFin.dirOut') }), t('erpFin.voidTitle'), {
+      type: 'warning', confirmButtonText: t('erpFin.voidOk'), cancelButtonText: t('erpFin.cancel')
     })
   } catch {
     return
@@ -398,13 +401,13 @@ async function doVoid(row: PaymentRow) {
   try {
     const r = await financeApi.voidPayment(row.payNo)
     if (!r.ok) {
-      ElMessage.error(r.message || '作废失败')
+      ElMessage.error(r.message || t('erpFin.voidFailed'))
       return
     }
-    ElMessage.success(r.message || '已作废')
+    ElMessage.success(r.message || t('erpFin.voidedOk'))
     await refresh()
   } catch (e: any) {
-    ElMessage.error(e?.message || '作废失败')
+    ElMessage.error(e?.message || t('erpFin.voidFailed'))
   }
 }
 
