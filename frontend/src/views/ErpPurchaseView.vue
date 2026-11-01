@@ -2,70 +2,70 @@
   <div class="purchase">
     <div class="kpis">
       <div class="kpi">
-        <span>本月采购额</span>
+        <span>{{ t('erpPur.monthAmount') }}</span>
         <b class="num">¥{{ money(stats?.monthAmount) }}</b>
-        <em>不含已取消订单 · 按下单日期</em>
+        <em>{{ t('erpPur.monthNote') }}</em>
       </div>
       <div class="kpi">
-        <span>待到货订单</span>
-        <b class="num">{{ stats?.openCount || 0 }}<i>单</i></b>
-        <em>已确认 + 部分入库</em>
+        <span>{{ t('erpPur.openOrders') }}</span>
+        <b class="num">{{ stats?.openCount || 0 }}<i>{{ t('erpPur.unitOrder') }}</i></b>
+        <em>{{ t('erpPur.openNote') }}</em>
       </div>
       <div class="kpi">
-        <span>部分入库</span>
-        <b class="num">{{ stats?.partialCount || 0 }}<i>单</i></b>
-        <em>还有货没到齐</em>
+        <span>{{ t('erpPur.partial') }}</span>
+        <b class="num">{{ stats?.partialCount || 0 }}<i>{{ t('erpPur.unitOrder') }}</i></b>
+        <em>{{ t('erpPur.partialNote') }}</em>
       </div>
       <div class="kpi" :class="{ hot: (stats?.overdueCount || 0) > 0 }">
-        <span>逾期未到</span>
-        <b class="num">{{ stats?.overdueCount || 0 }}<i>单</i></b>
-        <em>{{ (stats?.overdueCount || 0) > 0 ? '已过预计到货日，去催货' : '没有超期订单' }}</em>
+        <span>{{ t('erpPur.overdue') }}</span>
+        <b class="num">{{ stats?.overdueCount || 0 }}<i>{{ t('erpPur.unitOrder') }}</i></b>
+        <em>{{ (stats?.overdueCount || 0) > 0 ? t('erpPur.overdueNote') : t('erpPur.noOverdue') }}</em>
       </div>
     </div>
 
     <el-card shadow="never">
       <div class="tab-toolbar">
-        <el-select v-model="status" placeholder="全部状态" clearable style="width:130px" @change="reload">
+        <el-select v-model="status" :placeholder="t('erpPur.allStatus')" clearable style="width:130px" @change="reload">
           <el-option v-for="s in statusOptions" :key="s.value" :label="s.label" :value="s.value" />
         </el-select>
-        <el-select v-model="supplierId" placeholder="全部供应商" clearable filterable style="width:170px" @change="reload">
+        <el-select v-model="supplierId" :placeholder="t('erpPur.allSuppliers')" clearable filterable style="width:170px" @change="reload">
           <el-option v-for="p in suppliers" :key="p.id" :label="p.name" :value="p.id" />
         </el-select>
         <el-date-picker
           v-model="range" type="daterange" unlink-panels range-separator="→"
-          start-placeholder="下单起" end-placeholder="下单止"
+          :start-placeholder="t('erpPur.dateFrom')" :end-placeholder="t('erpPur.dateTo')"
           value-format="YYYY-MM-DD" style="width:240px" @change="reload"
         />
         <el-input
-          v-model="kw" placeholder="单号 / 供应商 / 备注" clearable :prefix-icon="Search"
+          v-model="kw" :placeholder="t('erpPur.searchPh')" clearable :prefix-icon="Search"
           style="width:200px" @keyup.enter="reload" @clear="reload"
         />
-        <el-button :icon="Refresh" :loading="loading" @click="reload">刷新</el-button>
+        <el-button :icon="Refresh" :loading="loading" @click="reload">{{ t('erpPur.refresh') }}</el-button>
         <span class="spacer" />
-        <el-button v-if="auth.canWrite" type="primary" :icon="Plus" @click="openNew">新建订单</el-button>
+        <el-button v-if="auth.canWrite" type="primary" :icon="Plus" @click="openNew">{{ t('erpPur.newOrder') }}</el-button>
       </div>
 
       <el-table :data="rows" v-loading="loading" stripe @row-dblclick="openDetail">
-        <el-table-column label="订单号" min-width="165">
+        <el-table-column :label="t('erpPur.colOrder')" min-width="165">
           <template #default="{ row }">
             <a class="order-no num" @click="openDetail(row)">{{ row.orderNo }}</a>
           </template>
         </el-table-column>
-        <el-table-column label="供应商" min-width="150" show-overflow-tooltip>
+        <el-table-column :label="t('erpPur.colSupplier')" min-width="150" show-overflow-tooltip>
           <template #default="{ row }">{{ row.supplierName || '--' }}</template>
         </el-table-column>
-        <el-table-column label="状态" width="96">
+        <el-table-column :label="t('erpPur.colStatus')" width="96">
           <template #default="{ row }">
-            <el-tag size="small" effect="plain" :type="tagOf(row.status)">{{ row.statusLabel }}</el-tag>
+            <el-tag size="small" effect="plain" :type="tagOf(row.status)">{{ purStatusText(row) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="订货数量" width="100" align="right">
+        <el-table-column :label="t('erpPur.colQty')" width="100" align="right">
           <template #default="{ row }"><span class="num">{{ qty(row.totalQty) }}</span></template>
         </el-table-column>
-        <el-table-column label="金额" width="112" align="right">
+        <el-table-column :label="t('erpPur.colAmount')" width="112" align="right">
           <template #default="{ row }"><span class="num">{{ row.totalAmount ? money(row.totalAmount) : '--' }}</span></template>
         </el-table-column>
-        <el-table-column label="入库进度" width="168">
+        <el-table-column :label="t('erpPur.colProgress')" width="168">
           <template #default="{ row }">
             <div class="prog">
               <el-progress :percentage="Math.min(100, Math.max(0, row.progress))" :stroke-width="6" :show-text="false" />
@@ -73,30 +73,30 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="下单" width="100">
+        <el-table-column :label="t('erpPur.colOrderDate')" width="100">
           <template #default="{ row }"><span class="num dim">{{ dayText(row.orderDate) }}</span></template>
         </el-table-column>
-        <el-table-column label="预计到货" width="104">
+        <el-table-column :label="t('erpPur.colExpect')" width="104">
           <template #default="{ row }">
             <span class="num" :class="row.overdue ? 'overdue' : 'dim'">{{ row.expectDate ? dayText(row.expectDate) : '--' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="196" align="right" class-name="op-col">
+        <el-table-column :label="t('erpPur.colAction')" width="196" align="right" class-name="op-col">
           <template #default="{ row }">
-            <el-button size="small" text type="primary" @click="openDetail(row)">详情</el-button>
+            <el-button size="small" text type="primary" @click="openDetail(row)">{{ t('erpPur.detail') }}</el-button>
             <el-button v-if="auth.canWrite && canReceive(row)" size="small" text
-              @click="openReceive(row, 'receive')">入库</el-button>
+              @click="openReceive(row, 'receive')">{{ t('erpPur.receive') }}</el-button>
             <el-dropdown v-if="auth.canWrite && row.status !== 'CANCELLED'" trigger="click" @command="(c: string) => onCommand(c, row)">
-              <el-button size="small" text>更多<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
+              <el-button size="small" text>{{ t('erpPur.more') }}<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
               <template #dropdown>
                 <el-dropdown-menu>
-                  <el-dropdown-item v-if="row.status === 'DRAFT'" command="edit">编辑</el-dropdown-item>
-                  <el-dropdown-item v-if="row.status === 'DRAFT'" command="confirm">确认订单</el-dropdown-item>
-                  <el-dropdown-item v-if="row.receivedQty > 0" command="return">退货</el-dropdown-item>
+                  <el-dropdown-item v-if="row.status === 'DRAFT'" command="edit">{{ t('erpPur.edit') }}</el-dropdown-item>
+                  <el-dropdown-item v-if="row.status === 'DRAFT'" command="confirm">{{ t('erpPur.confirm') }}</el-dropdown-item>
+                  <el-dropdown-item v-if="row.receivedQty > 0" command="return">{{ t('erpPur.returnGoods') }}</el-dropdown-item>
                   <el-dropdown-item
                     v-if="row.status === 'DRAFT' || (row.status === 'CONFIRMED' && row.receivedQty <= 0)"
                     command="cancel" divided
-                  >取消订单</el-dropdown-item>
+                  >{{ t('erpPur.cancelOrder') }}</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
@@ -115,7 +115,7 @@
     <PurchaseOrderDialog v-model="dlgOpen" :order-no="editingNo" @saved="refresh" />
     <PurchaseReceiveDialog v-model="rcvOpen" :order-no="rcvNo" :mode="rcvMode" @saved="refresh" />
 
-    <el-drawer v-model="detailOpen" title="采购订单" size="660px">
+    <el-drawer v-model="detailOpen" :title="t('erpPur.drawerTitle')" size="660px">
       <div v-if="detail" class="detail">
         <div class="d-head">
           <div>
@@ -126,27 +126,27 @@
             </div>
           </div>
           <div class="d-amount">
-            <span>订单金额</span>
+            <span>{{ t('erpPur.orderAmount') }}</span>
             <b class="num">¥{{ money(detail.order.totalAmount) }}</b>
           </div>
         </div>
 
         <div class="d-prog">
           <el-progress :percentage="Math.min(100, Math.max(0, detail.order.progress))" :stroke-width="8" />
-          <span class="dim">已入库 {{ qty(detail.order.receivedQty) }} / 订货 {{ qty(detail.order.totalQty) }}</span>
+          <span class="dim">{{ t('erpPur.receivedOf', { a: qty(detail.order.receivedQty), b: qty(detail.order.totalQty) }) }}</span>
         </div>
 
         <div class="d-meta">
-          <div><span>下单日期</span><b class="num">{{ dayText(detail.order.orderDate) }}</b></div>
-          <div><span>预计到货</span><b class="num">{{ detail.order.expectDate ? dayText(detail.order.expectDate) : '--' }}</b></div>
-          <div><span>制单人</span><b>{{ detail.order.operator || '--' }}</b></div>
-          <div><span>最后更新</span><b class="num">{{ dt(detail.order.updatedAt) }}</b></div>
-          <div class="span2"><span>备注</span><b>{{ detail.order.remark || '--' }}</b></div>
+          <div><span>{{ t('erpPur.fOrderDate') }}</span><b class="num">{{ dayText(detail.order.orderDate) }}</b></div>
+          <div><span>{{ t('erpPur.fExpect') }}</span><b class="num">{{ detail.order.expectDate ? dayText(detail.order.expectDate) : '--' }}</b></div>
+          <div><span>{{ t('erpPur.fOperator') }}</span><b>{{ detail.order.operator || '--' }}</b></div>
+          <div><span>{{ t('erpPur.fUpdated') }}</span><b class="num">{{ dt(detail.order.updatedAt) }}</b></div>
+          <div class="span2"><span>{{ t('erpPur.fRemark') }}</span><b>{{ detail.order.remark || '--' }}</b></div>
         </div>
 
         <table class="lines">
           <thead>
-            <tr><th>#</th><th>商品</th><th class="r">订货</th><th class="r">已入库</th><th class="r">未入库</th><th class="r">单价</th><th class="r">金额</th></tr>
+            <tr><th>#</th><th>{{ t('erpPur.thSku') }}</th><th class="r">{{ t('erpPur.thOrdered') }}</th><th class="r">{{ t('erpPur.thReceived') }}</th><th class="r">{{ t('erpPur.thRemaining') }}</th><th class="r">{{ t('erpPur.thPrice') }}</th><th class="r">{{ t('erpPur.thAmount') }}</th></tr>
           </thead>
           <tbody>
             <tr v-for="l in detail.lines" :key="l.itemId">
@@ -162,15 +162,15 @@
         </table>
 
         <div class="sec">
-          <div class="sec-head">收货记录</div>
+          <div class="sec-head">{{ t('erpPur.receiptRecords') }}</div>
           <table v-if="detail.bills.length" class="lines">
-            <thead><tr><th>单号</th><th>类型</th><th class="r">数量</th><th class="r">金额</th><th>时间</th><th>操作人</th></tr></thead>
+            <thead><tr><th>{{ t('erpPur.thBill') }}</th><th>{{ t('erpPur.thType') }}</th><th class="r">{{ t('erpPur.thQty') }}</th><th class="r">{{ t('erpPur.thAmount') }}</th><th>{{ t('erpPur.thTime') }}</th><th>{{ t('erpPur.thOperator') }}</th></tr></thead>
             <tbody>
               <tr v-for="b in detail.bills" :key="b.billNo">
                 <td class="num" :class="{ strike: b.voided }">{{ b.billNo }}</td>
                 <td>
                   <el-tag size="small" effect="plain" :type="b.type === 'PO_RETURN' ? 'danger' : 'success'">{{ b.typeLabel }}</el-tag>
-                  <el-tag v-if="b.voided" size="small" type="info" effect="plain" class="ml4">已作废</el-tag>
+                  <el-tag v-if="b.voided" size="small" type="info" effect="plain" class="ml4">{{ t('erpPur.voided') }}</el-tag>
                 </td>
                 <td class="r num" :class="b.qty >= 0 ? 'plus' : 'minus'">{{ b.qty > 0 ? '+' : '' }}{{ qty(b.qty) }}</td>
                 <td class="r num dim">{{ b.amount ? money(b.amount) : '--' }}</td>
@@ -179,14 +179,14 @@
               </tr>
             </tbody>
           </table>
-          <div v-else class="empty">还没有收货记录</div>
+          <div v-else class="empty">{{ t('erpPur.noReceipts') }}</div>
         </div>
 
         <div v-if="auth.canWrite" class="d-foot">
-          <el-button v-if="detail.order.receivable" type="primary" @click="openReceive(detail.order, 'receive')">入库</el-button>
-          <el-button v-if="detail.order.receivedQty > 0" @click="openReceive(detail.order, 'return')">退货</el-button>
-          <el-button v-if="detail.order.editable" @click="openEdit(detail.order)">编辑</el-button>
-          <el-button v-if="detail.order.editable" type="success" plain @click="doConfirm(detail.order)">确认订单</el-button>
+          <el-button v-if="detail.order.receivable" type="primary" @click="openReceive(detail.order, 'receive')">{{ t('erpPur.receive') }}</el-button>
+          <el-button v-if="detail.order.receivedQty > 0" @click="openReceive(detail.order, 'return')">{{ t('erpPur.returnGoods') }}</el-button>
+          <el-button v-if="detail.order.editable" @click="openEdit(detail.order)">{{ t('erpPur.edit') }}</el-button>
+          <el-button v-if="detail.order.editable" type="success" plain @click="doConfirm(detail.order)">{{ t('erpPur.confirm') }}</el-button>
         </div>
       </div>
     </el-drawer>
@@ -195,6 +195,7 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, Plus, Refresh, Search } from '@element-plus/icons-vue'
 import { partnerApi, type ErpPartner } from '@/api/erp'
@@ -203,6 +204,14 @@ import { useAuthStore } from '@/stores/auth'
 import { dayText, dt, money, qty } from '@/utils/format'
 import PurchaseOrderDialog from '@/components/erp/PurchaseOrderDialog.vue'
 import PurchaseReceiveDialog from '@/components/erp/PurchaseReceiveDialog.vue'
+
+const { t, te } = useI18n()
+
+/* 状态码由后端给出，文案在前端按码翻译；查不到就用后端给的中文 */
+function purStatusText(row: any): string {
+  const k = 'erpPurStatus.' + row?.status
+  return row?.status && te(k) ? t(k) : (row?.statusLabel || '')
+}
 
 const auth = useAuthStore()
 const rows = ref<PurchaseOrderRow[]>([])
@@ -241,7 +250,7 @@ async function loadStats() {
     stats.value = await purchaseApi.stats()
     statusOptions.value = stats.value.statusOptions || []
   } catch (e: any) {
-    ElMessage.error(e?.message || '采购统计加载失败')
+    ElMessage.error(e?.message || t('erpPur.statsFailed'))
   }
 }
 
@@ -260,7 +269,7 @@ async function load() {
     rows.value = r.rows || []
     total.value = r.total || 0
   } catch (e: any) {
-    ElMessage.error(e?.message || '采购订单加载失败')
+    ElMessage.error(e?.message || t('erpPur.ordersFailed'))
   } finally {
     loading.value = false
   }
@@ -305,7 +314,7 @@ async function openDetail(row: { orderNo: string }) {
     detail.value = await purchaseApi.detail(row.orderNo)
     detailOpen.value = true
   } catch (e: any) {
-    ElMessage.error(e?.message || '订单详情加载失败')
+    ElMessage.error(e?.message || t('erpPur.detailFailed'))
   }
 }
 
@@ -319,20 +328,20 @@ async function doConfirm(row: { orderNo: string }) {
   try {
     const r = await purchaseApi.confirm(row.orderNo)
     if (!r.ok) {
-      ElMessage.error(r.message || '确认失败')
+      ElMessage.error(r.message || t('erpPur.confirmFailed'))
       return
     }
-    ElMessage.success(r.message || '已确认')
+    ElMessage.success(r.message || t('erpPur.confirmed'))
     await refresh()
   } catch (e: any) {
-    ElMessage.error(e?.message || '确认失败')
+    ElMessage.error(e?.message || t('erpPur.confirmFailed'))
   }
 }
 
 async function doCancel(row: { orderNo: string }) {
   try {
-    await ElMessageBox.confirm('取消后订单不可再收货，确定取消？', '取消订单', {
-      type: 'warning', confirmButtonText: '取消订单', cancelButtonText: '返回'
+    await ElMessageBox.confirm(t('erpPur.cancelConfirm'), t('erpPur.cancelTitle'), {
+      type: 'warning', confirmButtonText: t('erpPur.cancelOk'), cancelButtonText: t('erpPur.back')
     })
   } catch {
     return
@@ -340,13 +349,13 @@ async function doCancel(row: { orderNo: string }) {
   try {
     const r = await purchaseApi.cancel(row.orderNo)
     if (!r.ok) {
-      ElMessage.error(r.message || '取消失败')
+      ElMessage.error(r.message || t('erpPur.cancelFailed'))
       return
     }
-    ElMessage.success(r.message || '已取消')
+    ElMessage.success(r.message || t('erpPur.cancelled'))
     await refresh()
   } catch (e: any) {
-    ElMessage.error(e?.message || '取消失败')
+    ElMessage.error(e?.message || t('erpPur.cancelFailed'))
   }
 }
 

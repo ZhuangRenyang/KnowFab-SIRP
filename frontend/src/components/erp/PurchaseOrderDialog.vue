@@ -1,25 +1,25 @@
 <template>
   <el-dialog
     v-model="open"
-    :title="orderNo ? '编辑采购订单 ' + orderNo : '新建采购订单'"
+    :title="orderNo ? t('erpPurOrder.titleEdit', { no: orderNo }) : t('erpPurOrder.titleNew')"
     width="860px"
     :close-on-click-modal="false"
     @open="onOpen"
   >
     <div class="head-grid">
       <label class="fld">
-        <span>供应商</span>
-        <el-select v-model="supplierId" placeholder="选择供应商" filterable>
+        <span>{{ t('erpPurOrder.supplier') }}</span>
+        <el-select v-model="supplierId" :placeholder="t('erpPurOrder.supplierPh')" filterable>
           <el-option v-for="p in suppliers" :key="p.id" :label="p.name" :value="p.id" />
         </el-select>
       </label>
       <label class="fld">
-        <span>下单日期</span>
+        <span>{{ t('erpPurOrder.orderDate') }}</span>
         <el-date-picker v-model="orderDate" type="date" value-format="YYYY-MM-DD" style="width:100%" />
       </label>
       <label class="fld">
-        <span>预计到货</span>
-        <el-date-picker v-model="expectDate" type="date" value-format="YYYY-MM-DD" style="width:100%" placeholder="可不填" />
+        <span>{{ t('erpPurOrder.expectDate') }}</span>
+        <el-date-picker v-model="expectDate" type="date" value-format="YYYY-MM-DD" style="width:100%" :placeholder="t('erpPurOrder.optional')" />
       </label>
     </div>
 
@@ -27,10 +27,10 @@
       <thead>
         <tr>
           <th style="width:34px">#</th>
-          <th>商品</th>
-          <th style="width:118px">数量</th>
-          <th style="width:126px">单价（元）</th>
-          <th style="width:104px" class="r">金额</th>
+          <th>{{ t('erpPurOrder.thSku') }}</th>
+          <th style="width:118px">{{ t('erpPurOrder.thQty') }}</th>
+          <th style="width:126px">{{ t('erpPurOrder.thPrice') }}</th>
+          <th style="width:104px" class="r">{{ t('erpPurOrder.thAmount') }}</th>
           <th style="width:40px"></th>
         </tr>
       </thead>
@@ -38,7 +38,7 @@
         <tr v-for="(l, i) in lines" :key="i">
           <td class="idx num">{{ i + 1 }}</td>
           <td>
-            <el-select v-model="l.skuId" placeholder="选商品" filterable class="w100" @change="onSku(l)">
+            <el-select v-model="l.skuId" :placeholder="t('erpPurOrder.skuPh')" filterable class="w100" @change="onSku(l)">
               <el-option v-for="s in skus" :key="s.id" :label="`${s.code} · ${s.name}`" :value="s.id">
                 <span class="opt-code num">{{ s.code }}</span>
                 <span>{{ s.name }}</span>
@@ -47,7 +47,7 @@
             </el-select>
           </td>
           <td><el-input v-model="l.qty" inputmode="decimal" class="w100 inp-r" placeholder="0" /></td>
-          <td><el-input v-model="l.unitPrice" inputmode="decimal" class="w100 inp-r" placeholder="选填" /></td>
+          <td><el-input v-model="l.unitPrice" inputmode="decimal" class="w100 inp-r" :placeholder="t('erpPurOrder.optionalShort')" /></td>
           <td class="r num">{{ Number(l.qty) > 0 ? money(Number(l.qty) * Number(l.unitPrice || 0)) : '--' }}</td>
           <td>
             <el-button text :icon="Delete" :disabled="lines.length <= 1" @click="lines.splice(i, 1)" />
@@ -57,35 +57,38 @@
     </table>
 
     <div class="lines-foot">
-      <el-button text type="primary" :icon="Plus" @click="addLine">加一行</el-button>
+      <el-button text type="primary" :icon="Plus" @click="addLine">{{ t('erpPurOrder.addLine') }}</el-button>
       <span class="spacer" />
-      <span class="sum">共 <b class="num">{{ lines.length }}</b> 行 · 数量 <b class="num">{{ qty(totalQty) }}</b> · 金额 <b class="num">¥{{ money(totalAmount) }}</b></span>
+      <span class="sum">{{ t('erpPurOrder.summary', { n: lines.length, q: qty(totalQty), m: money(totalAmount) }) }}</span>
     </div>
 
-    <el-input v-model="remark" type="textarea" :rows="2" placeholder="备注（选填）：交货要求、合同号等" />
+    <el-input v-model="remark" type="textarea" :rows="2" :placeholder="t('erpPurOrder.remarkPh')" />
 
     <el-alert
       type="info"
       :closable="false"
       show-icon
       class="tip"
-      title="保存后是草稿，确认后才能收货；订单本身不动库存，收货时才生成入库单。"
+      :title="t('erpPurOrder.notice')"
     />
 
     <template #footer>
-      <el-button @click="open = false">取消</el-button>
-      <el-button type="primary" :loading="saving" @click="submit">保存草稿</el-button>
+      <el-button @click="open = false">{{ t('erpPurOrder.cancel') }}</el-button>
+      <el-button type="primary" :loading="saving" @click="submit">{{ t('erpPurOrder.saveDraft') }}</el-button>
     </template>
   </el-dialog>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { Delete, Plus } from '@element-plus/icons-vue'
 import { partnerApi, skuApi, type ErpPartner, type ErpSku } from '@/api/erp'
 import { purchaseApi } from '@/api/purchase'
 import { money, qty } from '@/utils/format'
+
+const { t, te } = useI18n()
 
 const props = defineProps<{ modelValue: boolean; orderNo?: string | null }>()
 const emit = defineEmits<{ 'update:modelValue': [boolean]; saved: [] }>()
@@ -136,7 +139,7 @@ async function onOpen() {
     suppliers.value = p
     skus.value = s.filter((x) => x.enabled)
   } catch (e: any) {
-    ElMessage.error(e?.message || '基础资料加载失败')
+    ElMessage.error(e?.message || t('erpPurOrder.baseFailed'))
   }
   if (orderNo.value) {
     try {
@@ -149,7 +152,7 @@ async function onOpen() {
         skuId: l.skuId, qty: Number(l.qty), unitPrice: l.unitPrice ?? null
       }))
     } catch (e: any) {
-      ElMessage.error(e?.message || '订单加载失败')
+      ElMessage.error(e?.message || t('erpPurOrder.orderFailed'))
     }
   }
 }
@@ -160,12 +163,12 @@ function dayStr(ts: number) {
 }
 
 function validate(): string | null {
-  if (!supplierId.value) return '请选择供应商'
+  if (!supplierId.value) return t('erpPurOrder.needSupplier')
   const filled = lines.value.filter((l) => l.skuId)
-  if (!filled.length) return '至少选一个商品'
-  if (filled.some((l) => !(Number(l.qty) > 0))) return '订货数量必须大于 0'
+  if (!filled.length) return t('erpPurOrder.needSku')
+  if (filled.some((l) => !(Number(l.qty) > 0))) return t('erpPurOrder.needQty')
   const ids = filled.map((l) => l.skuId)
-  if (new Set(ids).size !== ids.length) return '同一张订单里商品不能重复'
+  if (new Set(ids).size !== ids.length) return t('erpPurOrder.dupSku')
   return null
 }
 
@@ -194,14 +197,14 @@ async function submit() {
       ? await purchaseApi.update(orderNo.value, body)
       : await purchaseApi.create(body)
     if (!res.ok) {
-      ElMessage.error(res.message || '保存失败')
+      ElMessage.error(res.message || t('erpPurOrder.saveFailed'))
       return
     }
-    ElMessage.success(res.message || '已保存')
+    ElMessage.success(res.message || t('erpPurOrder.saved'))
     emit('saved')
     open.value = false
   } catch (e: any) {
-    ElMessage.error(e?.message || '保存失败')
+    ElMessage.error(e?.message || t('erpPurOrder.saveFailed'))
   } finally {
     saving.value = false
   }

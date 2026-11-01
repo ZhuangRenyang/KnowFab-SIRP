@@ -1,60 +1,60 @@
 <template>
   <el-dialog
     v-model="open"
-    :title="isIn ? '登记收款' : '登记付款'"
+    :title="isIn ? t('erpPay.titleIn') : t('erpPay.titleOut')"
     width="620px"
     :close-on-click-modal="false"
     @open="onOpen"
   >
     <div class="grid">
       <label class="fld">
-        <span>类型</span>
+        <span>{{ t('erpPay.type') }}</span>
         <el-radio-group v-model="direction" @change="onDirectionChange">
-          <el-radio-button value="IN">收款</el-radio-button>
-          <el-radio-button value="OUT">付款</el-radio-button>
+          <el-radio-button value="IN">{{ t('erpPay.in') }}</el-radio-button>
+          <el-radio-button value="OUT">{{ t('erpPay.out') }}</el-radio-button>
         </el-radio-group>
       </label>
       <label class="fld">
-        <span>{{ isIn ? '客户' : '供应商' }}</span>
-        <el-select v-model="partnerId" placeholder="选择往来单位" filterable @change="onPartnerChange">
+        <span>{{ isIn ? t('erpPay.customer') : t('erpPay.supplier') }}</span>
+        <el-select v-model="partnerId" :placeholder="t('erpPay.partnerPh')" filterable @change="onPartnerChange">
           <el-option v-for="p in partners" :key="p.id" :label="p.name" :value="p.id" />
         </el-select>
       </label>
       <label class="fld span2">
-        <span>关联订单（不选 = {{ isIn ? '预收' : '预付' }}）</span>
-        <el-select v-model="orderNo" placeholder="不关联订单" clearable filterable @change="onOrderChange">
+        <span>{{ t('erpPay.orderLabel', { pre: isIn ? t('erpPay.preIn') : t('erpPay.preOut') }) }}</span>
+        <el-select v-model="orderNo" :placeholder="t('erpPay.orderPh')" clearable filterable @change="onOrderChange">
           <el-option
             v-for="o in orders"
             :key="o.orderNo"
-            :label="`${o.orderNo} · 未${isIn ? '收' : '付'} ${money(o.outstanding)}`"
+            :label="t('erpPay.orderOption', { no: o.orderNo, verb: isIn ? t('erpPay.verbIn') : t('erpPay.verbOut'), amount: money(o.outstanding) })"
             :value="o.orderNo"
           />
         </el-select>
       </label>
       <label class="fld">
-        <span>金额（元）</span>
+        <span>{{ t('erpPay.amount') }}</span>
         <el-input v-model="amount" inputmode="decimal" class="inp-r" placeholder="0.00" />
       </label>
       <label class="fld">
-        <span>{{ isIn ? '收款' : '付款' }}方式</span>
+        <span>{{ t('erpPay.methodLabel', { verb: isIn ? t('erpPay.in') : t('erpPay.out') }) }}</span>
         <el-select v-model="method">
-          <el-option v-for="m in methods" :key="m" :label="m" :value="m" />
+          <el-option v-for="m in methods" :key="m" :label="methodText(m)" :value="m" />
         </el-select>
       </label>
       <label class="fld">
-        <span>日期</span>
+        <span>{{ t('erpPay.date') }}</span>
         <el-date-picker v-model="payDate" type="date" value-format="YYYY-MM-DD" style="width:100%" />
       </label>
       <label class="fld">
-        <span>备注</span>
-        <el-input v-model="remark" placeholder="选填，如 转账流水号" />
+        <span>{{ t('erpPay.remark') }}</span>
+        <el-input v-model="remark" :placeholder="t('erpPay.remarkPh')" />
       </label>
     </div>
 
     <div v-if="orderNo && current" class="hint">
-      该订单{{ isIn ? '应收' : '应付' }} <b class="num">{{ money(current.billedAmount) }}</b>，
-      已{{ isIn ? '收' : '付' }} <b class="num">{{ money(current.paidAmount) }}</b>，
-      还剩 <b class="num">{{ money(current.outstanding) }}</b>
+      {{ t('erpPay.summaryBilled', { kind: isIn ? t('erpPay.kindIn') : t('erpPay.kindOut'), v: money(current.billedAmount) }) }}
+      {{ t('erpPay.summaryPaid', { verb: isIn ? t('erpPay.verbIn') : t('erpPay.verbOut'), v: money(current.paidAmount) }) }}
+      {{ t('erpPay.summaryLeft', { v: money(current.outstanding) }) }}
     </div>
     <el-alert
       v-else
@@ -62,22 +62,36 @@
       :closable="false"
       show-icon
       class="tip"
-      :title="isIn ? '不关联订单就是预收：客户先打款、我们还没发货，等有单再核销。' : '不关联订单就是预付：先付定金、货还没到，等到货再核销。'"
+      :title="isIn ? t('erpPay.tipIn') : t('erpPay.tipOut')"
     />
 
     <template #footer>
-      <el-button @click="open = false">取消</el-button>
-      <el-button type="primary" :loading="saving" @click="submit">确认{{ isIn ? '收款' : '付款' }}</el-button>
+      <el-button @click="open = false">{{ t('erpPay.cancel') }}</el-button>
+      <el-button type="primary" :loading="saving" @click="submit">{{ isIn ? t('erpPay.submitIn') : t('erpPay.submitOut') }}</el-button>
     </template>
   </el-dialog>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { partnerApi, type ErpPartner } from '@/api/erp'
 import { financeApi, type FinanceRow } from '@/api/finance'
 import { money } from '@/utils/format'
+
+const { t } = useI18n()
+
+/* 付款方式要落库，值保持中文原样；只把显示翻译掉，历史数据才不会被切成两半 */
+const METHOD_KEY: Record<string, string> = {
+  '银行转账': 'erpPay.mBank',
+  '现金': 'erpPay.mCash',
+  '承兑汇票': 'erpPay.mAcceptance',
+  '微信': 'erpPay.mWechat',
+  '支付宝': 'erpPay.mAlipay',
+  '其他': 'erpPay.mOther'
+}
+const methodText = (m: string) => (METHOD_KEY[m] ? t(METHOD_KEY[m]) : m)
 
 const props = defineProps<{
   modelValue: boolean
@@ -169,12 +183,12 @@ function onOrderChange() {
 
 async function submit() {
   if (!partnerId.value) {
-    ElMessage.warning(isIn.value ? '请选择客户' : '请选择供应商')
+    ElMessage.warning(isIn.value ? t('erpPay.needCustomer') : t('erpPay.needSupplier'))
     return
   }
   const amt = Number(amount.value)
   if (!(amt > 0)) {
-    ElMessage.warning('金额必须大于 0')
+    ElMessage.warning(t('erpPay.needAmount'))
     return
   }
   saving.value = true
@@ -189,14 +203,14 @@ async function submit() {
       remark: remark.value
     })
     if (!res.ok) {
-      ElMessage.error(res.message || '登记失败')
+      ElMessage.error(res.message || t('erpPay.failed'))
       return
     }
-    ElMessage.success(res.message || '已登记')
+    ElMessage.success(res.message || t('erpPay.done'))
     emit('saved')
     open.value = false
   } catch (e: any) {
-    ElMessage.error(e?.message || '登记失败')
+    ElMessage.error(e?.message || t('erpPay.failed'))
   } finally {
     saving.value = false
   }

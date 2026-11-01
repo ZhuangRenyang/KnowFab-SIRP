@@ -1,23 +1,23 @@
 <template>
   <el-dialog
     v-model="open"
-    :title="(isReturn ? '退货给供应商 · ' : '采购入库 · ') + orderNo"
+    :title="isReturn ? t('erpPurRecv.titleReturn', { no: orderNo }) : t('erpPurRecv.titleReceive', { no: orderNo })"
     width="780px"
     :close-on-click-modal="false"
     @open="onOpen"
   >
     <div class="bar">
       <label class="fld">
-        <span>收货仓库</span>
-        <el-select v-model="whId" placeholder="选择仓库" filterable style="width:190px">
+        <span>{{ t('erpPurRecv.warehouse') }}</span>
+        <el-select v-model="whId" :placeholder="t('erpPurRecv.whPh')" filterable style="width:190px">
           <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
         </el-select>
       </label>
       <label class="fld grow">
-        <span>备注</span>
-        <el-input v-model="remark" :placeholder="isReturn ? '选填，如 尺寸不符退回' : '选填，如 送货单号'" />
+        <span>{{ t('erpPurRecv.remark') }}</span>
+        <el-input v-model="remark" :placeholder="isReturn ? t('erpPurRecv.remarkReturnPh') : t('erpPurRecv.remarkPh')" />
       </label>
-      <el-button v-if="!isReturn" text type="primary" @click="fillAll">全部入库</el-button>
+      <el-button v-if="!isReturn" text type="primary" @click="fillAll">{{ t('erpPurRecv.fillAll') }}</el-button>
     </div>
 
     <el-alert
@@ -26,48 +26,48 @@
       :closable="false"
       show-icon
       class="tip"
-      title="退货会生成一张负数的采购退货单，库存相应减少；退货数量不能超过已净入库量。"
+      :title="t('erpPurRecv.notice')"
     />
 
     <el-table :data="rows" v-loading="loading" max-height="380" stripe>
-      <el-table-column label="编码" width="112">
+      <el-table-column :label="t('erpPurRecv.colCode')" width="112">
         <template #default="{ row }"><span class="num">{{ row.skuCode }}</span></template>
       </el-table-column>
-      <el-table-column label="商品" min-width="150">
+      <el-table-column :label="t('erpPurRecv.colSku')" min-width="150">
         <template #default="{ row }">
           {{ row.skuName }}<span v-if="row.spec" class="spec">{{ row.spec }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="订货" width="90" align="right">
+      <el-table-column :label="t('erpPurRecv.colOrdered')" width="90" align="right">
         <template #default="{ row }"><span class="num dim">{{ qty(row.qty) }}</span></template>
       </el-table-column>
-      <el-table-column label="已入库" width="90" align="right">
+      <el-table-column :label="t('erpPurRecv.colReceived')" width="90" align="right">
         <template #default="{ row }"><span class="num dim">{{ qty(row.receivedQty) }}</span></template>
       </el-table-column>
-      <el-table-column :label="isReturn ? '可退' : '待入库'" width="90" align="right">
+      <el-table-column :label="isReturn ? t('erpPurRecv.colReturnable') : t('erpPurRecv.colPending')" width="90" align="right">
         <template #default="{ row }">
           <span class="num">{{ qty(isReturn ? row.receivedQty : row.remainQty) }}</span>
         </template>
       </el-table-column>
-      <el-table-column :label="isReturn ? '退货数量' : '本次入库'" width="132">
+      <el-table-column :label="isReturn ? t('erpPurRecv.colReturnQty') : t('erpPurRecv.colReceiveQty')" width="132">
         <template #default="{ row }">
           <el-input v-model="row.input" inputmode="decimal" class="w100 inp-r" placeholder="0" />
         </template>
       </el-table-column>
-      <el-table-column label="单价" width="90" align="right">
+      <el-table-column :label="t('erpPurRecv.colPrice')" width="90" align="right">
         <template #default="{ row }"><span class="num dim">{{ row.unitPrice == null ? '--' : money(row.unitPrice) }}</span></template>
       </el-table-column>
     </el-table>
-    <el-empty v-if="!rows.length && !loading" description="订单没有可操作的行" />
+    <el-empty v-if="!rows.length && !loading" :description="t('erpPurRecv.noRows')" />
 
     <div class="foot">
-      <span>本次 <b class="num">{{ filledCount }}</b> 项 · 数量 <b class="num">{{ qty(sumQty) }}</b> · 金额 <b class="num">¥{{ money(sumAmount) }}</b></span>
+      <span>{{ t('erpPurRecv.summary', { n: filledCount, q: qty(sumQty), m: money(sumAmount) }) }}</span>
     </div>
 
     <template #footer>
-      <el-button @click="open = false">取消</el-button>
+      <el-button @click="open = false">{{ t('erpPurRecv.cancel') }}</el-button>
       <el-button type="primary" :loading="saving" :disabled="!filledCount" @click="submit">
-        {{ isReturn ? '确认退货' : '确认入库' }}
+        {{ isReturn ? t('erpPurRecv.confirmReturn') : t('erpPurRecv.confirmReceive') }}
       </el-button>
     </template>
   </el-dialog>
@@ -75,10 +75,13 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { warehouseApi, type ErpWarehouse } from '@/api/erp'
 import { purchaseApi } from '@/api/purchase'
 import { money, qty } from '@/utils/format'
+
+const { t, te } = useI18n()
 
 const props = defineProps<{
   modelValue: boolean
@@ -145,7 +148,7 @@ async function onOpen() {
       input: isReturn.value ? 0 : Number(l.remainQty)
     }))
   } catch (e: any) {
-    ElMessage.error(e?.message || '订单加载失败')
+    ElMessage.error(e?.message || t('erpPurRecv.orderFailed'))
   } finally {
     loading.value = false
   }
@@ -157,7 +160,7 @@ function fillAll() {
 
 async function submit() {
   if (!whId.value) {
-    ElMessage.warning('请选择收货仓库')
+    ElMessage.warning(t('erpPurRecv.needWh'))
     return
   }
   const lines = filled.value.map((r) => ({
@@ -166,7 +169,7 @@ async function submit() {
     unitPrice: r.unitPrice ?? null
   }))
   if (!lines.length) {
-    ElMessage.warning('请填写数量')
+    ElMessage.warning(t('erpPurRecv.needQty'))
     return
   }
   saving.value = true
@@ -176,14 +179,14 @@ async function submit() {
       ? await purchaseApi.returnTo(orderNo.value, body)
       : await purchaseApi.receive(orderNo.value, body)
     if (!res.ok) {
-      ElMessage.error(res.message || '操作失败')
+      ElMessage.error(res.message || t('erpPurRecv.opFailed'))
       return
     }
-    ElMessage.success(res.message || '已完成')
+    ElMessage.success(res.message || t('erpPurRecv.done'))
     emit('saved')
     open.value = false
   } catch (e: any) {
-    ElMessage.error(e?.message || '操作失败')
+    ElMessage.error(e?.message || t('erpPurRecv.opFailed'))
   } finally {
     saving.value = false
   }
