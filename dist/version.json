@@ -1,6 +1,6 @@
 {
-  "version": "1.0.8",
-  "notes": "初始管理员密码改为固定的 123456（默认账号 admin/123456，登录后请在系统→用户管理里改掉）；客户装机不用再去 data/initial-admin.txt 找随机密码；代码质量与类型检查保持清零",
-  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.8/device-hub-1.0.8-update.zip",
-  "sha256": "68e24164294deafe5fbab88d8d052faad828ad3f7a735497edd4ec30fab3f772"
+  "version": "1.0.9",
+  "notes": "彻底废弃初始密码文件：默认账号 admin/123456（数据库内置），安装完直接登录，不再生成 data/initial-admin.txt；老版本已装的机器可设环境变量 DEVICEHUB_RESET_ADMIN=1 启动一次把密码重置为默认值",
+  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.9/device-hub-1.0.9-update.zip",
+  "sha256": "217574c449af6354f6cfd9d56c0795657e5a363495e27a9f23c5001048842f1a"
 }
