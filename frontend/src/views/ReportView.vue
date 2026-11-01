@@ -4,40 +4,40 @@
 
     <div class="toolbar">
       <el-date-picker v-model="date" type="date" value-format="YYYY-MM-DD" style="width:150px" @change="load" />
-      <el-button @click="shiftDay(-1)">前一天</el-button>
-      <el-button @click="shiftDay(1)">后一天</el-button>
-      <el-button type="primary" :loading="exporting" @click="exportXlsx">导出 Excel</el-button>
-      <el-button @click="shiftOpen = true">班次设置</el-button>
-      <span v-if="planName" class="plan">班次：{{ planName }}</span>
+      <el-button @click="shiftDay(-1)">{{ t('rpt.prevDay') }}</el-button>
+      <el-button @click="shiftDay(1)">{{ t('rpt.nextDay') }}</el-button>
+      <el-button type="primary" :loading="exporting" @click="exportXlsx">{{ t('rpt.exportXlsx') }}</el-button>
+      <el-button @click="shiftOpen = true">{{ t('rpt.shiftSettings') }}</el-button>
+      <span v-if="planName" class="plan">{{ t('rpt.planLabel', { name: planName }) }}</span>
     </div>
 
     <div class="kpis">
-      <div class="ebox"><span>当日产量</span>
-        <b class="num">{{ num(totals?.output, 0) }}<i>件</i></b><em>{{ totals?.deviceCount || 0 }} 台设备合计</em></div>
-      <div class="ebox"><span>稼动率</span>
-        <b class="num">{{ availText }}<i>%</i></b><em>已记录 {{ num((totals?.countedSec || 0) / 3600, 1) }} 小时</em></div>
-      <div class="ebox"><span>停机时长</span>
-        <b class="num st">{{ num((totals?.stopSec || 0) / 3600, 1) }}<i>h</i></b><em>所有设备累计</em></div>
-      <div class="ebox"><span>停机次数</span>
-        <b class="num al">{{ stopCount }}<i>次</i></b>
-        <em>{{ stopCount ? `累计 ${num(stopMin, 0)} 分钟` : '当天没有停机告警' }}</em></div>
+      <div class="ebox"><span>{{ t('rpt.kpiOutput') }}</span>
+        <b class="num">{{ num(totals?.output, 0) }}<i>{{ t('rpt.unitPiece') }}</i></b><em>{{ t('rpt.devicesTotal', { n: totals?.deviceCount || 0 }) }}</em></div>
+      <div class="ebox"><span>{{ t('rpt.kpiAvail') }}</span>
+        <b class="num">{{ availText }}<i>%</i></b><em>{{ t('rpt.recorded', { v: num((totals?.countedSec || 0) / 3600, 1) }) }}</em></div>
+      <div class="ebox"><span>{{ t('rpt.stopDur') }}</span>
+        <b class="num st">{{ num((totals?.stopSec || 0) / 3600, 1) }}<i>h</i></b><em>{{ t('rpt.allDevices') }}</em></div>
+      <div class="ebox"><span>{{ t('rpt.stopCount') }}</span>
+        <b class="num al">{{ stopCount }}<i>{{ t('rpt.unitTimes') }}</i></b>
+        <em>{{ stopCount ? t('rpt.stopAccum', { n: num(stopMin, 0) }) : t('rpt.noStopAlarm') }}</em></div>
     </div>
 
     <div class="panels">
       <div class="panel">
-        <div class="p-head"><h3>每小时产量</h3><span>件 / 小时 · 峰值 {{ peak }}</span></div>
+        <div class="p-head"><h3>{{ t('rpt.hourly') }}</h3><span>{{ t('rpt.hourlySub', { peak }) }}</span></div>
         <div ref="hoursEl" class="hours"></div>
       </div>
       <div class="panel">
-        <div class="p-head"><h3>停机原因</h3><span>按累计时长排</span></div>
+        <div class="p-head"><h3>{{ t('rpt.stopReasons') }}</h3><span>{{ t('rpt.stopReasonsSub') }}</span></div>
         <div class="mini-list">
           <div v-if="!stopReasons.length" class="empty">
-            当天没有停机告警。<br>想统计停机原因，到「报警 → 规则设置」里加停机规则，规则名就是原因分类。
+            {{ t('rpt.stopEmpty') }}<br>{{ t('rpt.stopEmptyHint') }}
           </div>
           <div v-for="r in stopReasons" :key="r.reason" class="rs">
             <div class="rs-top">
               <span class="rs-name">{{ r.reason }}</span>
-              <span class="rs-val">{{ r.count }} 次 · {{ num(r.totalMin, 0) }} 分</span>
+              <span class="rs-val">{{ t('rpt.timesMin', { n: r.count, m: num(r.totalMin, 0) }) }}</span>
             </div>
             <div class="rs-track"><div class="rs-fill" :style="{ width: pct(r.totalMin) }"></div></div>
           </div>
@@ -46,13 +46,11 @@
     </div>
 
     <div class="panel">
-      <div class="p-head"><h3>班次汇总</h3></div>
-      <div v-if="!shifts.length" class="empty">
-        还没有配置班次。点上方「班次设置」按车间实际交接班时间填一下。
-      </div>
+      <div class="p-head"><h3>{{ t('rpt.shiftSummary') }}</h3></div>
+      <div v-if="!shifts.length" class="empty">{{ t('rpt.shiftEmpty') }}</div>
       <table v-else class="etable">
-        <thead><tr><th>班次</th><th class="r">产量</th><th class="r">运行 h</th><th class="r">待机 h</th>
-          <th class="r">停机 h</th><th class="r">稼动率</th></tr></thead>
+        <thead><tr><th>{{ t('rpt.thShift') }}</th><th class="r">{{ t('rpt.thOutput') }}</th><th class="r">{{ t('rpt.thRun') }}</th><th class="r">{{ t('rpt.thIdle') }}</th>
+          <th class="r">{{ t('rpt.thStop') }}</th><th class="r">{{ t('rpt.thAvail') }}</th></tr></thead>
         <tbody>
           <tr v-for="s in shifts" :key="s.id">
             <td>{{ s.name }} <span class="dim">{{ s.start }}-{{ s.end }}</span></td>
@@ -63,7 +61,7 @@
             <td class="r num">{{ s.availability < 0 ? '--' : num(s.availability, 1) + '%' }}</td>
           </tr>
           <tr class="total">
-            <td><b>合计</b></td>
+            <td><b>{{ t('rpt.total') }}</b></td>
             <td class="r num"><b>{{ num(totals?.output, 0) }}</b></td>
             <td class="r num"><b>{{ num((totals?.runSec || 0) / 3600, 1) }}</b></td>
             <td class="r num"><b>{{ num((totals?.idleSec || 0) / 3600, 1) }}</b></td>
@@ -75,12 +73,12 @@
     </div>
 
     <div class="panel">
-      <div class="p-head"><h3>设备明细</h3><span>点设备看当天曲线</span></div>
-      <div v-if="!devices.length" class="empty">这一天没有设备数据。</div>
+      <div class="p-head"><h3>{{ t('rpt.devDetail') }}</h3><span>{{ t('rpt.devDetailSub') }}</span></div>
+      <div v-if="!devices.length" class="empty">{{ t('rpt.devEmpty') }}</div>
       <table v-else class="etable">
-        <thead><tr><th>设备</th><th class="r">产量</th>
+        <thead><tr><th>{{ t('rpt.thDevice') }}</th><th class="r">{{ t('rpt.thOutput') }}</th>
           <th v-for="s in shifts" :key="s.id" class="r">{{ s.name }}</th>
-          <th class="r">运行 h</th><th class="r">停机 h</th><th class="r">稼动率</th></tr></thead>
+          <th class="r">{{ t('rpt.thRun') }}</th><th class="r">{{ t('rpt.thStop') }}</th><th class="r">{{ t('rpt.thAvail') }}</th></tr></thead>
         <tbody>
           <tr v-for="d in devices" :key="d.code">
             <td>{{ d.name }}<div class="dim">{{ d.code }} · {{ d.location || '' }}</div></td>
@@ -100,6 +98,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { useEcharts } from '@/composables/useEcharts'
 import {
@@ -107,6 +106,8 @@ import {
   type ShiftRow, type DeviceRow, type StopReason, type ReportTotals
 } from '@/api/reports'
 import ShiftsDialog from '@/components/report/ShiftsDialog.vue'
+
+const { t } = useI18n()
 
 const { init, setOption } = useEcharts()
 
@@ -184,7 +185,7 @@ function shiftDay(d: number) {
 async function load() {
   try {
     const j = await reportsApi.daily(date.value)
-    if (!j || !j.ok) throw new Error('返回异常')
+    if (!j || !j.ok) throw new Error(t('rpt.badResponse'))
     warn.value = ''
     /* 早晚班交接刚过、或刚装好的系统，今天就是没数据。
        第一次进来先落到最近有数据的那天，并说明白（旧版语义） */
@@ -194,7 +195,7 @@ async function load() {
       if (y && y.ok && (y.totals || {}).countedSec > 0) {
         date.value = y.date
         data.value = y
-        warn.value = `今天还没有采集到生产数据，先显示 ${y.date}。点「后一天」回到今天。`
+        warn.value = t('rpt.warnFallback', { date: y.date })
         return
       }
     }
@@ -203,11 +204,11 @@ async function load() {
     const warns = (j.warnings && j.warnings.length) ? j.warnings.join('；') : ''
     if (warns) warn.value = warns
     else if ((j.totals || {}).countedSec < 3600) {
-      warn.value = '这一天几乎没有采集数据。刚装的系统属正常；历史日期要看当天有没有断电或停过服务。'
+      warn.value = t('rpt.warnSparse')
     }
   } catch (e: any) {
-    console.error('报表加载失败', e)
-    warn.value = '报表加载失败，稍后重试。如果一直这样，看服务端日志里有没有 report 相关报错。'
+    console.error(t('rpt.loadFailed'), e)
+    warn.value = t('rpt.loadFailed')
   }
 }
 
@@ -215,7 +216,7 @@ async function exportXlsx() {
   exporting.value = true
   try {
     await exportDaily(date.value || todayStr(0))
-  } catch (e: any) { ElMessage.error(e?.message || '导出失败') }
+  } catch (e: any) { ElMessage.error(e?.message || t('rpt.exportFailed')) }
   finally { exporting.value = false }
 }
 

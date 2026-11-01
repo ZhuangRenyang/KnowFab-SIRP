@@ -1,26 +1,26 @@
 <template>
   <div>
     <div class="tab-toolbar">
-      <el-select v-model="whId" placeholder="全部仓库" clearable style="width:170px" @change="load()">
+      <el-select v-model="whId" :placeholder="t('erpBal.allWarehouses')" clearable style="width:170px" @change="load()">
         <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
       </el-select>
       <el-input
         v-model="q"
-        placeholder="搜编码 / 名称 / 规格"
+        :placeholder="t('erpBal.searchPh')"
         clearable
         :prefix-icon="Search"
         style="width:220px"
         @keyup.enter="load()"
         @clear="load()"
       />
-      <el-button :icon="Refresh" :loading="loading" @click="load()">刷新</el-button>
-      <span class="auto-wrap" title="每 5 秒自动刷新库存余额">
+      <el-button :icon="Refresh" :loading="loading" @click="load()">{{ t('erpBal.refresh') }}</el-button>
+      <span class="auto-wrap" :title="t('erpBal.autoTip')">
         <el-switch v-model="autoRefresh" size="small" @change="onAutoChange" />
-        <span class="auto-label">自动刷新</span>
+        <span class="auto-label">{{ t('erpBal.auto') }}</span>
       </span>
       <span class="spacer" />
-      <el-button v-if="auth.canWrite" :icon="Files" @click="emit('stocktake')">盘点</el-button>
-      <el-button v-if="auth.canWrite" type="primary" :icon="Plus" @click="emit('new-bill')">新建单据</el-button>
+      <el-button v-if="auth.canWrite" :icon="Files" @click="emit('stocktake')">{{ t('erpBal.stocktake') }}</el-button>
+      <el-button v-if="auth.canWrite" type="primary" :icon="Plus" @click="emit('new-bill')">{{ t('erpBal.newBill') }}</el-button>
     </div>
 
     <el-table
@@ -31,76 +31,79 @@
       :summary-method="summary"
       @row-dblclick="openFlow"
     >
-      <el-table-column prop="code" label="编码" width="120">
+      <el-table-column prop="code" :label="t('erpBal.colCode')" width="120">
         <template #default="{ row }"><span class="num">{{ row.code }}</span></template>
       </el-table-column>
-      <el-table-column prop="name" label="商品" min-width="160">
+      <el-table-column prop="name" :label="t('erpBal.colSku')" min-width="160">
         <template #default="{ row }">
           {{ row.name }}<span v-if="row.spec" class="spec">{{ row.spec }}</span>
         </template>
       </el-table-column>
-      <el-table-column prop="warehouseName" label="仓库" width="130" />
-      <el-table-column label="单位" width="70">
+      <el-table-column prop="warehouseName" :label="t('erpBal.colWarehouse')" width="130" />
+      <el-table-column :label="t('erpBal.colUnit')" width="70">
         <template #default="{ row }">{{ row.unit || '--' }}</template>
       </el-table-column>
-      <el-table-column prop="qty" label="库存数量" width="130" align="right">
+      <el-table-column prop="qty" :label="t('erpBal.colQty')" width="130" align="right">
         <template #default="{ row }">
           <b class="num">{{ qty(row.qty) }}</b>
         </template>
       </el-table-column>
-      <el-table-column prop="unitCost" label="成本价" width="110" align="right">
+      <el-table-column prop="unitCost" :label="t('erpBal.colCost')" width="110" align="right">
         <template #default="{ row }"><span class="num dim">{{ row.unitCost ? money(row.unitCost) : '--' }}</span></template>
       </el-table-column>
-      <el-table-column prop="amount" label="库存金额" width="130" align="right">
+      <el-table-column prop="amount" :label="t('erpBal.colAmount')" width="130" align="right">
         <template #default="{ row }"><span class="num">{{ money(row.amount) }}</span></template>
       </el-table-column>
-      <el-table-column label="操作" width="100" align="right">
+      <el-table-column :label="t('erpBal.colAction')" width="100" align="right">
         <template #default="{ row }">
-          <el-button size="small" text type="primary" @click="openFlow(row)">流水</el-button>
+          <el-button size="small" text type="primary" @click="openFlow(row)">{{ t('erpBal.flow') }}</el-button>
         </template>
       </el-table-column>
     </el-table>
     <el-empty
       v-if="!rows.length && !loading"
-      description="还没有库存。先在「基础资料」建商品和仓库，再用「新建单据」做一笔采购入库"
+      :description="t('erpBal.empty')"
     />
 
     <el-drawer v-model="flowOpen" :title="flowTitle" size="540px">
       <div class="flow-head">
-        <span>当前库存 <b class="num">{{ qty(flowStock) }}</b></span>
-        <span class="dim">最近 {{ flowRows.length }} 笔</span>
+        <span>{{ t('erpBal.currentStock', { v: qty(flowStock) }) }}</span>
+        <span class="dim">{{ t('erpBal.latestN', { n: flowRows.length }) }}</span>
       </div>
       <el-table :data="flowRows" v-loading="flowLoading" size="small">
-        <el-table-column label="时间" width="130">
+        <el-table-column :label="t('erpBal.colTime')" width="130">
           <template #default="{ row }"><span class="num dim">{{ dt(row.createdAt) }}</span></template>
         </el-table-column>
-        <el-table-column label="单号" min-width="150">
+        <el-table-column :label="t('erpBal.colBill')" min-width="150">
           <template #default="{ row }"><span class="num">{{ row.billNo }}</span></template>
         </el-table-column>
-        <el-table-column label="类型" width="90">
+        <el-table-column :label="t('erpBal.colType')" width="90">
           <template #default="{ row }"><el-tag size="small" effect="plain">{{ row.typeLabel }}</el-tag></template>
         </el-table-column>
-        <el-table-column label="数量" width="100" align="right">
+        <el-table-column :label="t('erpBal.colQtyShort')" width="100" align="right">
           <template #default="{ row }">
             <span class="num" :class="row.qty >= 0 ? 'plus' : 'minus'">{{ row.qty > 0 ? '+' : '' }}{{ qty(row.qty) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="结存" width="100" align="right">
+        <el-table-column :label="t('erpBal.colBalance')" width="100" align="right">
           <template #default="{ row }"><span class="num">{{ qty(row.balance) }}</span></template>
         </el-table-column>
       </el-table>
-      <el-empty v-if="!flowRows.length && !flowLoading" description="没有流水记录" />
+      <el-empty v-if="!flowRows.length && !flowLoading" :description="t('erpBal.noFlow')" />
     </el-drawer>
   </div>
 </template>
 
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { Files, Plus, Refresh, Search } from '@element-plus/icons-vue'
 import { stockApi, warehouseApi, type ErpWarehouse, type StockBalance, type StockFlowRow } from '@/api/erp'
 import { useAuthStore } from '@/stores/auth'
 import { dt, money, qty } from '@/utils/format'
+
+const { t } = useI18n()
 
 const emit = defineEmits<{ 'new-bill': []; stocktake: []; changed: [] }>()
 
@@ -132,7 +135,7 @@ async function load(silent = false) {
       if (live) flowStock.value = Number(live.qty || 0)
     }
   } catch (e: any) {
-    if (!silent) ElMessage.error(e?.message || '加载库存失败')
+    if (!silent) ElMessage.error(e?.message || t('erpBal.loadFailed'))
   } finally {
     if (!silent) loading.value = false
   }
@@ -170,7 +173,7 @@ function summary({ columns }: any) {
   const totalQty = rows.value.reduce((a, r) => a + Number(r.qty || 0), 0)
   const totalAmount = rows.value.reduce((a, r) => a + Number(r.amount || 0), 0)
   return columns.map((c: any, i: number) => {
-    if (i === 0) return '合计'
+    if (i === 0) return t('erpBal.total')
     if (c.property === 'qty') return qty(totalQty)
     if (c.property === 'amount') return money(totalAmount)
     return ''
@@ -188,7 +191,7 @@ async function openFlow(row: SkuRef) {
   try {
     flowRows.value = await stockApi.flow(row.skuId, row.warehouseId, 80)
   } catch (e: any) {
-    ElMessage.error(e?.message || '流水加载失败')
+    ElMessage.error(e?.message || t('erpBal.loadFlowFailed'))
     flowRows.value = []
   } finally {
     flowLoading.value = false

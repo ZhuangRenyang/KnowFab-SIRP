@@ -2,47 +2,47 @@
   <div class="stock">
     <div class="kpis">
       <div class="kpi">
-        <span>库存品种</span>
-        <b class="num">{{ summary?.skuCount || 0 }}<i>种</i></b>
-        <em>{{ summary?.stockRowCount || 0 }} 个库位 · {{ summary?.whCount || 0 }} 个仓库</em>
+        <span>{{ t('erpStock.skuCount') }}</span>
+        <b class="num">{{ summary?.skuCount || 0 }}<i>{{ t('erpStock.unitKind') }}</i></b>
+        <em>{{ t('erpStock.rowsInfo', { n: summary?.stockRowCount || 0, w: summary?.whCount || 0 }) }}</em>
       </div>
       <div class="kpi">
-        <span>库存成本</span>
+        <span>{{ t('erpStock.cost') }}</span>
         <b class="num">¥{{ money(summary?.totalValue) }}</b>
-        <em>按商品采购价估值</em>
+        <em>{{ t('erpStock.costHint') }}</em>
       </div>
       <div class="kpi">
-        <span>今日入库</span>
+        <span>{{ t('erpStock.todayIn') }}</span>
         <b class="num up">+{{ qty(summary?.todayIn) }}</b>
-        <em>本月累计 +{{ qty(summary?.monthIn) }}</em>
+        <em>{{ t('erpStock.monthIn', { v: qty(summary?.monthIn) }) }}</em>
       </div>
       <div class="kpi">
-        <span>今日出库</span>
+        <span>{{ t('erpStock.todayOut') }}</span>
         <b class="num down">-{{ qty(summary?.todayOut) }}</b>
-        <em>本月累计 -{{ qty(summary?.monthOut) }}</em>
+        <em>{{ t('erpStock.monthOut', { v: qty(summary?.monthOut) }) }}</em>
       </div>
       <div class="kpi alert" :class="{ hot: (summary?.alertCount || 0) > 0 }" @click="tab = 'alert'">
-        <span>库存预警</span>
-        <b class="num">{{ summary?.alertCount || 0 }}<i>项</i></b>
-        <em>{{ (summary?.alertCount || 0) > 0 ? '点此查看低于下限的商品' : '库存都在上下限之间' }}</em>
+        <span>{{ t('erpStock.alert') }}</span>
+        <b class="num">{{ summary?.alertCount || 0 }}<i>{{ t('erpStock.unitItem') }}</i></b>
+        <em>{{ (summary?.alertCount || 0) > 0 ? t('erpStock.alertHas') : t('erpStock.alertNone') }}</em>
       </div>
     </div>
 
     <el-card shadow="never">
       <el-tabs v-model="tab">
-        <el-tab-pane label="库存余额" name="balance">
+        <el-tab-pane :label="t('erpStock.tabBalance')" name="balance">
           <StockBalanceTab ref="balanceRef" @new-bill="openBill()" @stocktake="takeOpen = true" />
         </el-tab-pane>
         <el-tab-pane name="bills" lazy>
           <template #label>
-            出入库单据
+            {{ t('erpStock.tabBills') }}
             <span v-if="summary?.todayBills" class="tab-badge">{{ summary.todayBills }}</span>
           </template>
           <StockBillTab ref="billRef" @new-bill="openBill()" @changed="refresh" />
         </el-tab-pane>
         <el-tab-pane name="alert" lazy>
           <template #label>
-            库存预警
+            {{ t('erpStock.tabAlert') }}
             <span v-if="summary?.alertCount" class="tab-badge warn">{{ summary.alertCount }}</span>
           </template>
           <StockAlertTab ref="alertRef" @new-bill="openBill" />
@@ -57,6 +57,7 @@
 
 <script setup lang="ts">
 import { nextTick, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import StockBalanceTab from '@/components/erp/StockBalanceTab.vue'
 import StockBillTab from '@/components/erp/StockBillTab.vue'
@@ -65,6 +66,8 @@ import StockBillDialog from '@/components/erp/StockBillDialog.vue'
 import StocktakeDialog from '@/components/erp/StocktakeDialog.vue'
 import { stockApi, type StockSummary } from '@/api/erp'
 import { money, qty } from '@/utils/format'
+
+const { t } = useI18n()
 
 /* 库存管理（ROADMAP DH-43b）：三个页签共用一个 KPI 头，任何建单/作废/盘点都会回来刷新 */
 const tab = ref('balance')
@@ -81,7 +84,7 @@ async function loadSummary() {
   try {
     summary.value = await stockApi.summary()
   } catch (e: any) {
-    ElMessage.error(e?.message || '库存汇总加载失败')
+    ElMessage.error(e?.message || t('erpStock.loadSummaryFailed'))
   }
 }
 

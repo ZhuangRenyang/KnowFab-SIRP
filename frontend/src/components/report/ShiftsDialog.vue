@@ -1,47 +1,50 @@
 <template>
-  <el-dialog :model-value="modelValue" title="班次设置" width="620px"
+  <el-dialog :model-value="modelValue" :title="t('shift.title')" width="620px"
              :close-on-click-modal="false" @update:model-value="emit('update:modelValue', $event)"
              @open="open">
     <div class="hint lead">
-      按客户车间的实际交接班时间填。可以跨零点（如 20:00 — 08:00）。
-      报表按「开班那天」记账：26 日夜班 20:00 到 27 日 08:00，产量算 26 日。
-      <b>历史报表会按新班次重算</b>，因为明细是按小时存的。
+      {{ t('shift.intro1') }}
+      {{ t('shift.intro2') }}
+      <b>{{ t('shift.intro3') }}</b>
     </div>
 
     <div class="field">
-      <label>方案名称</label>
-      <el-input v-model="planName" placeholder="如 三班倒 / 两班倒 / 常白班" />
+      <label>{{ t('shift.planName') }}</label>
+      <el-input v-model="planName" :placeholder="t('shift.planPh')" />
     </div>
 
-    <div class="sect">班次</div>
-    <div class="thead"><div>代号</div><div>名称</div><div>开始</div><div>结束</div><div></div></div>
+    <div class="sect">{{ t('shift.sect') }}</div>
+    <div class="thead"><div>{{ t('shift.colCode') }}</div><div>{{ t('shift.colName') }}</div><div>{{ t('shift.colStart') }}</div><div>{{ t('shift.colEnd') }}</div><div></div></div>
     <div v-for="(s, i) in rows" :key="i" class="trow">
       <el-input v-model="s.id" :placeholder="String.fromCharCode(65 + i)" />
-      <el-input v-model="s.name" :placeholder="'班次' + (i + 1)" />
+      <el-input v-model="s.name" :placeholder="t('shift.shiftPh', { n: i + 1 })" />
       <el-input v-model="s.start" placeholder="08:00" />
       <el-input v-model="s.end" placeholder="16:00" />
       <el-button text type="danger" @click="rows.splice(i, 1)">×</el-button>
     </div>
-    <el-button style="margin-top:var(--space-2)" @click="addRow">+ 添加班次</el-button>
+    <el-button style="margin-top:var(--space-2)" @click="addRow">{{ t('shift.addRow') }}</el-button>
 
     <el-alert v-if="warn" :title="warn" type="warning" :closable="false" class="warn" />
 
     <div class="hint tail">
-      班次之间不能重叠，重叠会让同一小时被算进两个班，产量凭空翻倍。
-      代号用来配对历史数据，改名字可以，代号尽量别改。
+      {{ t('shift.warnOverlap') }}
+      {{ t('shift.warnCode') }}
     </div>
 
     <template #footer>
-      <el-button @click="emit('update:modelValue', false)">取消</el-button>
-      <el-button type="primary" :loading="saving" @click="save">保存并生效</el-button>
+      <el-button @click="emit('update:modelValue', false)">{{ t('shift.cancel') }}</el-button>
+      <el-button type="primary" :loading="saving" @click="save">{{ t('shift.save') }}</el-button>
     </template>
   </el-dialog>
 </template>
 
 <script setup lang="ts">
 import { reactive, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { reportsApi, type ShiftDef, type ShiftPlan } from '@/api/reports'
+
+const { t } = useI18n()
 
 const props = defineProps<{ modelValue: boolean }>()
 const emit = defineEmits<{ (e: 'update:modelValue', v: boolean): void; (e: 'saved'): void }>()
@@ -64,7 +67,7 @@ async function open() {
   rows.splice(0)
   try {
     const j = await reportsApi.shifts()
-    const plan = j.plan || { name: '三班倒', shifts: [] }
+    const plan = j.plan || { name: t('shift.defaultPlan'), shifts: [] }
     planName.value = plan.name || ''
     ;(plan.shifts || []).forEach((s) => addRow(s))
     if (!(plan.shifts || []).length) addRow()
@@ -77,21 +80,21 @@ async function open() {
 async function save() {
   const shifts = rows.map((r, i) => ({
     id: (r.id || String.fromCharCode(65 + i)).trim(),
-    name: r.name.trim() || `班次${i + 1}`,
+    name: r.name.trim() || t('shift.defaultShiftName', { n: i + 1 }),
     start: r.start.trim(),
     end: r.end.trim()
   }))
-  if (!shifts.length) { warn.value = '至少要有一个班次。'; return }
+  if (!shifts.length) { warn.value = t('shift.atLeastOne'); return }
   saving.value = true
   try {
     const j = await reportsApi.saveShifts({
-      name: planName.value.trim() || '班次方案', shifts
+      name: planName.value.trim() || t('shift.defaultPlanName'), shifts
     })
-    if (j && j.ok === false) { warn.value = j.message || '保存失败'; return }
+    if (j && j.ok === false) { warn.value = j.message || t('shift.saveFailed'); return }
     emit('saved')
     emit('update:modelValue', false)
   } catch (e: any) {
-    warn.value = '保存失败：' + (e?.message || '')
+    warn.value = t('shift.saveFailed') + '：' + (e?.message || '')
     ElMessage.error(warn.value)
   } finally { saving.value = false }
 }

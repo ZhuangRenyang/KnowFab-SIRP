@@ -1,11 +1,11 @@
 <template>
   <div>
     <div class="tab-toolbar">
-      <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
-      <span class="hint">按商品全厂合计比上下限（多仓企业不会每个仓各报一次）</span>
+      <el-button :icon="Refresh" :loading="loading" @click="load">{{ t('erpAlert.refresh') }}</el-button>
+      <span class="hint">{{ t('erpAlert.hint') }}</span>
       <span class="spacer" />
       <el-button v-if="auth.canWrite" type="primary" :icon="ShoppingCart" @click="emit('new-bill', 'PO_IN')">
-        补货入库
+        {{ t('erpAlert.restock') }}
       </el-button>
     </div>
 
@@ -14,8 +14,8 @@
       type="success"
       :closable="false"
       show-icon
-      title="没有预警：所有商品的库存都在上下限之间"
-      description="上下限在「基础资料 → 商品」里维护；没填上下限的商品不参与预警。"
+      :title="t('erpAlert.emptyTitle')"
+      :description="t('erpAlert.emptyDesc')"
       class="ok-tip"
     />
 
@@ -27,45 +27,45 @@
               <span>{{ w.warehouseName }}</span>
               <b class="num">{{ qty(w.qty) }}</b>
             </div>
-            <div v-if="!row.byWarehouse.length" class="dim">没有库存流水</div>
+            <div v-if="!row.byWarehouse.length" class="dim">{{ t('erpAlert.noFlow') }}</div>
           </div>
         </template>
       </el-table-column>
-      <el-table-column label="编码" width="130">
+      <el-table-column :label="t('erpAlert.colCode')" width="130">
         <template #default="{ row }"><span class="num">{{ row.code }}</span></template>
       </el-table-column>
-      <el-table-column label="商品" min-width="170">
+      <el-table-column :label="t('erpAlert.colSku')" min-width="170">
         <template #default="{ row }">
           {{ row.name }}<span v-if="row.spec" class="spec">{{ row.spec }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="单位" width="70">
+      <el-table-column :label="t('erpAlert.colUnit')" width="70">
         <template #default="{ row }">{{ row.unit || '--' }}</template>
       </el-table-column>
-      <el-table-column label="全厂库存" width="120" align="right">
+      <el-table-column :label="t('erpAlert.colTotal')" width="120" align="right">
         <template #default="{ row }"><b class="num" :class="row.status === 'LOW' ? 'minus' : 'plus'">{{ qty(row.total) }}</b></template>
       </el-table-column>
-      <el-table-column label="下限" width="100" align="right">
+      <el-table-column :label="t('erpAlert.colMin')" width="100" align="right">
         <template #default="{ row }"><span class="num dim">{{ row.minStock == null ? '--' : qty(row.minStock) }}</span></template>
       </el-table-column>
-      <el-table-column label="上限" width="100" align="right">
+      <el-table-column :label="t('erpAlert.colMax')" width="100" align="right">
         <template #default="{ row }"><span class="num dim">{{ row.maxStock == null ? '--' : qty(row.maxStock) }}</span></template>
       </el-table-column>
-      <el-table-column label="状态" width="110">
+      <el-table-column :label="t('erpAlert.colStatus')" width="110">
         <template #default="{ row }">
           <el-tag size="small" effect="plain" :type="row.status === 'LOW' ? 'danger' : 'warning'">
-            {{ row.status === 'LOW' ? '低于下限' : '超过上限' }}
+            {{ row.status === 'LOW' ? t('erpAlert.low') : t('erpAlert.high') }}
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="缺口 / 超储" width="130" align="right">
+      <el-table-column :label="t('erpAlert.colGap')" width="130" align="right">
         <template #default="{ row }">
           <span class="num" :class="row.status === 'LOW' ? 'minus' : 'plus'">{{ qty(row.gap) }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="建议" min-width="150">
+      <el-table-column :label="t('erpAlert.colAdvice')" min-width="150">
         <template #default="{ row }">
-          <span class="dim">{{ row.status === 'LOW' ? '安排采购或调拨补货' : '暂停生产或安排出货清库' }}</span>
+          <span class="dim">{{ row.status === 'LOW' ? t('erpAlert.adviceLow') : t('erpAlert.adviceHigh') }}</span>
         </template>
       </el-table-column>
     </el-table>
@@ -74,11 +74,14 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { Refresh, ShoppingCart } from '@element-plus/icons-vue'
 import { stockApi, type StockAlert } from '@/api/erp'
 import { useAuthStore } from '@/stores/auth'
 import { qty } from '@/utils/format'
+
+const { t } = useI18n()
 
 const emit = defineEmits<{ 'new-bill': [type: string] }>()
 
@@ -91,7 +94,7 @@ async function load() {
   try {
     rows.value = await stockApi.alerts()
   } catch (e: any) {
-    ElMessage.error(e?.message || '预警加载失败')
+    ElMessage.error(e?.message || t('erpAlert.loadFailed'))
   } finally {
     loading.value = false
   }

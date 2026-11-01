@@ -1,7 +1,7 @@
 <template>
   <div>
     <div class="tab-toolbar">
-      <el-select v-model="type" placeholder="全部类型" clearable style="width:150px" @change="reload">
+      <el-select v-model="type" :placeholder="t('erpBill.allTypes')" clearable style="width:150px" @change="reload">
         <el-option v-for="t in types" :key="t.value" :label="t.label" :value="t.value" />
       </el-select>
       <el-date-picker
@@ -9,54 +9,54 @@
         type="daterange"
         unlink-panels
         range-separator="→"
-        start-placeholder="开始日"
-        end-placeholder="结束日"
+        :start-placeholder="t('erpBill.startDate')"
+        :end-placeholder="t('erpBill.endDate')"
         value-format="YYYY-MM-DD"
         style="width:240px"
         @change="reload"
       />
       <el-input
         v-model="kw"
-        placeholder="单号 / 备注 / 往来单位 / 设备"
+        :placeholder="t('erpBill.searchPh')"
         clearable
         :prefix-icon="Search"
         style="width:230px"
         @keyup.enter="reload"
         @clear="reload"
       />
-      <el-checkbox v-model="withProd" @change="reload">显示生产入库</el-checkbox>
-      <el-button :icon="Refresh" :loading="loading" @click="reload">刷新</el-button>
+      <el-checkbox v-model="withProd" @change="reload">{{ t('erpBill.showProd') }}</el-checkbox>
+      <el-button :icon="Refresh" :loading="loading" @click="reload">{{ t('erpBill.refresh') }}</el-button>
       <span class="spacer" />
-      <el-button v-if="auth.canWrite" type="primary" :icon="Plus" @click="emit('new-bill')">新建单据</el-button>
+      <el-button v-if="auth.canWrite" type="primary" :icon="Plus" @click="emit('new-bill')">{{ t('erpBill.newBill') }}</el-button>
     </div>
 
     <div class="trend">
       <div class="trend-head">
-        <span>近 14 天出入库</span>
-        <span class="dim">不含调拨（厂内搬货不算进出）</span>
+        <span>{{ t('erpBill.chartTitle') }}</span>
+        <span class="dim">{{ t('erpBill.chartNote') }}</span>
       </div>
       <div ref="chartEl" class="trend-body"></div>
     </div>
 
     <el-table :data="rows" v-loading="loading" stripe @row-dblclick="openDetail">
-      <el-table-column label="单号" min-width="165">
+      <el-table-column :label="t('erpBill.colBill')" min-width="165">
         <template #default="{ row }">
           <a class="bill-no num" :class="{ voided: row.voided }" @click="openDetail(row)">{{ row.billNo }}</a>
         </template>
       </el-table-column>
-      <el-table-column label="类型" width="92">
+      <el-table-column :label="t('erpBill.colType')" width="92">
         <template #default="{ row }">
           <el-tag size="small" effect="plain" :type="tagType(row.type)">{{ row.typeLabel }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="往来 / 来源" min-width="112" show-overflow-tooltip>
+      <el-table-column :label="t('erpBill.colPartner')" min-width="112" show-overflow-tooltip>
         <template #default="{ row }">
           <span v-if="row.partnerName">{{ row.partnerName }}</span>
           <span v-else-if="row.deviceCode" class="num dim">{{ row.deviceCode }}</span>
           <span v-else class="dim">--</span>
         </template>
       </el-table-column>
-      <el-table-column label="仓库" min-width="172">
+      <el-table-column :label="t('erpBill.colWarehouse')" min-width="172">
         <template #default="{ row }">
           <template v-if="row.type === 'TRANSFER'">
             <span class="dim">{{ row.srcWarehouseName || '--' }}</span>
@@ -65,27 +65,27 @@
           <span v-else>{{ row.warehouseName || '--' }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="数量" width="108" align="right">
+      <el-table-column :label="t('erpBill.colQty')" width="108" align="right">
         <template #default="{ row }">
           <span class="num" :class="signClass(row)">{{ signOf(row) }}{{ qty(row.qty) }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="金额" width="104" align="right">
+      <el-table-column :label="t('erpBill.colAmount')" width="104" align="right">
         <template #default="{ row }"><span class="num dim">{{ row.amount ? money(row.amount) : '--' }}</span></template>
       </el-table-column>
-      <el-table-column label="时间" width="150">
+      <el-table-column :label="t('erpBill.colTime')" width="150">
         <template #default="{ row }"><span class="num dim">{{ dt(row.createdAt) }}</span></template>
       </el-table-column>
-      <el-table-column label="状态" width="74">
+      <el-table-column :label="t('erpBill.colStatus')" width="74">
         <template #default="{ row }">
-          <el-tag v-if="row.voided" size="small" type="danger" effect="plain">已作废</el-tag>
-          <span v-else class="dim">有效</span>
+          <el-tag v-if="row.voided" size="small" type="danger" effect="plain">{{ t('erpBill.voided') }}</el-tag>
+          <span v-else class="dim">{{ t('erpBill.valid') }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="140" align="right" class-name="op-col">
+      <el-table-column :label="t('erpBill.colAction')" width="140" align="right" class-name="op-col">
         <template #default="{ row }">
-          <el-button size="small" text type="primary" @click="openDetail(row)">详情</el-button>
-          <el-button v-if="auth.canWrite && !row.voided" size="small" text type="danger" @click="voidBill(row)">作废</el-button>
+          <el-button size="small" text type="primary" @click="openDetail(row)">{{ t('erpBill.detail') }}</el-button>
+          <el-button v-if="auth.canWrite && !row.voided" size="small" text type="danger" @click="voidBill(row)">{{ t('erpBill.voidBtn') }}</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -102,7 +102,7 @@
       />
     </div>
 
-    <el-drawer v-model="detailOpen" title="单据详情" size="620px">
+    <el-drawer v-model="detailOpen" :title="t('erpBill.drawerTitle')" size="620px">
       <div v-if="detail" class="detail">
         <div class="d-head">
           <div>
@@ -110,28 +110,28 @@
             <div class="d-sub">
               <el-tag size="small" effect="plain" :type="tagType(detail.bill.type)">{{ detail.bill.typeLabel }}</el-tag>
               <span class="dim">{{ dt(detail.bill.createdAt) }}</span>
-              <el-tag v-if="detail.bill.voided" size="small" type="danger" effect="plain">已作废</el-tag>
+              <el-tag v-if="detail.bill.voided" size="small" type="danger" effect="plain">{{ t('erpBill.voided') }}</el-tag>
             </div>
           </div>
           <div class="d-amount">
-            <span>合计金额</span>
+            <span>{{ t('erpBill.totalAmount') }}</span>
             <b class="num">¥{{ money(detail.bill.amount) }}</b>
           </div>
         </div>
 
         <div class="d-meta">
-          <div><span>仓库</span><b v-if="detail.bill.type === 'TRANSFER'">{{ detail.bill.srcWarehouseName }} → {{ detail.bill.warehouseName }}</b><b v-else>{{ detail.bill.warehouseName || '--' }}</b></div>
-          <div><span>往来单位</span><b>{{ detail.bill.partnerName || '--' }}</b></div>
-          <div><span>来源设备</span><b class="num">{{ detail.bill.deviceCode || '--' }}</b></div>
-          <div><span>来源订单</span><b class="num">{{ detail.bill.srcOrderNo || '--' }}</b></div>
-          <div><span>制单人</span><b>{{ detail.bill.operator || '--' }}</b></div>
-          <div v-if="detail.bill.voided"><span>作废人</span><b>{{ detail.bill.voidedBy || '--' }}</b></div>
-          <div class="span2"><span>备注</span><b>{{ detail.bill.remark || '--' }}</b></div>
+          <div><span>{{ t('erpBill.fWarehouse') }}</span><b v-if="detail.bill.type === 'TRANSFER'">{{ detail.bill.srcWarehouseName }} → {{ detail.bill.warehouseName }}</b><b v-else>{{ detail.bill.warehouseName || '--' }}</b></div>
+          <div><span>{{ t('erpBill.fPartner') }}</span><b>{{ detail.bill.partnerName || '--' }}</b></div>
+          <div><span>{{ t('erpBill.fDevice') }}</span><b class="num">{{ detail.bill.deviceCode || '--' }}</b></div>
+          <div><span>{{ t('erpBill.fOrder') }}</span><b class="num">{{ detail.bill.srcOrderNo || '--' }}</b></div>
+          <div><span>{{ t('erpBill.fOperator') }}</span><b>{{ detail.bill.operator || '--' }}</b></div>
+          <div v-if="detail.bill.voided"><span>{{ t('erpBill.fVoidedBy') }}</span><b>{{ detail.bill.voidedBy || '--' }}</b></div>
+          <div class="span2"><span>{{ t('erpBill.fRemark') }}</span><b>{{ detail.bill.remark || '--' }}</b></div>
         </div>
 
         <table class="lines">
           <thead>
-            <tr><th>#</th><th>商品</th><th>仓库</th><th class="r">数量</th><th class="r">单价</th><th class="r">金额</th></tr>
+            <tr><th>#</th><th>{{ t('erpBill.thSku') }}</th><th>{{ t('erpBill.colWarehouse') }}</th><th class="r">{{ t('erpBill.colQty') }}</th><th class="r">{{ t('erpBill.thPrice') }}</th><th class="r">{{ t('erpBill.colAmount') }}</th></tr>
           </thead>
           <tbody>
             <tr v-for="l in detail.lines" :key="l.lineNo">
@@ -149,8 +149,8 @@
         </table>
 
         <div v-if="auth.canWrite && !detail.bill.voided" class="d-foot">
-          <el-button type="danger" plain @click="voidBill(detail.bill)">作废整单</el-button>
-          <span class="dim">作废不删数据；若货已领用，请改做反向调整单</span>
+          <el-button type="danger" plain @click="voidBill(detail.bill)">{{ t('erpBill.voidWhole') }}</el-button>
+          <span class="dim">{{ t('erpBill.voidNote') }}</span>
         </div>
       </div>
     </el-drawer>
@@ -159,6 +159,7 @@
 
 <script setup lang="ts">
 import { nextTick, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Refresh, Search } from '@element-plus/icons-vue'
 import {
@@ -168,6 +169,8 @@ import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import { useEcharts } from '@/composables/useEcharts'
 import { dt, money, qty } from '@/utils/format'
+
+const { t } = useI18n()
 
 const emit = defineEmits<{ 'new-bill': []; changed: [] }>()
 
@@ -221,7 +224,7 @@ async function load() {
     rows.value = r.rows || []
     total.value = r.total || 0
   } catch (e: any) {
-    ElMessage.error(e?.message || '单据加载失败')
+    ElMessage.error(e?.message || t('erpBill.loadFailed'))
   } finally {
     loading.value = false
   }
@@ -249,16 +252,16 @@ async function openDetail(row: StockBillRow) {
     detail.value = { bill: r.bill, lines: r.lines }
     detailOpen.value = true
   } catch (e: any) {
-    ElMessage.error(e?.message || '详情加载失败')
+    ElMessage.error(e?.message || t('erpBill.detailFailed'))
   }
 }
 
 async function voidBill(row: StockBillRow) {
   try {
     await ElMessageBox.confirm(
-      `作废后「${row.billNo}」不再计入库存，单据仍保留可查。确定作废？`,
-      '作废单据',
-      { type: 'warning', confirmButtonText: '作废', cancelButtonText: '取消' }
+      t('erpBill.voidConfirm', { no: row.billNo }),
+      t('erpBill.voidTitle'),
+      { type: 'warning', confirmButtonText: t('erpBill.voidOk'), cancelButtonText: t('erpBill.cancel') }
     )
   } catch {
     return
@@ -266,15 +269,15 @@ async function voidBill(row: StockBillRow) {
   try {
     const r = await stockApi.voidBill(row.billNo)
     if (!r.ok) {
-      ElMessage.error(r.message || '作废失败')
+      ElMessage.error(r.message || t('erpBill.voidFailed'))
       return
     }
-    ElMessage.success(r.message || '已作废')
+    ElMessage.success(r.message || t('erpBill.voidedOk'))
     detailOpen.value = false
     await load()
     emit('changed')
   } catch (e: any) {
-    ElMessage.error(e?.message || '作废失败')
+    ElMessage.error(e?.message || t('erpBill.voidFailed'))
   }
 }
 
@@ -287,12 +290,12 @@ async function drawChart() {
       color: [css('--run'), css('--idle')],
       grid: { left: 8, right: 12, top: 24, bottom: 4, containLabel: true },
       tooltip: { trigger: 'axis' },
-      legend: { right: 0, top: 0, itemWidth: 8, itemHeight: 8, data: ['入库', '出库'] },
+      legend: { right: 0, top: 0, itemWidth: 8, itemHeight: 8, data: [t('erpBill.seriesIn'), t('erpBill.seriesOut')] },
       xAxis: { type: 'category', data: data.map((d) => d.date) },
       yAxis: { type: 'value', splitNumber: 3 },
       series: [
-        { name: '入库', type: 'bar', barMaxWidth: 12, itemStyle: { borderRadius: [3, 3, 0, 0] }, data: data.map((d) => Number(d.in)) },
-        { name: '出库', type: 'bar', barMaxWidth: 12, itemStyle: { borderRadius: [3, 3, 0, 0] }, data: data.map((d) => Number(d.out)) }
+        { name: t('erpBill.seriesIn'), type: 'bar', barMaxWidth: 12, itemStyle: { borderRadius: [3, 3, 0, 0] }, data: data.map((d) => Number(d.in)) },
+        { name: t('erpBill.seriesOut'), type: 'bar', barMaxWidth: 12, itemStyle: { borderRadius: [3, 3, 0, 0] }, data: data.map((d) => Number(d.out)) }
       ]
     })
   } catch {
