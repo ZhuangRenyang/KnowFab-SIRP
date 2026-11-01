@@ -1,40 +1,40 @@
 <template>
   <div class="page">
     <el-card shadow="never" class="mb">
-      <template #header><span>新增用户</span></template>
+      <template #header><span>{{ t('user.addTitle') }}</span></template>
       <div class="create-row">
-        <el-input v-model="nu.username" placeholder="用户名（字母数字，3~32 位）" class="w230" />
-        <el-input v-model="nu.displayName" placeholder="姓名" class="w150" />
+        <el-input v-model="nu.username" :placeholder="t('user.usernamePh')" class="w230" />
+        <el-input v-model="nu.displayName" :placeholder="t('user.displayNamePh')" class="w150" />
         <el-input
           v-model="nu.password" type="password" show-password
-          placeholder="初始密码（至少 8 位）" class="w190"
+          :placeholder="t('user.passwordPh')" class="w190"
         />
         <el-select v-model="nu.role" class="w130">
           <el-option v-for="r in ROLES" :key="r.value" :value="r.value" :label="r.label" />
         </el-select>
-        <el-button type="primary" :loading="creating" @click="create">新增用户</el-button>
+        <el-button type="primary" :loading="creating" @click="create">{{ t('user.create') }}</el-button>
       </div>
-      <div class="tip">角色说明：班组长=看板与报警（只读）；车间主任=能改设备配置；管理员=全部权限。初始密码请当面交给本人并要求首登修改。</div>
+      <div class="tip">{{ t('user.roleTip') }}</div>
     </el-card>
 
     <el-card shadow="never">
       <template #header>
         <div class="card-head">
-          <span>用户列表</span>
-          <el-button size="small" :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
+          <span>{{ t('user.listTitle') }}</span>
+          <el-button size="small" :icon="Refresh" :loading="loading" @click="load">{{ t('common.refresh') }}</el-button>
         </div>
       </template>
       <el-table :data="rows" v-loading="loading" stripe>
-        <el-table-column label="用户名" min-width="150">
+        <el-table-column :label="t('user.colUsername')" min-width="150">
           <template #default="{ row }">
             <span class="num">{{ row.username }}</span>
-            <el-tag v-if="!row.enabled" type="danger" size="small" effect="plain" class="ml6">已停用</el-tag>
+            <el-tag v-if="!row.enabled" type="danger" size="small" effect="plain" class="ml6">{{ t('user.disabled') }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="姓名" min-width="110">
+        <el-table-column :label="t('user.colName')" min-width="110">
           <template #default="{ row }">{{ row.displayName || '--' }}</template>
         </el-table-column>
-        <el-table-column label="角色" width="130">
+        <el-table-column :label="t('user.colRole')" width="130">
           <template #default="{ row }">
             <el-select
               :model-value="row.role" size="small"
@@ -44,18 +44,18 @@
             </el-select>
           </template>
         </el-table-column>
-        <el-table-column label="上次登录" min-width="150" align="right">
+        <el-table-column :label="t('user.colLastLogin')" min-width="150" align="right">
           <template #default="{ row }">
-            <span class="muted">{{ row.lastLoginAt ? fmtTime(row.lastLoginAt) : '从未登录' }}</span>
+            <span class="muted">{{ row.lastLoginAt ? fmtTime(row.lastLoginAt) : t('user.never') }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="238" align="right">
+        <el-table-column :label="t('user.colActions')" width="238" align="right">
           <template #default="{ row }">
-            <el-button size="small" @click="resetPwd(row)">重置密码</el-button>
+            <el-button size="small" @click="resetPwd(row)">{{ t('user.resetPwd') }}</el-button>
             <el-button size="small" @click="update(row, { enabled: !row.enabled })">
-              {{ row.enabled ? '停用' : '启用' }}
+              {{ row.enabled ? t('user.disable') : t('user.enable') }}
             </el-button>
-            <el-button size="small" type="danger" plain @click="remove(row)">删除</el-button>
+            <el-button size="small" type="danger" plain @click="remove(row)">{{ t('user.delete') }}</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -64,7 +64,9 @@
 </template>
 
 <script setup lang="ts">
+const { t } = useI18n()
 import { onMounted, reactive, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
@@ -81,7 +83,7 @@ async function load() {
   try {
     rows.value = await usersApi.list()
   } catch (e: any) {
-    ElMessage.error(e?.message || '用户列表加载失败')
+    ElMessage.error(e?.message || t('user.loadFailed'))
   } finally {
     loading.value = false
   }
@@ -90,8 +92,8 @@ onMounted(load)
 
 async function create() {
   if (creating.value) return
-  if (!nu.username.trim()) { ElMessage.warning('请输入用户名'); return }
-  if (nu.password.length < 8) { ElMessage.warning('初始密码至少 8 位'); return }
+  if (!nu.username.trim()) { ElMessage.warning(t('user.needUsername')); return }
+  if (nu.password.length < 8) { ElMessage.warning(t('user.pwdTooShort')); return }
   creating.value = true
   try {
     const r = await usersApi.create({
@@ -101,14 +103,14 @@ async function create() {
       role: nu.role
     })
     if (r.ok) {
-      ElMessage.success(r.message || '已创建')
+      ElMessage.success(r.message || t('user.created'))
       nu.username = ''; nu.displayName = ''; nu.password = ''; nu.role = 'LEADER'
       load()
     } else {
-      ElMessage.error(r.message || '创建失败')
+      ElMessage.error(r.message || t('user.createFailed'))
     }
   } catch (e: any) {
-    ElMessage.error(e?.message || '创建失败')
+    ElMessage.error(e?.message || t('user.createFailed'))
   } finally {
     creating.value = false
   }
@@ -116,31 +118,31 @@ async function create() {
 
 async function update(row: UserRow, patch: { role?: string; enabled?: boolean }) {
   const r = await usersApi.update(row.id, patch)
-  if (!r.ok) ElMessage.error(r.message || '保存失败')
+  if (!r.ok) ElMessage.error(r.message || t('user.saveFailed'))
   load()
 }
 
 async function resetPwd(row: UserRow) {
   let pwd: string
   try {
-    const r = await ElMessageBox.prompt(`给 ${row.username} 设置新密码（至少 8 位）：`, '重置密码', {
+    const r = await ElMessageBox.prompt(t('user.resetPrompt', { user: row.username }), t('user.resetTitle'), {
       inputType: 'password',
-      inputValidator: (v: string) => (v && v.length >= 8) || '至少 8 位',
-      confirmButtonText: '重置'
+      inputValidator: (v: string) => (v && v.length >= 8) || t('user.atLeast8'),
+      confirmButtonText: t('user.resetBtn')
     })
     pwd = r.value
   } catch { return }
   const r = await usersApi.resetPassword(row.id, pwd)
-  if (r.ok) ElMessage.success(r.message || '已重置')
-  else ElMessage.error(r.message || '重置失败')
+  if (r.ok) ElMessage.success(r.message || t('user.resetOk'))
+  else ElMessage.error(r.message || t('user.resetFailed'))
 }
 
 async function remove(row: UserRow) {
   try {
-    await ElMessageBox.confirm(`删除用户 ${row.username}？删了就登不进来了。`, '删除用户', { type: 'warning' })
+    await ElMessageBox.confirm(t('user.delConfirm', { user: row.username }), t('user.delTitle'), { type: 'warning' })
   } catch { return }
   const r = await usersApi.remove(row.id)
-  if (!r.ok) ElMessage.error(r.message || '删除失败')
+  if (!r.ok) ElMessage.error(r.message || t('user.delFailed'))
   load()
 }
 

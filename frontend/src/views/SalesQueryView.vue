@@ -2,51 +2,51 @@
   <div class="sales-q">
     <el-alert type="info" :closable="false" show-icon class="tip">
       <template #title>
-        可承诺量 = 现存量 − 已确认订单未发货数量。答应客户前先看这一列，别只看现存。
+        {{ t('salesQuery.tip') }}
       </template>
     </el-alert>
 
     <div class="kpis">
       <div class="kpi">
-        <span>可查商品</span>
-        <b class="num">{{ data?.totals.skuCount || 0 }}<i>种</i></b>
-        <em>含库存的商品</em>
+        <span>{{ t('salesQuery.skuCount') }}</span>
+        <b class="num">{{ data?.totals.skuCount || 0 }}<i>{{ t('salesQuery.unit') }}</i></b>
+        <em>{{ t('salesQuery.skuHint') }}</em>
       </div>
       <div class="kpi">
-        <span>可承诺品种</span>
-        <b class="num up">{{ okCount }}<i>种</i></b>
-        <em>可承诺 &gt; 0，能接单</em>
+        <span>{{ t('salesQuery.okCount') }}</span>
+        <b class="num up">{{ okCount }}<i>{{ t('salesQuery.unit') }}</i></b>
+        <em>{{ t('salesQuery.okHint') }}</em>
       </div>
       <div class="kpi">
-        <span>库存紧张</span>
-        <b class="num warn">{{ lowCount }}<i>种</i></b>
-        <em>可承诺低于安全库存</em>
+        <span>{{ t('salesQuery.lowCount') }}</span>
+        <b class="num warn">{{ lowCount }}<i>{{ t('salesQuery.unit') }}</i></b>
+        <em>{{ t('salesQuery.lowHint') }}</em>
       </div>
       <div class="kpi">
-        <span>已无货</span>
-        <b class="num down">{{ outCount }}<i>种</i></b>
-        <em>可承诺为 0，需排产/采购</em>
+        <span>{{ t('salesQuery.outCount') }}</span>
+        <b class="num down">{{ outCount }}<i>{{ t('salesQuery.unit') }}</i></b>
+        <em>{{ t('salesQuery.outHint') }}</em>
       </div>
     </div>
 
     <el-card shadow="never">
       <div class="tab-toolbar">
-        <el-input v-model="kw" placeholder="商品编码 / 名称 / 规格" clearable :prefix-icon="Search"
+        <el-input v-model="kw" :placeholder="t('salesQuery.searchPh')" clearable :prefix-icon="Search"
           style="width:230px" @keyup.enter="load" @clear="load" />
-        <el-select v-model="category" placeholder="全部类别" clearable style="width:140px" @change="load">
+        <el-select v-model="category" :placeholder="t('salesQuery.categoryPh')" clearable style="width:140px" @change="load">
           <el-option v-for="c in categoryOptions" :key="c" :label="c" :value="c" />
         </el-select>
-        <el-select v-model="whId" placeholder="全部仓库" clearable style="width:150px" @change="load">
+        <el-select v-model="whId" :placeholder="t('salesQuery.warehousePh')" clearable style="width:150px" @change="load">
           <el-option v-for="w in data?.warehouses || []" :key="w.id" :label="w.name" :value="w.id" />
         </el-select>
-        <el-switch v-model="onlyAvailable" active-text="只看有货" @change="load" />
-        <el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button>
+        <el-switch v-model="onlyAvailable" :active-text="t('salesQuery.onlyAvail')" @change="load" />
+        <el-button :icon="Refresh" :loading="loading" @click="load">{{ t('common.refresh') }}</el-button>
         <span class="spacer" />
-        <el-button type="primary" :icon="Download" :loading="exporting" @click="doExport">导出 Excel</el-button>
+        <el-button type="primary" :icon="Download" :loading="exporting" @click="doExport">{{ t('salesQuery.exportExcel') }}</el-button>
       </div>
 
       <el-table :data="rows" v-loading="loading" stripe>
-        <el-table-column label="商品" min-width="230">
+        <el-table-column :label="t('salesQuery.colSku')" min-width="230">
           <template #default="{ row }">
             <div class="pname">{{ row.name }}</div>
             <div class="dim sub">
@@ -55,37 +55,37 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column prop="category" label="类别" width="100">
+        <el-table-column prop="category" :label="t('salesQuery.colCategory')" width="100">
           <template #default="{ row }"><span class="dim">{{ row.category || '--' }}</span></template>
         </el-table-column>
-        <el-table-column label="现存量" width="110" align="right">
+        <el-table-column :label="t('salesQuery.colOnHand')" width="110" align="right">
           <template #default="{ row }">
             <span class="num">{{ qty(row.onHand) }}</span>
             <span class="dim unit">{{ row.unit || '' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="订单占用" width="110" align="right">
+        <el-table-column :label="t('salesQuery.colOrdered')" width="110" align="right">
           <template #default="{ row }">
             <span class="num dim">{{ qty(row.allocated) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="可承诺" width="120" align="right">
+        <el-table-column :label="t('salesQuery.colCommittable')" width="120" align="right">
           <template #default="{ row }">
             <b class="num" :class="stateClass(row.state)">{{ qty(row.available) }}</b>
             <span class="dim unit">{{ row.unit || '' }}</span>
-            <div v-if="Number(row.shortage) > 0" class="shortage">欠 {{ qty(row.shortage) }}</div>
-            <div v-if="Number(row.shortage) > 0" class="shortage">欠 {{ qty(row.shortage) }}</div>
+            <div v-if="Number(row.shortage) > 0" class="shortage">{{ t('salesQuery.shortage', { n: qty(row.shortage) }) }}</div>
+            <div v-if="Number(row.shortage) > 0" class="shortage">{{ t('salesQuery.shortage', { n: qty(row.shortage) }) }}</div>
           </template>
         </el-table-column>
-        <el-table-column label="状态" width="92">
+        <el-table-column :label="t('salesQuery.colStatus')" width="92">
           <template #default="{ row }">
             <el-tag size="small" :type="tagType(row.state)" effect="plain">{{ stateText(row.state) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="所在仓库" min-width="200" show-overflow-tooltip>
+        <el-table-column :label="t('salesQuery.colWarehouse')" min-width="200" show-overflow-tooltip>
           <template #default="{ row }"><span class="dim">{{ row.warehouseText }}</span></template>
         </el-table-column>
-        <el-table-column label="销售价" width="110" align="right">
+        <el-table-column :label="t('salesQuery.colPrice')" width="110" align="right">
           <template #default="{ row }">
             <span v-if="row.salePrice" class="num">{{ money(row.salePrice) }}</span>
             <span v-else class="dim">--</span>
@@ -94,7 +94,7 @@
       </el-table>
 
       <div v-if="!loading && !rows.length" class="empty">
-        没有符合条件的商品。换个关键词，或关掉「只看有货」。
+        {{ t('salesQuery.empty') }}
       </div>
       <div class="foot-note">{{ data?.note }}</div>
     </el-card>
@@ -102,7 +102,9 @@
 </template>
 
 <script setup lang="ts">
+const { t } = useI18n()
 import { computed, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { Download, Refresh, Search } from '@element-plus/icons-vue'
 import { exportSalesStock, salesQueryApi, type SalesStockResult, type SalesStockRow } from '@/api/salesQuery'
@@ -124,7 +126,7 @@ const lowCount = computed(() => rows.value.filter((r) => r.state === 'LOW').leng
 const outCount = computed(() => rows.value.filter((r) => r.state === 'OUT').length)
 
 function stateText(s: string) {
-  return s === 'OUT' ? '已无货' : s === 'LOW' ? '紧张' : '充足'
+  return s === 'OUT' ? t('salesQuery.statusOut') : s === 'LOW' ? t('salesQuery.statusLow') : t('salesQuery.statusOk')
 }
 function tagType(s: string) {
   return s === 'OUT' ? 'danger' : s === 'LOW' ? 'warning' : 'success'
@@ -150,7 +152,7 @@ async function load() {
       categoryOptions.value = Array.from(set)
     }
   } catch (e: any) {
-    ElMessage.error(e?.message || '查询失败')
+    ElMessage.error(e?.message || t('salesQuery.queryFailed'))
   } finally {
     loading.value = false
   }
@@ -165,9 +167,9 @@ async function doExport() {
       warehouseId: whId.value,
       onlyAvailable: onlyAvailable.value
     })
-    ElMessage.success('已导出 Excel')
+    ElMessage.success(t('salesQuery.exported'))
   } catch (e: any) {
-    ElMessage.error(e?.message || '导出失败')
+    ElMessage.error(e?.message || t('salesQuery.exportFailed'))
   } finally {
     exporting.value = false
   }
