@@ -143,6 +143,14 @@ python tools/smoke-all.py    # 99 项全功能接口冒烟，全绿说明装得�
 | **机台产量（日/月/年/综合四张表）** | **出入库单据（7 类，来源可溯）** |
 | ![产量](docs/screenshots/prod-month.png) | ![单据](docs/screenshots/stock-bills.png) |
 
+## 真机实拍
+
+一张工作台照片胜过一千行架构图——西门子 S7-200 SMART，一根网线，不改一行 PLC 程序：
+
+| 车间大屏（实时） | 产线看板（PLC 在线） |
+|---|---|
+| ![实拍：PLC + 车间大屏](docs/promo/shots/real-plc-screen.jpg) | ![实拍：PLC + 产线看板](docs/promo/shots/real-plc-line.jpg) |
+
 ## 功能全景
 
 - **设备接入**：Modbus TCP/RTU/透传三路径；网段+从站双扫描发现设备；点表 JSON 化；

@@ -194,6 +194,15 @@ python tools/smoke-all.py    # 99 API smoke checks — all green means the insta
 | **Machine output (day / month / year / all)** | **Stock documents (7 types, fully traceable)** |
 | ![output](docs/screenshots/prod-month.png) | ![bills](docs/screenshots/stock-bills.png) |
 
+## Real hardware, real screen
+
+A bench photo beats a thousand architecture diagrams — a Siemens S7-200 SMART, one Ethernet
+cable, zero PLC code changes:
+
+| Workshop screen (live) | Production lines with the PLC online |
+|---|---|
+| ![real PLC + workshop screen](docs/promo/shots/real-plc-screen.jpg) | ![real PLC + line board](docs/promo/shots/real-plc-line.jpg) |
+
 ## Feature map
 
 - **Device connectivity** — Modbus TCP / RTU / pass-through; subnet + slave-id double scan for
