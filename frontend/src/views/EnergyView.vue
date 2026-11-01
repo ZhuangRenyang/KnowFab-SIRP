@@ -1,40 +1,40 @@
 <template>
   <div class="energy">
     <div class="toolbar">
-      <span class="lbl">统计口径</span>
+      <span class="lbl">{{ t('energy.rangeLabel') }}</span>
       <el-select v-model="range" style="width:104px" @change="loadRank">
-        <el-option value="today" label="今日" />
-        <el-option value="7d" label="近 7 天" />
-        <el-option value="month" label="本月" />
+        <el-option value="today" :label="t('energy.today')" />
+        <el-option value="7d" :label="t('energy.last7d')" />
+        <el-option value="month" :label="t('energy.thisMonth')" />
       </el-select>
-      <el-button @click="load">刷新</el-button>
+      <el-button @click="load">{{ t('common.refresh') }}</el-button>
       <span class="spacer"></span>
       <span class="plan">{{ ov?.tariffName || '' }}</span>
-      <el-button v-if="canCfg" @click="tariffOpen = true">电价设置</el-button>
-      <el-button v-if="canCfg" @click="demandOpen = true">需量设置</el-button>
+      <el-button v-if="canCfg" @click="tariffOpen = true">{{ t('energy.tariff') }}</el-button>
+      <el-button v-if="canCfg" @click="demandOpen = true">{{ t('energy.demand') }}</el-button>
     </div>
 
     <el-alert v-if="warn" :title="warn" type="warning" show-icon :closable="false" class="warn" />
 
     <div class="kpis">
-      <div class="ebox"><span>今日用电</span><b class="num">{{ num(ov?.todayKwh, 1) }}<i>kWh</i></b></div>
-      <div class="ebox"><span>今日电费</span><b class="num">{{ num(ov?.todayCost, 2) }}<i>元</i></b></div>
-      <div class="ebox"><span>本月电费</span><b class="num">{{ num(ov?.monthCost, 2) }}<i>元</i></b>
-        <em>本月共 {{ num(ov?.monthKwh, 1) }} kWh · 仅电度电费</em></div>
-      <div class="ebox"><span>当前总负荷</span><b class="num">{{ num(ov?.power, 2) }}<i>kW</i></b>
-        <em>全厂瞬时功率合计</em></div>
-      <div class="ebox"><span>本月最大需量</span>
+      <div class="ebox"><span>{{ t('energy.kpiTodayKwh') }}</span><b class="num">{{ num(ov?.todayKwh, 1) }}<i>kWh</i></b></div>
+      <div class="ebox"><span>{{ t('energy.kpiTodayCost') }}</span><b class="num">{{ num(ov?.todayCost, 2) }}<i>{{ t('energy.currency') }}</i></b></div>
+      <div class="ebox"><span>{{ t('energy.kpiMonthCost') }}</span><b class="num">{{ num(ov?.monthCost, 2) }}<i>{{ t('energy.currency') }}</i></b>
+        <em>{{ t('energy.kpiMonthHint', { kwh: num(ov?.monthKwh, 1) }) }}</em></div>
+      <div class="ebox"><span>{{ t('energy.kpiPower') }}</span><b class="num">{{ num(ov?.power, 2) }}<i>kW</i></b>
+        <em>{{ t('energy.kpiPowerHint') }}</em></div>
+      <div class="ebox"><span>{{ t('energy.kpiDemand') }}</span>
         <b class="num" :class="{ al: dm?.status?.level === 'OVER', wn: dm?.status?.level === 'WARN' }">
           {{ num(dm?.monthMax?.kw, 0) }}<i>kW</i></b>
-        <em>合同 {{ num(dm?.config?.contractDemandKw, 0) }} kW · 峰在 {{ dm?.monthMax?.atText || '--' }}</em></div>
-      <div class="ebox"><span>本月基本电费</span><b class="num">{{ num(dm?.billing?.cost, 0) }}<i>元</i></b>
-        <em>{{ (dm?.billing?.modeText || '--') + ' · ' + (dm?.billing?.formula || '') }}</em></div>
+        <em>{{ t('energy.kpiDemandHint', { kw: num(dm?.config?.contractDemandKw, 0), at: dm?.monthMax?.atText || '--' }) }}</em></div>
+      <div class="ebox"><span>{{ t('energy.kpiBasic') }}</span><b class="num">{{ num(dm?.billing?.cost, 0) }}<i>{{ t('energy.currency') }}</i></b>
+        <em>{{ (dm?.billing?.mode === 'CAPACITY' ? t('energy.modeCapacity') : dm?.billing?.mode === 'DEMAND' ? t('energy.modeDemand') : (dm?.billing?.modeText || '--')) + ' · ' + (dm?.billing?.formula || '') }}</em></div>
     </div>
 
     <div class="panel demand">
       <div class="p-head">
         <h3>{{ demandTitle }}</h3>
-        <span>{{ (todayFallback ? '峰值 ' : '今日峰值 ') + num(dm?.today?.peakKw, 0) }} kW
+        <span>{{ todayFallback ? t('energy.peakRange', { kw: num(dm?.today?.peakKw, 0) }) : t('energy.peakToday', { kw: num(dm?.today?.peakKw, 0) }) }}
           <template v-if="dm?.today?.peakAt && dm.today.peakAt !== '--'"> @ {{ dm.today.peakAt }}</template>
         </span>
       </div>
@@ -44,7 +44,7 @@
 
     <div class="panels">
       <div class="panel">
-        <div class="p-head"><h3>今日峰谷分布</h3><span>{{ segTotalText }}</span></div>
+        <div class="p-head"><h3>{{ t('energy.segTitle') }}</h3><span>{{ segTotalText }}</span></div>
         <div class="stack">
           <template v-if="shownSegs.length">
             <div v-for="s in shownSegs" :key="s.type" class="stack-seg"
@@ -56,7 +56,7 @@
         <div class="segs">
           <div v-for="s in ov?.segments || []" :key="s.type" class="segline">
             <div class="sw" :style="{ background: SEG_COLOR[s.type] }"></div>
-            <div class="seg-name">{{ s.name }}<span> · ¥{{ num(s.price, 3) }}/度</span></div>
+            <div class="seg-name">{{ s.name }}<span>{{ t('energy.segPrice', { price: num(s.price, 3) }) }}</span></div>
             <div class="num">{{ num(s.kwh, 1) }} kWh</div>
             <div class="num">¥{{ num(s.cost, 2) }}</div>
             <div class="pct">{{ s.ratio > 0 ? num(s.ratio, 0) + '%' : '—' }}</div>
@@ -64,20 +64,20 @@
         </div>
       </div>
       <div class="panel">
-        <div class="p-head"><h3>近 7 日电费</h3><span>元 / 天</span></div>
+        <div class="p-head"><h3>{{ t('energy.trendTitle') }}</h3><span>{{ t('energy.trendUnit') }}</span></div>
         <div ref="trendEl" class="chart"></div>
       </div>
     </div>
 
     <div class="panel rank">
-      <div class="p-head"><h3>设备能耗排行 · {{ rangeLabel }}</h3><span>点一行看它今天几点最费电</span></div>
+      <div class="p-head"><h3>{{ t('energy.rankTitle', { range: rangeLabel }) }}</h3><span>{{ t('energy.rankHint') }}</span></div>
       <div v-if="!rank.length" class="empty" v-html="rankEmpty"></div>
       <table v-else class="etable">
-        <thead><tr><th>设备</th><th>位置</th><th class="r">用电量</th><th class="r">电费</th><th style="width:110px">占比</th></tr></thead>
+        <thead><tr><th>{{ t('energy.colDevice') }}</th><th>{{ t('energy.colLocation') }}</th><th class="r">{{ t('energy.colKwh') }}</th><th class="r">{{ t('energy.colCost') }}</th><th style="width:110px">{{ t('energy.colRatio') }}</th></tr></thead>
         <tbody>
           <tr v-for="x in rank" :key="x.code" class="pick" :class="{ sel: picked === x.code }" @click="pick(x.code)">
             <td>{{ x.name }}
-              <div class="dev-code">{{ x.code }}{{ x.online ? '' : ' · 离线' }}{{ x.backfillKwh > 0 ? ' · 含补偿' : '' }}</div></td>
+              <div class="dev-code">{{ x.code }}{{ x.online ? '' : t('energy.devOffline') }}{{ x.backfillKwh > 0 ? t('energy.devBackfill') : '' }}</div></td>
             <td class="loc">{{ x.location || '—' }}</td>
             <td class="r num">{{ num(x.kwh, 1) }} kWh</td>
             <td class="r num">¥{{ num(x.cost, 2) }}</td>
@@ -86,7 +86,7 @@
         </tbody>
       </table>
       <div v-if="picked" class="detail">
-        <div class="p-head"><h3>{{ detailTitle }}</h3><span>每小时电量</span></div>
+        <div class="p-head"><h3>{{ detailTitle }}</h3><span>{{ t('energy.hourly') }}</span></div>
         <div ref="hourlyEl" class="chart-s"></div>
       </div>
     </div>
@@ -97,7 +97,9 @@
 </template>
 
 <script setup lang="ts">
+const { t } = useI18n()
 import { computed, ref, watch, reactive} from 'vue'
+import { useI18n } from 'vue-i18n'
 import { energyApi, SEG_COLOR, type EnergyOverview, type EnergyRankItem, type DemandData, type TariffSegment } from '@/api/energy'
 import { num } from '@/api/reports'
 import { useAuthStore } from '@/stores/auth'
@@ -128,33 +130,36 @@ const canCfg = computed(() => ['ADMIN', 'MANAGER'].includes(auth.user?.role || '
 const warn = computed(() => {
   if (!ov.value) return ''
   if (!ov.value.hasEnergyPoint) {
-    return '还没有设备配电量点，所以算不出电费。到「设备监控」编辑设备，在点表里加一项 role 为 energy 的累计电量点（电表的电量寄存器），系统就会自动按时段算钱。'
+    return t('energy.warnNoPoint')
   }
   if (ov.value.unpricedKwh > 0) {
-    return `有 ${num(ov.value.unpricedKwh, 1)} kWh 电量没匹配到电价时段，这部分只记度数、不算钱。点右上角「电价设置」检查时段是不是没有覆盖满 24 小时。`
+    return t('energy.warnUnpriced', { kwh: num(ov.value.unpricedKwh, 1) })
   }
   return ''
 })
 const shownSegs = computed(() => (ov.value?.segments || []).filter((s) => s.kwh > 0))
 const segTotalText = computed(() => {
   const total = (ov.value?.segments || []).reduce((a, s) => a + s.kwh, 0)
-  return total > 0 ? `共 ${num(total, 1)} kWh` : '暂无数据'
+  return total > 0 ? t('energy.segTotal', { kwh: num(total, 1) }) : t('energy.noData')
 })
 const segPct = (s: TariffSegment) => {
   const total = (ov.value?.segments || []).reduce((a, x) => a + x.kwh, 0)
   return (s.kwh / total * 100).toFixed(2) + '%'
 }
-const rangeLabel = computed(() => ({ today: '今日', '7d': '近 7 天', month: '本月' }[range.value] || '今日'))
+const rangeLabel = computed(() => ({ today: t('energy.today'), '7d': t('energy.last7d'), month: t('energy.thisMonth') }[range.value] || t('energy.today')))
 const rankEmpty = computed(() => ov.value?.hasEnergyPoint
-  ? '这段时间还没有电量数据。<br>电表读数在累积中，通常几分钟后就会出现第一笔。'
-  : '还没有设备配电量点，先去设备配置里加一项 role 为 energy 的点。')
+  ? t('energy.emptyNoData')
+  : t('energy.emptyNoPoint'))
 const barW = (kwh: number) => {
   const max = Math.max(...rank.value.map((x) => x.kwh), 0.001)
   return Math.max(2, kwh / max * 100).toFixed(1) + '%'
 }
 const demandTitle = computed(() => {
-  const t = dm.value?.today || {}
-  return t.fallback ? `15 分钟需量（${t.date || '昨天'}，今天还没有数据）` : '今日 15 分钟需量'
+  /* 变量名不能叫 t：会遮蔽 i18n 的 t() */
+  const td = dm.value?.today || {}
+  return td.fallback
+    ? t('energy.demandFallback', { date: td.date || '--' })
+    : t('energy.demandTitle')
 })
 const detailTitle = computed(() => detail.value
   ? `${detail.value.name || picked.value} · ${detail.value.date} · ${num(detail.value.kwh, 1)} kWh · ¥${num(detail.value.cost, 2)}` : '')
@@ -167,14 +172,23 @@ const demandInfo = computed(() => {
   const gap = (bill.demandCost || 0) - (bill.capacityCost || 0)
   const degreeCost = ov.value?.monthCost || 0
   const color = st.level === 'OVER' ? 'var(--alarm)' : st.level === 'WARN' ? 'var(--idle)' : 'var(--muted)'
-  return `<b>基本电费核算</b><br>`
-    + `按需量：${num(mm.kw, 0)} kW × ${num(cfg.demandPrice, 2)} 元 = ${num(bill.demandCost, 2)} 元/月；`
-    + `按容量：${num(cfg.transformerKva, 0)} kVA × ${num(cfg.capacityPrice, 2)} 元 = ${num(bill.capacityCost, 2)} 元/月`
+  return t('energy.billTitle') + '<br>'
+    + t('energy.billByDemand', { kw: num(mm.kw, 0), price: num(cfg.demandPrice, 2), cost: num(bill.demandCost, 2) })
+    + t('energy.billByCapacity', { kva: num(cfg.transformerKva, 0), price: num(cfg.capacityPrice, 2), cost: num(bill.capacityCost, 2) })
     + (Math.abs(gap) > 0.5
-      ? `；<b>${bill.mode === 'CAPACITY' ? '按容量' : '按需量'}更划算，每月差 ${num(Math.abs(gap), 0)} 元</b>` : '')
-    + `<br>当前 15 分钟窗口已累计 ${num(cur.kw, 0)} kW（窗口走了 ${Math.round((cur.elapsedSec || 0) / 60)} 分钟），本月剩余余量 ${num(st.headroomKw, 0)} kW`
-    + `<br><b>本月电费合计</b>：电度 ${num(degreeCost, 2)} 元 + 基本 ${num(bill.cost, 2)} 元 = `
-    + `<b>${num(degreeCost + (bill.cost || 0), 2)} 元</b>（力调电费未计）`
+      ? t('energy.billCheaper', {
+          mode: bill.mode === 'CAPACITY' ? t('energy.modeCapacity') : t('energy.modeDemand'),
+          gap: num(Math.abs(gap), 0)
+        })
+      : '')
+    + t('energy.billCurrent', {
+        kw: num(cur.kw, 0),
+        min: Math.round((cur.elapsedSec || 0) / 60),
+        head: num(st.headroomKw, 0)
+      })
+    + t('energy.billTotalHead', { degree: num(degreeCost, 2), basic: num(bill.cost, 2) })
+    + `<b>¥${num(degreeCost + (bill.cost || 0), 2)}</b>`
+    + t('energy.billTotalTail')
     + `<div style="margin-top:8px;color:${color}">${st.message || ''}</div>`
 })
 
@@ -203,7 +217,7 @@ watch([demandEl, () => dm.value?.today?.series], () => {
       markLine: contract > 0 ? {
         symbol: 'none', silent: true,
         lineStyle: { color: 'rgba(255,122,113,.8)', type: 'dashed', width: 1 },
-        label: { formatter: `合同 ${Math.round(contract)} kW`, color: css('--alarm'), fontSize: 10 },
+        label: { formatter: t('energy.contractLine', { kw: Math.round(contract) }), color: css('--alarm'), fontSize: 10 },
         data: [{ yAxis: contract }]
       } : undefined
     }]
