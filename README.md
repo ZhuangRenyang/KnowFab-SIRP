@@ -90,8 +90,9 @@ curl -fsSL https://gitee.com/ZhuangRenyang/KnowFab-SIRP/raw/main/tools/portable/
 curl -fsSL https://raw.githubusercontent.com/ZhuangRenyang/KnowFab-SIRP/main/tools/portable/install.sh | bash
 ```
 
-When it finishes, `http://localhost:8080/app/` opens automatically. **The initial admin password is
-printed in the launcher window** and also written to `data/initial-admin.txt`.
+When it finishes, `http://localhost:8080/app/` opens automatically. **Default login is `admin` / `123456`**
+(change it after first login under System → Users; override the default with `system.admin.password` in
+`config/application.yml` before first start if you need a stronger one).
 
 The first run downloads **JRE 17 + MariaDB 11.4 (portable)** — about 130 MB from Chinese mirrors —
 and every start after that takes seconds:

@@ -14,7 +14,7 @@ Linux  ：终端里执行 ./start.sh
   2. 下载 MariaDB 便携版（约 90MB）到 runtime/mariadb
   3. 初始化数据库到 runtime/data
   4. 生成 config/application.yml（数据库密码随机）
-  5. 随机生成管理员密码，写在 data/initial-admin.txt，启动窗口也会显示
+  5. 创建默认管理员 admin / 123456（可在 config/application.yml 覆盖）
 
 以后再启动就很快（只启动，不再下载）。
 
@@ -30,8 +30,9 @@ Linux  ：终端里执行 ./start.sh
 二、登录
 --------
 账号：admin
-密码：见 data/initial-admin.txt（启动窗口也会打印）
-首次登录后请到「系统 → 用户管理」修改密码，然后删掉那个文件。
+密码：123456
+首次登录后请立刻到「系统 → 用户管理」改成你自己的密码。
+（安装包里的默认密码谁都可能知道，别一直用。）
 
 三、数据在哪 / 怎么备份
 --------------------

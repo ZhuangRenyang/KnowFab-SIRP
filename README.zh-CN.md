@@ -53,7 +53,7 @@ curl -fsSL https://gitee.com/ZhuangRenyang/KnowFab-SIRP/raw/main/tools/portable/
 curl -fsSL https://raw.githubusercontent.com/ZhuangRenyang/KnowFab-SIRP/main/tools/portable/install.sh | bash
 ```
 
-装完自动打开 `http://localhost:8080/app/`。**初始管理员密码在启动窗口打印**，同时写在 `data/initial-admin.txt`。
+装完自动打开 `http://localhost:8080/app/`。**默认账号 `admin` / 密码 `123456`**（首次登录后请在「系统 → 用户管理」里改掉；需要更强密码可在首次启动前往 `config/application.yml` 配 `system.admin.password` 覆盖）。
 
 首次运行会自动下载 **JRE 17 + MariaDB 11.4 便携版**（约 130MB，走清华/阿里镜像），之后秒起：
 
