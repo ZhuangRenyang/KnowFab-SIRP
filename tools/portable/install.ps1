@@ -1,4 +1,4 @@
-﻿# 一条命令安装并启动（Windows）
+# 一条命令安装并启动（Windows）
 #
 #   powershell -ExecutionPolicy Bypass -Command "irm https://gitee.com/ZhuangRenyang/KnowFab-SIRP/raw/main/tools/portable/install.ps1 | iex"
 #   powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/ZhuangRenyang/KnowFab-SIRP/main/tools/portable/install.ps1 | iex"
