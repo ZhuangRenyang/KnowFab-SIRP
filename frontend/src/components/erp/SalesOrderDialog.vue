@@ -1,25 +1,25 @@
 <template>
   <el-dialog
     v-model="open"
-    :title="orderNo ? '编辑销售订单 ' + orderNo : '新建销售订单'"
+    :title="orderNo ? t('erpSalesOrder.titleEdit', { no: orderNo }) : t('erpSalesOrder.titleNew')"
     width="860px"
     :close-on-click-modal="false"
     @open="onOpen"
   >
     <div class="head-grid">
       <label class="fld">
-        <span>客户</span>
-        <el-select v-model="customerId" placeholder="选择客户" filterable>
+        <span>{{ t('erpSalesOrder.customer') }}</span>
+        <el-select v-model="customerId" :placeholder="t('erpSalesOrder.customerPh')" filterable>
           <el-option v-for="p in customers" :key="p.id" :label="p.name" :value="p.id" />
         </el-select>
       </label>
       <label class="fld">
-        <span>下单日期</span>
+        <span>{{ t('erpSalesOrder.orderDate') }}</span>
         <el-date-picker v-model="orderDate" type="date" value-format="YYYY-MM-DD" style="width:100%" />
       </label>
       <label class="fld">
-        <span>预计发货</span>
-        <el-date-picker v-model="deliverDate" type="date" value-format="YYYY-MM-DD" style="width:100%" placeholder="可不填" />
+        <span>{{ t('erpSalesOrder.deliverDate') }}</span>
+        <el-date-picker v-model="deliverDate" type="date" value-format="YYYY-MM-DD" style="width:100%" :placeholder="t('erpSalesOrder.optional')" />
       </label>
     </div>
 
@@ -27,10 +27,10 @@
       <thead>
         <tr>
           <th style="width:34px">#</th>
-          <th>商品</th>
-          <th style="width:118px">数量</th>
-          <th style="width:126px">单价（元）</th>
-          <th style="width:104px" class="r">金额</th>
+          <th>{{ t('erpSalesOrder.thSku') }}</th>
+          <th style="width:118px">{{ t('erpSalesOrder.thQty') }}</th>
+          <th style="width:126px">{{ t('erpSalesOrder.thPrice') }}</th>
+          <th style="width:104px" class="r">{{ t('erpSalesOrder.thAmount') }}</th>
           <th style="width:40px"></th>
         </tr>
       </thead>
@@ -38,7 +38,7 @@
         <tr v-for="(l, i) in lines" :key="i">
           <td class="idx num">{{ i + 1 }}</td>
           <td>
-            <el-select v-model="l.skuId" placeholder="选商品" filterable class="w100" @change="onSku(l)">
+            <el-select v-model="l.skuId" :placeholder="t('erpSalesOrder.skuPh')" filterable class="w100" @change="onSku(l)">
               <el-option v-for="s in skus" :key="s.id" :label="`${s.code} · ${s.name}`" :value="s.id">
                 <span class="opt-code num">{{ s.code }}</span>
                 <span>{{ s.name }}</span>
@@ -47,7 +47,7 @@
             </el-select>
           </td>
           <td><el-input v-model="l.qty" inputmode="decimal" class="w100 inp-r" placeholder="0" /></td>
-          <td><el-input v-model="l.unitPrice" inputmode="decimal" class="w100 inp-r" placeholder="选填" /></td>
+          <td><el-input v-model="l.unitPrice" inputmode="decimal" class="w100 inp-r" :placeholder="t('erpSalesOrder.pricePh')" /></td>
           <td class="r num">{{ Number(l.qty) > 0 ? money(Number(l.qty) * Number(l.unitPrice || 0)) : '--' }}</td>
           <td>
             <el-button text :icon="Delete" :disabled="lines.length <= 1" @click="lines.splice(i, 1)" />
@@ -57,35 +57,38 @@
     </table>
 
     <div class="lines-foot">
-      <el-button text type="primary" :icon="Plus" @click="addLine">加一行</el-button>
+      <el-button text type="primary" :icon="Plus" @click="addLine">{{ t('erpSalesOrder.addLine') }}</el-button>
       <span class="spacer" />
-      <span class="sum">共 <b class="num">{{ lines.length }}</b> 行 · 数量 <b class="num">{{ qty(totalQty) }}</b> · 金额 <b class="num">¥{{ money(totalAmount) }}</b></span>
+      <span class="sum">{{ t('erpSalesOrder.summary', { n: lines.length, q: qty(totalQty), m: money(totalAmount) }) }}</span>
     </div>
 
-    <el-input v-model="remark" type="textarea" :rows="2" placeholder="备注（选填）：交付要求、合同号等" />
+    <el-input v-model="remark" type="textarea" :rows="2" :placeholder="t('erpSalesOrder.remarkPh')" />
 
     <el-alert
       type="info"
       :closable="false"
       show-icon
       class="tip"
-      title="保存后是草稿，确认后才能发货；订单本身不动库存，发货时才生成出库单（库存不够会被拦）。"
+      :title="t('erpSalesOrder.notice')"
     />
 
     <template #footer>
-      <el-button @click="open = false">取消</el-button>
-      <el-button type="primary" :loading="saving" @click="submit">保存草稿</el-button>
+      <el-button @click="open = false">{{ t('erpSalesOrder.cancel') }}</el-button>
+      <el-button type="primary" :loading="saving" @click="submit">{{ t('erpSalesOrder.saveDraft') }}</el-button>
     </template>
   </el-dialog>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { Delete, Plus } from '@element-plus/icons-vue'
 import { partnerApi, skuApi, type ErpPartner, type ErpSku } from '@/api/erp'
 import { salesApi } from '@/api/sales'
 import { money, qty } from '@/utils/format'
+
+const { t } = useI18n()
 
 const props = defineProps<{ modelValue: boolean; orderNo?: string | null }>()
 const emit = defineEmits<{ 'update:modelValue': [boolean]; saved: [] }>()
@@ -140,7 +143,7 @@ async function onOpen() {
     customers.value = p
     skus.value = s.filter((x) => x.enabled)
   } catch (e: any) {
-    ElMessage.error(e?.message || '基础资料加载失败')
+    ElMessage.error(e?.message || t('erpSalesOrder.baseFailed'))
   }
   if (orderNo.value) {
     try {
@@ -153,18 +156,18 @@ async function onOpen() {
         skuId: l.skuId, qty: Number(l.qty), unitPrice: l.unitPrice ?? null
       }))
     } catch (e: any) {
-      ElMessage.error(e?.message || '订单加载失败')
+      ElMessage.error(e?.message || t('erpSalesOrder.orderFailed'))
     }
   }
 }
 
 function validate(): string | null {
-  if (!customerId.value) return '请选择客户'
+  if (!customerId.value) return t('erpSalesOrder.needCustomer')
   const filled = lines.value.filter((l) => l.skuId)
-  if (!filled.length) return '至少选一个商品'
-  if (filled.some((l) => !(Number(l.qty) > 0))) return '订货数量必须大于 0'
+  if (!filled.length) return t('erpSalesOrder.needSku')
+  if (filled.some((l) => !(Number(l.qty) > 0))) return t('erpSalesOrder.needQty')
   const ids = filled.map((l) => l.skuId)
-  if (new Set(ids).size !== ids.length) return '同一张订单里商品不能重复'
+  if (new Set(ids).size !== ids.length) return t('erpSalesOrder.dupSku')
   return null
 }
 
@@ -193,14 +196,14 @@ async function submit() {
       ? await salesApi.update(orderNo.value, body)
       : await salesApi.create(body)
     if (!res.ok) {
-      ElMessage.error(res.message || '保存失败')
+      ElMessage.error(res.message || t('erpSalesOrder.saveFailed'))
       return
     }
-    ElMessage.success(res.message || '已保存')
+    ElMessage.success(res.message || t('erpSalesOrder.saved'))
     emit('saved')
     open.value = false
   } catch (e: any) {
-    ElMessage.error(e?.message || '保存失败')
+    ElMessage.error(e?.message || t('erpSalesOrder.saveFailed'))
   } finally {
     saving.value = false
   }

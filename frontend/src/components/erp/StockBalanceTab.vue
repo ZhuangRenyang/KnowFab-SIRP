@@ -78,7 +78,7 @@
           <template #default="{ row }"><span class="num">{{ row.billNo }}</span></template>
         </el-table-column>
         <el-table-column :label="t('erpBal.colType')" width="90">
-          <template #default="{ row }"><el-tag size="small" effect="plain">{{ row.typeLabel }}</el-tag></template>
+          <template #default="{ row }"><el-tag size="small" effect="plain">{{ billType(row.type, row.typeLabel) }}</el-tag></template>
         </el-table-column>
         <el-table-column :label="t('erpBal.colQtyShort')" width="100" align="right">
           <template #default="{ row }">
@@ -96,6 +96,7 @@
 
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue'
+import { useErpLabel } from '@/composables/useErpLabel'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { Files, Plus, Refresh, Search } from '@element-plus/icons-vue'
@@ -104,6 +105,7 @@ import { useAuthStore } from '@/stores/auth'
 import { dt, money, qty } from '@/utils/format'
 
 const { t } = useI18n()
+const { billType } = useErpLabel()
 
 const emit = defineEmits<{ 'new-bill': []; stocktake: []; changed: [] }>()
 

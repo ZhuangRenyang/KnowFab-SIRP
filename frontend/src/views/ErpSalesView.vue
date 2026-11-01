@@ -2,70 +2,70 @@
   <div class="sales">
     <div class="kpis">
       <div class="kpi">
-        <span>本月销售额</span>
+        <span>{{ t('erpSales.monthAmount') }}</span>
         <b class="num">¥{{ money(stats?.monthAmount) }}</b>
-        <em>不含已取消订单 · 按下单日期</em>
+        <em>{{ t('erpSales.monthNote') }}</em>
       </div>
       <div class="kpi">
-        <span>待发货订单</span>
-        <b class="num">{{ stats?.openCount || 0 }}<i>单</i></b>
-        <em>已确认 + 部分发货</em>
+        <span>{{ t('erpSales.openOrders') }}</span>
+        <b class="num">{{ stats?.openCount || 0 }}<i>{{ t('erpSales.unitOrder') }}</i></b>
+        <em>{{ t('erpSales.openNote') }}</em>
       </div>
       <div class="kpi">
-        <span>部分发货</span>
-        <b class="num">{{ stats?.partialCount || 0 }}<i>单</i></b>
-        <em>还有货没发完</em>
+        <span>{{ t('erpSales.partial') }}</span>
+        <b class="num">{{ stats?.partialCount || 0 }}<i>{{ t('erpSales.unitOrder') }}</i></b>
+        <em>{{ t('erpSales.partialNote') }}</em>
       </div>
       <div class="kpi" :class="{ hot: (stats?.overdueCount || 0) > 0 }">
-        <span>逾期未发</span>
-        <b class="num">{{ stats?.overdueCount || 0 }}<i>单</i></b>
-        <em>{{ (stats?.overdueCount || 0) > 0 ? '已过预计发货日，去催单' : '没有超期订单' }}</em>
+        <span>{{ t('erpSales.overdue') }}</span>
+        <b class="num">{{ stats?.overdueCount || 0 }}<i>{{ t('erpSales.unitOrder') }}</i></b>
+        <em>{{ (stats?.overdueCount || 0) > 0 ? t('erpSales.overdueNote') : t('erpSales.noOverdue') }}</em>
       </div>
     </div>
 
     <el-card shadow="never">
       <div class="tab-toolbar">
-        <el-select v-model="status" placeholder="全部状态" clearable style="width:130px" @change="reload">
+        <el-select v-model="status" :placeholder="t('erpSales.allStatus')" clearable style="width:130px" @change="reload">
           <el-option v-for="s in statusOptions" :key="s.value" :label="s.label" :value="s.value" />
         </el-select>
-        <el-select v-model="customerId" placeholder="全部客户" clearable filterable style="width:170px" @change="reload">
+        <el-select v-model="customerId" :placeholder="t('erpSales.allCustomers')" clearable filterable style="width:170px" @change="reload">
           <el-option v-for="p in customers" :key="p.id" :label="p.name" :value="p.id" />
         </el-select>
         <el-date-picker
           v-model="range" type="daterange" unlink-panels range-separator="→"
-          start-placeholder="下单起" end-placeholder="下单止"
+          :start-placeholder="t('erpSales.dateFrom')" :end-placeholder="t('erpSales.dateTo')"
           value-format="YYYY-MM-DD" style="width:240px" @change="reload"
         />
         <el-input
-          v-model="kw" placeholder="单号 / 客户 / 备注" clearable :prefix-icon="Search"
+          v-model="kw" :placeholder="t('erpSales.searchPh')" clearable :prefix-icon="Search"
           style="width:200px" @keyup.enter="reload" @clear="reload"
         />
-        <el-button :icon="Refresh" :loading="loading" @click="reload">刷新</el-button>
+        <el-button :icon="Refresh" :loading="loading" @click="reload">{{ t('erpSales.refresh') }}</el-button>
         <span class="spacer" />
-        <el-button v-if="auth.canWrite" type="primary" :icon="Plus" @click="openNew">新建订单</el-button>
+        <el-button v-if="auth.canWrite" type="primary" :icon="Plus" @click="openNew">{{ t('erpSales.newOrder') }}</el-button>
       </div>
 
       <el-table :data="rows" v-loading="loading" stripe @row-dblclick="openDetail">
-        <el-table-column label="订单号" min-width="165">
+        <el-table-column :label="t('erpSales.colOrder')" min-width="165">
           <template #default="{ row }">
             <a class="order-no num" @click="openDetail(row)">{{ row.orderNo }}</a>
           </template>
         </el-table-column>
-        <el-table-column label="客户" min-width="150" show-overflow-tooltip>
+        <el-table-column :label="t('erpSales.colCustomer')" min-width="150" show-overflow-tooltip>
           <template #default="{ row }">{{ row.customerName || '--' }}</template>
         </el-table-column>
-        <el-table-column label="状态" width="96">
+        <el-table-column :label="t('erpSales.colStatus')" width="96">
           <template #default="{ row }">
-            <el-tag size="small" effect="plain" :type="tagOf(row.status)">{{ row.statusLabel }}</el-tag>
+            <el-tag size="small" effect="plain" :type="tagOf(row.status)">{{ salesStatus(row.status, row.statusLabel) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="订货数量" width="100" align="right">
+        <el-table-column :label="t('erpSales.colQty')" width="100" align="right">
           <template #default="{ row }"><span class="num">{{ qty(row.totalQty) }}</span></template>
         </el-table-column>
-        <el-table-column label="金额" width="112" align="right">
+        <el-table-column :label="t('erpSales.colAmount')" width="112" align="right">
           <template #default="{ row }"><span class="num">{{ row.totalAmount ? money(row.totalAmount) : '--' }}</span></template>
         </el-table-column>
-        <el-table-column label="发货进度" width="168">
+        <el-table-column :label="t('erpSales.colProgress')" width="168">
           <template #default="{ row }">
             <div class="prog">
               <el-progress :percentage="Math.min(100, Math.max(0, row.progress))" :stroke-width="6" :show-text="false" />
@@ -73,30 +73,30 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="下单" width="100">
+        <el-table-column :label="t('erpSales.colOrderDate')" width="100">
           <template #default="{ row }"><span class="num dim">{{ dayText(row.orderDate) }}</span></template>
         </el-table-column>
-        <el-table-column label="预计发货" width="104">
+        <el-table-column :label="t('erpSales.colDeliver')" width="104">
           <template #default="{ row }">
             <span class="num" :class="row.overdue ? 'overdue' : 'dim'">{{ row.deliverDate ? dayText(row.deliverDate) : '--' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="196" align="right" class-name="op-col">
+        <el-table-column :label="t('erpSales.colAction')" width="196" align="right" class-name="op-col">
           <template #default="{ row }">
-            <el-button size="small" text type="primary" @click="openDetail(row)">详情</el-button>
+            <el-button size="small" text type="primary" @click="openDetail(row)">{{ t('erpSales.detail') }}</el-button>
             <el-button v-if="auth.canWrite && canShip(row)" size="small" text
-              @click="openShip(row, 'ship')">发货</el-button>
+              @click="openShip(row, 'ship')">{{ t('erpSales.ship') }}</el-button>
             <el-dropdown v-if="auth.canWrite && row.status !== 'CANCELLED'" trigger="click" @command="(c: string) => onCommand(c, row)">
-              <el-button size="small" text>更多<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
+              <el-button size="small" text>{{ t('erpSales.more') }}<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
               <template #dropdown>
                 <el-dropdown-menu>
-                  <el-dropdown-item v-if="row.status === 'DRAFT'" command="edit">编辑</el-dropdown-item>
-                  <el-dropdown-item v-if="row.status === 'DRAFT'" command="confirm">确认订单</el-dropdown-item>
-                  <el-dropdown-item v-if="row.shippedQty > 0" command="return">客户退货</el-dropdown-item>
+                  <el-dropdown-item v-if="row.status === 'DRAFT'" command="edit">{{ t('erpSales.edit') }}</el-dropdown-item>
+                  <el-dropdown-item v-if="row.status === 'DRAFT'" command="confirm">{{ t('erpSales.confirm') }}</el-dropdown-item>
+                  <el-dropdown-item v-if="row.shippedQty > 0" command="return">{{ t('erpSales.customerReturn') }}</el-dropdown-item>
                   <el-dropdown-item
                     v-if="row.status === 'DRAFT' || (row.status === 'CONFIRMED' && row.shippedQty <= 0)"
                     command="cancel" divided
-                  >取消订单</el-dropdown-item>
+                  >{{ t('erpSales.cancelOrder') }}</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
@@ -115,50 +115,50 @@
     <SalesOrderDialog v-model="dlgOpen" :order-no="editingNo" @saved="refresh" />
     <SalesShipDialog v-model="shipOpen" :order-no="shipNo" :mode="shipMode" @saved="refresh" />
 
-    <el-drawer v-model="detailOpen" title="销售订单" size="680px">
+    <el-drawer v-model="detailOpen" :title="t('erpSales.drawerTitle')" size="680px">
       <div v-if="detail" class="detail">
         <div class="d-head">
           <div>
             <div class="d-no num">{{ detail.order.orderNo }}</div>
             <div class="d-sub">
-              <el-tag size="small" effect="plain" :type="tagOf(detail.order.status)">{{ detail.order.statusLabel }}</el-tag>
+              <el-tag size="small" effect="plain" :type="tagOf(detail.order.status)">{{ salesStatus(detail.order.status, detail.order.statusLabel) }}</el-tag>
               <span class="dim">{{ detail.order.customerName }}</span>
             </div>
           </div>
           <div class="d-amount">
-            <span>订单金额</span>
+            <span>{{ t('erpSales.orderAmount') }}</span>
             <b class="num">¥{{ money(detail.order.totalAmount) }}</b>
           </div>
         </div>
 
         <div class="d-prog">
           <el-progress :percentage="Math.min(100, Math.max(0, detail.order.progress))" :stroke-width="8" />
-          <span class="dim">已发货 {{ qty(detail.order.shippedQty) }} / 订货 {{ qty(detail.order.totalQty) }}</span>
+          <span class="dim">{{ t('erpSales.shippedOf', { a: qty(detail.order.shippedQty), b: qty(detail.order.totalQty) }) }}</span>
         </div>
 
         <div class="d-meta">
-          <div><span>下单日期</span><b class="num">{{ dayText(detail.order.orderDate) }}</b></div>
-          <div><span>预计发货</span><b class="num">{{ detail.order.deliverDate ? dayText(detail.order.deliverDate) : '--' }}</b></div>
-          <div><span>制单人</span><b>{{ detail.order.operator || '--' }}</b></div>
-          <div><span>最后更新</span><b class="num">{{ dt(detail.order.updatedAt) }}</b></div>
-          <div class="span2"><span>备注</span><b>{{ detail.order.remark || '--' }}</b></div>
+          <div><span>{{ t('erpSales.fOrderDate') }}</span><b class="num">{{ dayText(detail.order.orderDate) }}</b></div>
+          <div><span>{{ t('erpSales.fDeliver') }}</span><b class="num">{{ detail.order.deliverDate ? dayText(detail.order.deliverDate) : '--' }}</b></div>
+          <div><span>{{ t('erpSales.fOperator') }}</span><b>{{ detail.order.operator || '--' }}</b></div>
+          <div><span>{{ t('erpSales.fUpdated') }}</span><b class="num">{{ dt(detail.order.updatedAt) }}</b></div>
+          <div class="span2"><span>{{ t('erpSales.fRemark') }}</span><b>{{ detail.order.remark || '--' }}</b></div>
         </div>
 
         <div class="ar-box">
           <div class="ar-item">
-            <span>已发货金额（应收）</span>
+            <span>{{ t('erpSales.shippedAmount') }}</span>
             <b class="num">¥{{ money(detail.order.shippedAmount) }}</b>
           </div>
           <div class="ar-item">
-            <span>未发货金额</span>
+            <span>{{ t('erpSales.unshippedAmount') }}</span>
             <b class="num dim">¥{{ money(Number(detail.order.totalAmount) - Number(detail.order.shippedAmount)) }}</b>
           </div>
-          <div class="ar-tip">收款单与账龄在「财务」里做；这里只按发货计价。</div>
+          <div class="ar-tip">{{ t('erpSales.arTip') }}</div>
         </div>
 
         <table class="lines">
           <thead>
-            <tr><th>#</th><th>商品</th><th class="r">订货</th><th class="r">已发货</th><th class="r">未发货</th><th class="r">单价</th><th class="r">金额</th></tr>
+            <tr><th>#</th><th>{{ t('erpSales.thSku') }}</th><th class="r">{{ t('erpSales.thOrdered') }}</th><th class="r">{{ t('erpSales.thShipped') }}</th><th class="r">{{ t('erpSales.thRemaining') }}</th><th class="r">{{ t('erpSales.thPrice') }}</th><th class="r">{{ t('erpSales.thAmount') }}</th></tr>
           </thead>
           <tbody>
             <tr v-for="l in detail.lines" :key="l.itemId">
@@ -174,15 +174,15 @@
         </table>
 
         <div class="sec">
-          <div class="sec-head">发货记录</div>
+          <div class="sec-head">{{ t('erpSales.shipRecords') }}</div>
           <table v-if="detail.bills.length" class="lines">
-            <thead><tr><th>单号</th><th>类型</th><th class="r">数量</th><th class="r">金额</th><th>时间</th><th>操作人</th></tr></thead>
+            <thead><tr><th>{{ t('erpSales.thBill') }}</th><th>{{ t('erpSales.thType') }}</th><th class="r">{{ t('erpSales.thQty') }}</th><th class="r">{{ t('erpSales.thAmount') }}</th><th>{{ t('erpSales.thTime') }}</th><th>{{ t('erpSales.thOperator') }}</th></tr></thead>
             <tbody>
               <tr v-for="b in detail.bills" :key="b.billNo">
                 <td class="num" :class="{ strike: b.voided }">{{ b.billNo }}</td>
                 <td>
-                  <el-tag size="small" effect="plain" :type="b.type === 'SO_RETURN' ? 'danger' : 'warning'">{{ b.typeLabel }}</el-tag>
-                  <el-tag v-if="b.voided" size="small" type="info" effect="plain" class="ml4">已作废</el-tag>
+                  <el-tag size="small" effect="plain" :type="b.type === 'SO_RETURN' ? 'danger' : 'warning'">{{ billType(b.type, b.typeLabel) }}</el-tag>
+                  <el-tag v-if="b.voided" size="small" type="info" effect="plain" class="ml4">{{ t('erpSales.voided') }}</el-tag>
                 </td>
                 <td class="r num" :class="b.qty >= 0 ? 'plus' : 'minus'">{{ b.qty > 0 ? '+' : '' }}{{ qty(b.qty) }}</td>
                 <td class="r num dim">{{ b.amount ? money(b.amount) : '--' }}</td>
@@ -191,14 +191,14 @@
               </tr>
             </tbody>
           </table>
-          <div v-else class="empty">还没有发货记录</div>
+          <div v-else class="empty">{{ t('erpSales.noShips') }}</div>
         </div>
 
         <div v-if="auth.canWrite" class="d-foot">
-          <el-button v-if="detail.order.shippable" type="primary" @click="openShip(detail.order, 'ship')">发货</el-button>
-          <el-button v-if="detail.order.shippedQty > 0" @click="openShip(detail.order, 'return')">客户退货</el-button>
-          <el-button v-if="detail.order.editable" @click="openEdit(detail.order)">编辑</el-button>
-          <el-button v-if="detail.order.editable" type="success" plain @click="doConfirm(detail.order)">确认订单</el-button>
+          <el-button v-if="detail.order.shippable" type="primary" @click="openShip(detail.order, 'ship')">{{ t('erpSales.ship') }}</el-button>
+          <el-button v-if="detail.order.shippedQty > 0" @click="openShip(detail.order, 'return')">{{ t('erpSales.customerReturn') }}</el-button>
+          <el-button v-if="detail.order.editable" @click="openEdit(detail.order)">{{ t('erpSales.edit') }}</el-button>
+          <el-button v-if="detail.order.editable" type="success" plain @click="doConfirm(detail.order)">{{ t('erpSales.confirm') }}</el-button>
         </div>
       </div>
     </el-drawer>
@@ -207,6 +207,8 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { useErpLabel } from '@/composables/useErpLabel'
+import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, Plus, Refresh, Search } from '@element-plus/icons-vue'
 import { partnerApi, type ErpPartner } from '@/api/erp'
@@ -215,6 +217,9 @@ import { useAuthStore } from '@/stores/auth'
 import { dayText, dt, money, qty } from '@/utils/format'
 import SalesOrderDialog from '@/components/erp/SalesOrderDialog.vue'
 import SalesShipDialog from '@/components/erp/SalesShipDialog.vue'
+
+const { t } = useI18n()
+const { billType, salesStatus } = useErpLabel()
 
 const auth = useAuthStore()
 const rows = ref<SalesOrderRow[]>([])
@@ -253,7 +258,7 @@ async function loadStats() {
     stats.value = await salesApi.stats()
     statusOptions.value = stats.value.statusOptions || []
   } catch (e: any) {
-    ElMessage.error(e?.message || '销售统计加载失败')
+    ElMessage.error(e?.message || t('erpSales.statsFailed'))
   }
 }
 
@@ -272,7 +277,7 @@ async function load() {
     rows.value = r.rows || []
     total.value = r.total || 0
   } catch (e: any) {
-    ElMessage.error(e?.message || '销售订单加载失败')
+    ElMessage.error(e?.message || t('erpSales.ordersFailed'))
   } finally {
     loading.value = false
   }
@@ -317,7 +322,7 @@ async function openDetail(row: { orderNo: string }) {
     detail.value = await salesApi.detail(row.orderNo)
     detailOpen.value = true
   } catch (e: any) {
-    ElMessage.error(e?.message || '订单详情加载失败')
+    ElMessage.error(e?.message || t('erpSales.detailFailed'))
   }
 }
 
@@ -331,20 +336,20 @@ async function doConfirm(row: { orderNo: string }) {
   try {
     const r = await salesApi.confirm(row.orderNo)
     if (!r.ok) {
-      ElMessage.error(r.message || '确认失败')
+      ElMessage.error(r.message || t('erpSales.confirmFailed'))
       return
     }
-    ElMessage.success(r.message || '已确认')
+    ElMessage.success(r.message || t('erpSales.confirmed'))
     await refresh()
   } catch (e: any) {
-    ElMessage.error(e?.message || '确认失败')
+    ElMessage.error(e?.message || t('erpSales.confirmFailed'))
   }
 }
 
 async function doCancel(row: { orderNo: string }) {
   try {
-    await ElMessageBox.confirm('取消后订单不可再发货，确定取消？', '取消订单', {
-      type: 'warning', confirmButtonText: '取消订单', cancelButtonText: '返回'
+    await ElMessageBox.confirm(t('erpSales.cancelConfirm'), t('erpSales.cancelTitle'), {
+      type: 'warning', confirmButtonText: t('erpSales.cancelOk'), cancelButtonText: t('erpSales.back')
     })
   } catch {
     return
@@ -352,13 +357,13 @@ async function doCancel(row: { orderNo: string }) {
   try {
     const r = await salesApi.cancel(row.orderNo)
     if (!r.ok) {
-      ElMessage.error(r.message || '取消失败')
+      ElMessage.error(r.message || t('erpSales.cancelFailed'))
       return
     }
-    ElMessage.success(r.message || '已取消')
+    ElMessage.success(r.message || t('erpSales.cancelled'))
     await refresh()
   } catch (e: any) {
-    ElMessage.error(e?.message || '取消失败')
+    ElMessage.error(e?.message || t('erpSales.cancelFailed'))
   }
 }
 

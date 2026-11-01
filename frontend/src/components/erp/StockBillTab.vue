@@ -46,7 +46,7 @@
       </el-table-column>
       <el-table-column :label="t('erpBill.colType')" width="92">
         <template #default="{ row }">
-          <el-tag size="small" effect="plain" :type="tagType(row.type)">{{ row.typeLabel }}</el-tag>
+          <el-tag size="small" effect="plain" :type="tagType(row.type)">{{ billType(row.type, row.typeLabel) }}</el-tag>
         </template>
       </el-table-column>
       <el-table-column :label="t('erpBill.colPartner')" min-width="112" show-overflow-tooltip>
@@ -108,7 +108,7 @@
           <div>
             <div class="d-no num">{{ detail.bill.billNo }}</div>
             <div class="d-sub">
-              <el-tag size="small" effect="plain" :type="tagType(detail.bill.type)">{{ detail.bill.typeLabel }}</el-tag>
+              <el-tag size="small" effect="plain" :type="tagType(detail.bill.type)">{{ billType(detail.bill.type, detail.bill.typeLabel) }}</el-tag>
               <span class="dim">{{ dt(detail.bill.createdAt) }}</span>
               <el-tag v-if="detail.bill.voided" size="small" type="danger" effect="plain">{{ t('erpBill.voided') }}</el-tag>
             </div>
@@ -159,6 +159,7 @@
 
 <script setup lang="ts">
 import { nextTick, onMounted, ref, watch } from 'vue'
+import { useErpLabel } from '@/composables/useErpLabel'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Refresh, Search } from '@element-plus/icons-vue'
@@ -171,6 +172,7 @@ import { useEcharts } from '@/composables/useEcharts'
 import { dt, money, qty } from '@/utils/format'
 
 const { t } = useI18n()
+const { billType } = useErpLabel()
 
 const emit = defineEmits<{ 'new-bill': []; changed: [] }>()
 

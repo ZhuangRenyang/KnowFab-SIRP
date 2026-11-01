@@ -56,7 +56,7 @@
         </el-table-column>
         <el-table-column :label="t('erpPur.colStatus')" width="96">
           <template #default="{ row }">
-            <el-tag size="small" effect="plain" :type="tagOf(row.status)">{{ purStatusText(row) }}</el-tag>
+            <el-tag size="small" effect="plain" :type="tagOf(row.status)">{{ purStatus(row.status, row.statusLabel) }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column :label="t('erpPur.colQty')" width="100" align="right">
@@ -121,7 +121,7 @@
           <div>
             <div class="d-no num">{{ detail.order.orderNo }}</div>
             <div class="d-sub">
-              <el-tag size="small" effect="plain" :type="tagOf(detail.order.status)">{{ detail.order.statusLabel }}</el-tag>
+              <el-tag size="small" effect="plain" :type="tagOf(detail.order.status)">{{ purStatus(detail.order.status, detail.order.statusLabel) }}</el-tag>
               <span class="dim">{{ detail.order.supplierName }}</span>
             </div>
           </div>
@@ -169,7 +169,7 @@
               <tr v-for="b in detail.bills" :key="b.billNo">
                 <td class="num" :class="{ strike: b.voided }">{{ b.billNo }}</td>
                 <td>
-                  <el-tag size="small" effect="plain" :type="b.type === 'PO_RETURN' ? 'danger' : 'success'">{{ b.typeLabel }}</el-tag>
+                  <el-tag size="small" effect="plain" :type="b.type === 'PO_RETURN' ? 'danger' : 'success'">{{ billType(b.type, b.typeLabel) }}</el-tag>
                   <el-tag v-if="b.voided" size="small" type="info" effect="plain" class="ml4">{{ t('erpPur.voided') }}</el-tag>
                 </td>
                 <td class="r num" :class="b.qty >= 0 ? 'plus' : 'minus'">{{ b.qty > 0 ? '+' : '' }}{{ qty(b.qty) }}</td>
@@ -195,6 +195,7 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { useErpLabel } from '@/composables/useErpLabel'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, Plus, Refresh, Search } from '@element-plus/icons-vue'
@@ -206,12 +207,8 @@ import PurchaseOrderDialog from '@/components/erp/PurchaseOrderDialog.vue'
 import PurchaseReceiveDialog from '@/components/erp/PurchaseReceiveDialog.vue'
 
 const { t, te } = useI18n()
+const { billType, purStatus } = useErpLabel()
 
-/* 状态码由后端给出，文案在前端按码翻译；查不到就用后端给的中文 */
-function purStatusText(row: any): string {
-  const k = 'erpPurStatus.' + row?.status
-  return row?.status && te(k) ? t(k) : (row?.statusLabel || '')
-}
 
 const auth = useAuthStore()
 const rows = ref<PurchaseOrderRow[]>([])

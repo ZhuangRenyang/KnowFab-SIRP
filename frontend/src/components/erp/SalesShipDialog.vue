@@ -1,23 +1,23 @@
 <template>
   <el-dialog
     v-model="open"
-    :title="(isReturn ? '客户退货 · ' : '销售发货 · ') + orderNo"
+    :title="isReturn ? t('erpSalesShip.titleReturn', { no: orderNo }) : t('erpSalesShip.titleShip', { no: orderNo })"
     width="800px"
     :close-on-click-modal="false"
     @open="onOpen"
   >
     <div class="bar">
       <label class="fld">
-        <span>发货仓库</span>
-        <el-select v-model="whId" placeholder="选择仓库" filterable style="width:190px" @change="loadStock">
+        <span>{{ t('erpSalesShip.warehouse') }}</span>
+        <el-select v-model="whId" :placeholder="t('erpSalesShip.whPh')" filterable style="width:190px" @change="loadStock">
           <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
         </el-select>
       </label>
       <label class="fld grow">
-        <span>备注</span>
-        <el-input v-model="remark" :placeholder="isReturn ? '选填，如 客户退回不良品' : '选填，如 物流单号'" />
+        <span>{{ t('erpSalesShip.remark') }}</span>
+        <el-input v-model="remark" :placeholder="isReturn ? t('erpSalesShip.remarkReturnPh') : t('erpSalesShip.remarkPh')" />
       </label>
-      <el-button v-if="!isReturn" text type="primary" @click="fillAll">全部发货</el-button>
+      <el-button v-if="!isReturn" text type="primary" @click="fillAll">{{ t('erpSalesShip.fillAll') }}</el-button>
     </div>
 
     <el-alert
@@ -26,7 +26,7 @@
       :closable="false"
       show-icon
       class="tip"
-      title="退货会生成一张正数的销售退货单，货重新进仓；退货数量不能超过已净发货量。"
+      :title="t('erpSalesShip.notice')"
     />
     <el-alert
       v-else-if="shortRows.length"
@@ -34,51 +34,50 @@
       :closable="false"
       show-icon
       class="tip"
-      :title="`有 ${shortRows.length} 行库存不够，发货会被拒绝：请先补货、换仓或减少数量`"
+      :title="t('erpSalesShip.shortWarn', { n: shortRows.length })"
     />
 
     <el-table :data="rows" v-loading="loading" max-height="380" stripe>
-      <el-table-column label="编码" width="108">
+      <el-table-column :label="t('erpSalesShip.colCode')" width="108">
         <template #default="{ row }"><span class="num">{{ row.skuCode }}</span></template>
       </el-table-column>
-      <el-table-column label="商品" min-width="140">
+      <el-table-column :label="t('erpSalesShip.colSku')" min-width="140">
         <template #default="{ row }">
           {{ row.skuName }}<span v-if="row.spec" class="spec">{{ row.spec }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="订货" width="84" align="right">
+      <el-table-column :label="t('erpSalesShip.colOrdered')" width="84" align="right">
         <template #default="{ row }"><span class="num dim">{{ qty(row.qty) }}</span></template>
       </el-table-column>
-      <el-table-column label="已发货" width="84" align="right">
+      <el-table-column :label="t('erpSalesShip.colShipped')" width="84" align="right">
         <template #default="{ row }"><span class="num dim">{{ qty(row.shippedQty) }}</span></template>
       </el-table-column>
-      <el-table-column :label="isReturn ? '可退' : '待发货'" width="84" align="right">
+      <el-table-column :label="isReturn ? t('erpSalesShip.colReturnable') : t('erpSalesShip.colPending')" width="84" align="right">
         <template #default="{ row }">
           <span class="num">{{ qty(isReturn ? row.shippedQty : row.remainQty) }}</span>
         </template>
       </el-table-column>
-      <el-table-column v-if="!isReturn" label="可用库存" width="92" align="right">
+      <el-table-column v-if="!isReturn" :label="t('erpSalesShip.colAvailable')" width="92" align="right">
         <template #default="{ row }">
           <span class="num" :class="Number(row.input) > row.available ? 'minus' : ''">{{ qty(row.available) }}</span>
         </template>
       </el-table-column>
-      <el-table-column :label="isReturn ? '退货数量' : '本次发货'" width="128">
+      <el-table-column :label="isReturn ? t('erpSalesShip.colReturnQty') : t('erpSalesShip.colShipQty')" width="128">
         <template #default="{ row }">
           <el-input v-model="row.input" inputmode="decimal" class="w100 inp-r" placeholder="0" />
         </template>
       </el-table-column>
     </el-table>
-    <el-empty v-if="!rows.length && !loading" description="订单没有可操作的行" />
+    <el-empty v-if="!rows.length && !loading" :description="t('erpSalesShip.noRows')" />
 
     <div class="foot">
-      <span>本次 <b class="num">{{ filledCount }}</b> 项 · 数量 <b class="num">{{ qty(sumQty) }}</b>
-        · 金额 <b class="num">¥{{ money(sumAmount) }}</b></span>
+      <span>{{ t('erpSalesShip.summary', { n: filledCount, q: qty(sumQty), m: money(sumAmount) }) }}</span>
     </div>
 
     <template #footer>
-      <el-button @click="open = false">取消</el-button>
+      <el-button @click="open = false">{{ t('erpSalesShip.cancel') }}</el-button>
       <el-button type="primary" :loading="saving" :disabled="!filledCount || (!isReturn && shortRows.length > 0)" @click="submit">
-        {{ isReturn ? '确认退货' : '确认发货' }}
+        {{ isReturn ? t('erpSalesShip.confirmReturn') : t('erpSalesShip.confirmShip') }}
       </el-button>
     </template>
   </el-dialog>
@@ -86,10 +85,13 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { stockApi, warehouseApi, type ErpWarehouse } from '@/api/erp'
 import { salesApi } from '@/api/sales'
 import { money, qty } from '@/utils/format'
+
+const { t } = useI18n()
 
 const props = defineProps<{ modelValue: boolean; orderNo: string; mode: 'ship' | 'return' }>()
 const emit = defineEmits<{ 'update:modelValue': [boolean]; saved: [] }>()
@@ -156,7 +158,7 @@ async function onOpen() {
     }))
     await loadStock()
   } catch (e: any) {
-    ElMessage.error(e?.message || '订单加载失败')
+    ElMessage.error(e?.message || t('erpSalesShip.orderFailed'))
   } finally {
     loading.value = false
   }
@@ -187,7 +189,7 @@ function fillAll() {
 
 async function submit() {
   if (!whId.value) {
-    ElMessage.warning('请选择发货仓库')
+    ElMessage.warning(t('erpSalesShip.needWh'))
     return
   }
   const lines = filled.value.map((r) => ({
@@ -196,7 +198,7 @@ async function submit() {
     unitPrice: r.unitPrice ?? null
   }))
   if (!lines.length) {
-    ElMessage.warning('请填写数量')
+    ElMessage.warning(t('erpSalesShip.needQty'))
     return
   }
   saving.value = true
@@ -206,14 +208,14 @@ async function submit() {
       ? await salesApi.returnFrom(orderNo.value, body)
       : await salesApi.ship(orderNo.value, body)
     if (!res.ok) {
-      ElMessage.error(res.message || '操作失败')
+      ElMessage.error(res.message || t('erpSalesShip.opFailed'))
       return
     }
-    ElMessage.success(res.message || '已完成')
+    ElMessage.success(res.message || t('erpSalesShip.done'))
     emit('saved')
     open.value = false
   } catch (e: any) {
-    ElMessage.error(e?.message || '操作失败')
+    ElMessage.error(e?.message || t('erpSalesShip.opFailed'))
   } finally {
     saving.value = false
   }

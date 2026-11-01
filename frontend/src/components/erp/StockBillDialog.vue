@@ -1,7 +1,7 @@
 <template>
   <el-dialog
     v-model="open"
-    :title="'新建' + typeLabel"
+    :title="t('erpBillDlg.title', { type: typeLabel })"
     width="820px"
     :close-on-click-modal="false"
     class="bill-dlg"
@@ -16,38 +16,38 @@
 
     <div class="head-grid">
       <label class="fld">
-        <span>{{ isTransfer ? '源仓库（出）' : '仓库' }}</span>
-        <el-select v-model="srcWhId" v-if="isTransfer" placeholder="选择源仓库" filterable>
+        <span>{{ isTransfer ? t('erpBillDlg.srcWh') : t('erpBillDlg.wh') }}</span>
+        <el-select v-model="srcWhId" v-if="isTransfer" :placeholder="t('erpBillDlg.srcWhPh')" filterable>
           <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" :disabled="w.id === whId" />
         </el-select>
-        <el-select v-else v-model="whId" placeholder="选择仓库" filterable>
+        <el-select v-else v-model="whId" :placeholder="t('erpBillDlg.whPh')" filterable>
           <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
         </el-select>
       </label>
 
       <label v-if="isTransfer" class="fld">
-        <span>目标仓库（入）</span>
-        <el-select v-model="whId" placeholder="选择目标仓库" filterable>
+        <span>{{ t('erpBillDlg.dstWh') }}</span>
+        <el-select v-model="whId" :placeholder="t('erpBillDlg.dstWhPh')" filterable>
           <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" :disabled="w.id === srcWhId" />
         </el-select>
       </label>
 
       <label v-if="needPartner" class="fld">
-        <span>{{ type === 'PO_IN' ? '供应商' : '客户' }}</span>
-        <el-select v-model="partnerId" placeholder="可不选" clearable filterable>
+        <span>{{ type === 'PO_IN' ? t('erpBillDlg.supplier') : t('erpBillDlg.customer') }}</span>
+        <el-select v-model="partnerId" :placeholder="t('erpBillDlg.partnerPh')" clearable filterable>
           <el-option v-for="p in partners" :key="p.id" :label="p.name" :value="p.id" />
         </el-select>
       </label>
 
       <label class="fld">
-        <span>单据日期</span>
+        <span>{{ t('erpBillDlg.date') }}</span>
         <el-date-picker v-model="bizDate" type="date" value-format="YYYY-MM-DD" :clearable="false"
           style="width:100%" />
       </label>
 
       <label class="fld">
-        <span>备注</span>
-        <el-input v-model="remark" placeholder="选填，如送货单号 / 用途" />
+        <span>{{ t('erpBillDlg.remark') }}</span>
+        <el-input v-model="remark" :placeholder="t('erpBillDlg.remarkPh')" />
       </label>
     </div>
 
@@ -55,10 +55,10 @@
       <thead>
         <tr>
           <th style="width:36px">#</th>
-          <th>商品</th>
-          <th style="width:120px">数量</th>
-          <th style="width:130px">单价（元）</th>
-          <th style="width:110px" class="r">金额</th>
+          <th>{{ t('erpBillDlg.thSku') }}</th>
+          <th style="width:120px">{{ t('erpBillDlg.thQty') }}</th>
+          <th style="width:130px">{{ t('erpBillDlg.thPrice') }}</th>
+          <th style="width:110px" class="r">{{ t('erpBillDlg.thAmount') }}</th>
           <th style="width:44px"></th>
         </tr>
       </thead>
@@ -66,7 +66,7 @@
         <tr v-for="(l, i) in lines" :key="i">
           <td class="idx num">{{ i + 1 }}</td>
           <td>
-            <el-select v-model="l.skuId" placeholder="选商品" filterable class="sku-sel" @change="onSku(l)">
+            <el-select v-model="l.skuId" :placeholder="t('erpBillDlg.skuPh')" filterable class="sku-sel" @change="onSku(l)">
               <el-option v-for="s in skus" :key="s.id" :label="`${s.code} · ${s.name}`" :value="s.id">
                 <span class="opt-code num">{{ s.code }}</span>
                 <span>{{ s.name }}</span>
@@ -78,7 +78,7 @@
             <el-input v-model="l.qty" inputmode="decimal" placeholder="0" class="w100 inp-r" />
           </td>
           <td>
-            <el-input v-model="l.unitPrice" inputmode="decimal" placeholder="选填" class="w100 inp-r" />
+            <el-input v-model="l.unitPrice" inputmode="decimal" :placeholder="t('erpBillDlg.optionalShort')" class="w100 inp-r" />
           </td>
           <td class="r num">{{ l.skuId && Number(l.qty) > 0 ? money(Number(l.qty) * Number(l.unitPrice || 0)) : '--' }}</td>
           <td>
@@ -89,9 +89,9 @@
     </table>
 
     <div class="lines-foot">
-      <el-button text type="primary" :icon="Plus" @click="addLine">加一行</el-button>
+      <el-button text type="primary" :icon="Plus" @click="addLine">{{ t('erpBillDlg.addLine') }}</el-button>
       <span class="spacer" />
-      <span class="sum">共 <b class="num">{{ lines.length }}</b> 行 · 数量 <b class="num">{{ qty(totalQty) }}</b> · 金额 <b class="num">¥{{ money(totalAmount) }}</b></span>
+      <span class="sum">{{ t('erpBillDlg.summary', { n: lines.length, q: qty(totalQty), m: money(totalAmount) }) }}</span>
     </div>
 
     <el-alert
@@ -100,22 +100,25 @@
       :closable="false"
       show-icon
       class="tip"
-      title="调拨只移动货位，不改变全厂总库存：源仓出多少，目标仓就入多少。"
+      :title="t('erpBillDlg.transferTip')"
     />
 
     <template #footer>
-      <el-button @click="open = false">取消</el-button>
-      <el-button type="primary" :loading="saving" @click="submit">生成单据</el-button>
+      <el-button @click="open = false">{{ t('erpBillDlg.cancel') }}</el-button>
+      <el-button type="primary" :loading="saving" @click="submit">{{ t('erpBillDlg.submit') }}</el-button>
     </template>
   </el-dialog>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { Delete, Plus } from '@element-plus/icons-vue'
 import { partnerApi, skuApi, stockApi, warehouseApi, type ErpPartner, type ErpSku, type ErpWarehouse } from '@/api/erp'
 import { money, qty } from '@/utils/format'
+
+const { t } = useI18n()
 
 const props = defineProps<{ modelValue: boolean; defaultType?: string }>()
 const emit = defineEmits<{ 'update:modelValue': [boolean]; saved: [] }>()
@@ -125,10 +128,12 @@ const open = computed({
   set: (v: boolean) => emit('update:modelValue', v)
 })
 
-const TYPE_LABELS: Record<string, string> = {
-  PO_IN: '采购入库', SO_OUT: '销售出库', OTHER_IN: '其他入库', OTHER_OUT: '其他出库', TRANSFER: '调拨'
+const TYPE_KEY: Record<string, string> = {
+  PO_IN: 'erpBillType.poIn', SO_OUT: 'erpBillType.soOut',
+  OTHER_IN: 'erpBillType.otherIn', OTHER_OUT: 'erpBillType.otherOut', TRANSFER: 'erpBillType.transfer'
 }
-const manualTypes = Object.entries(TYPE_LABELS).map(([value, label]) => ({ value, label }))
+/* 值仍是类型码，只有显示走翻译，切语言即时生效 */
+const manualTypes = computed(() => Object.keys(TYPE_KEY).map((value) => ({ value, label: t(TYPE_KEY[value]) })))
 
 const type = ref('PO_IN')
 const whId = ref<number | null>(null)
@@ -153,14 +158,14 @@ function today(): string {
 
 const isTransfer = computed(() => type.value === 'TRANSFER')
 const needPartner = computed(() => type.value === 'PO_IN' || type.value === 'SO_OUT')
-const typeLabel = computed(() => TYPE_LABELS[type.value] || '单据')
+const typeLabel = computed(() => (TYPE_KEY[type.value] ? t(TYPE_KEY[type.value]) : t('erpBillDlg.fallbackType')))
 const hint = computed(() => {
   switch (type.value) {
-    case 'PO_IN': return '供应商送货进仓，库存增加'
-    case 'SO_OUT': return '发货给客户，库存减少（不能超过现有库存）'
-    case 'OTHER_IN': return '退料、盘盈、赠品等无采购单的入库'
-    case 'OTHER_OUT': return '领用、报废等无销售单的出库'
-    default: return '厂内仓库之间移动货位'
+    case 'PO_IN': return t('erpBillDlg.hintPoIn')
+    case 'SO_OUT': return t('erpBillDlg.hintSoOut')
+    case 'OTHER_IN': return t('erpBillDlg.hintOtherIn')
+    case 'OTHER_OUT': return t('erpBillDlg.hintOtherOut')
+    default: return t('erpBillDlg.hintTransfer')
   }
 })
 
@@ -209,22 +214,22 @@ async function onOpen() {
     whId.value = warehouses.value.find((x) => x.default)?.id ?? warehouses.value[0]?.id ?? null
     srcWhId.value = null
   } catch (e: any) {
-    ElMessage.error(e?.message || '基础资料加载失败')
+    ElMessage.error(e?.message || t('erpBillDlg.baseFailed'))
   }
   onPartnerScope()
 }
 
 function validate(): string | null {
-  if (!whId.value) return isTransfer.value ? '请选择目标仓库' : '请选择仓库'
+  if (!whId.value) return isTransfer.value ? t('erpBillDlg.needDstWh') : t('erpBillDlg.needWh')
   if (isTransfer.value) {
-    if (!srcWhId.value) return '请选择源仓库'
-    if (srcWhId.value === whId.value) return '源仓库和目标仓库不能相同'
+    if (!srcWhId.value) return t('erpBillDlg.needSrcWh')
+    if (srcWhId.value === whId.value) return t('erpBillDlg.sameWh')
   }
   const filled = lines.value.filter((l) => l.skuId)
-  if (!filled.length) return '至少选一个商品'
-  if (filled.some((l) => !(Number(l.qty) > 0))) return '数量必须大于 0'
+  if (!filled.length) return t('erpBillDlg.needSku')
+  if (filled.some((l) => !(Number(l.qty) > 0))) return t('erpBillDlg.needQty')
   const ids = filled.map((l) => l.skuId)
-  if (new Set(ids).size !== ids.length) return '同一张单里商品不能重复'
+  if (new Set(ids).size !== ids.length) return t('erpBillDlg.dupSku')
   return null
 }
 
@@ -252,14 +257,14 @@ async function submit() {
         }))
     })
     if (!res.ok) {
-      ElMessage.error(res.message || '生成失败')
+      ElMessage.error(res.message || t('erpBillDlg.saveFailed'))
       return
     }
-    ElMessage.success(res.message || '单据已生成')
+    ElMessage.success(res.message || t('erpBillDlg.saved'))
     emit('saved')
     open.value = false
   } catch (e: any) {
-    ElMessage.error(e?.message || '生成失败')
+    ElMessage.error(e?.message || t('erpBillDlg.saveFailed'))
   } finally {
     saving.value = false
   }
