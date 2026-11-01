@@ -1,52 +1,52 @@
 <template>
   <div class="panel">
-    <div class="p-head"><h3>数据库结构</h3>
-      <span>结构版本 {{ m?.schemaVersion || '0' }} · 已执行 {{ m?.applied?.length || 0 }} · 待执行 {{ m?.waiting || 0 }}</span></div>
+    <div class="p-head"><h3>{{ t('mig.title') }}</h3>
+      <span>{{ t('mig.summary', { ver: m?.schemaVersion || '0', applied: m?.applied?.length || 0, waiting: m?.waiting || 0 }) }}</span></div>
 
     <el-alert v-if="m?.failedVersion" type="error" :closable="false" class="fail">
       <template #title>
         <div>
-          结构脚本 {{ m.failedVersion }} 执行失败：{{ m.failedError || '未知原因' }}
-          <div class="sub">脚本在 {{ m.dir }}。改好后重启服务会自动重试；被安全校验拦截的脚本不会执行。</div>
+          {{ t('mig.failedPre', { ver: m.failedVersion }) }}{{ m.failedError || t('mig.unknownReason') }}
+          <div class="sub">{{ t('mig.failedSub', { dir: m.dir }) }}</div>
         </div>
       </template>
     </el-alert>
 
-    <div v-if="!m?.files?.length" class="empty">没有待执行的结构脚本。</div>
+    <div v-if="!m?.files?.length" class="empty">{{ t('mig.empty') }}</div>
     <table v-else class="etable">
-      <thead><tr><th>版本</th><th>脚本</th><th class="r">语句</th><th>风险</th><th class="r">操作</th></tr></thead>
+      <thead><tr><th>{{ t('mig.thVersion') }}</th><th>{{ t('mig.thScript') }}</th><th class="r">{{ t('mig.thStatements') }}</th><th>{{ t('mig.thRisk') }}</th><th class="r">{{ t('mig.thAction') }}</th></tr></thead>
       <tbody>
         <tr v-for="f in m.files" :key="f.version">
           <td class="num">{{ f.version }}</td>
           <td>{{ f.file }}</td>
           <td class="r num">{{ f.statements ?? '—' }}</td>
           <td>
-            <span v-if="f.blocked" class="risk bad">会被拒绝：{{ f.blocked }}</span>
+            <span v-if="f.blocked" class="risk bad">{{ t('mig.blocked', { reason: f.blocked }) }}</span>
             <span v-else-if="f.warnings && f.warnings.length" class="risk wn">{{ f.warnings.join('；') }}</span>
             <span v-else class="risk">—</span>
           </td>
-          <td class="r"><el-button text type="primary" size="small" @click="showSql(f.version)">看语句</el-button></td>
+          <td class="r"><el-button text type="primary" size="small" @click="showSql(f.version)">{{ t('mig.viewSql') }}</el-button></td>
         </tr>
       </tbody>
     </table>
 
     <div v-if="sqlView" class="sqlbox">
-      <div class="sqlhead">脚本 {{ sqlView.version }} 的语句（{{ sqlView.list.length }} 条）
-        <el-button text size="small" @click="sqlView = null">收起</el-button></div>
+      <div class="sqlhead">{{ t('mig.sqlHead', { ver: sqlView.version, n: sqlView.list.length }) }}
+        <el-button text size="small" @click="sqlView = null">{{ t('mig.collapse') }}</el-button></div>
       <pre>{{ sqlView.list.map((s, i) => `${i + 1}. ${s}`).join('\n') }}</pre>
     </div>
 
-    <div class="sect">已执行记录</div>
-    <div v-if="!m?.applied?.length" class="empty small">还没有执行过结构脚本。</div>
+    <div class="sect">{{ t('mig.appliedSect') }}</div>
+    <div v-if="!m?.applied?.length" class="empty small">{{ t('mig.appliedEmpty') }}</div>
     <table v-else class="etable">
-      <thead><tr><th>版本</th><th>执行时间</th><th class="r">语句</th><th class="r">尝试</th><th>结果</th></tr></thead>
+      <thead><tr><th>{{ t('mig.thVersion') }}</th><th>{{ t('mig.thAt') }}</th><th class="r">{{ t('mig.thStatements') }}</th><th class="r">{{ t('mig.thAttempts') }}</th><th>{{ t('mig.thResult') }}</th></tr></thead>
       <tbody>
         <tr v-for="a in m.applied" :key="a.version">
           <td class="num">{{ a.version }}</td>
           <td class="dim">{{ a.at }}</td>
           <td class="r num">{{ a.statements }}</td>
           <td class="r num">{{ a.attempts }}</td>
-          <td><span :class="a.ok ? 'ok' : 'bad'">{{ a.ok ? '成功' : (a.error || '失败') }}</span></td>
+          <td><span :class="a.ok ? 'ok' : 'bad'">{{ a.ok ? t('mig.ok') : (a.error || t('mig.fail')) }}</span></td>
         </tr>
       </tbody>
     </table>
@@ -55,15 +55,18 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { systemApi, type MigrationsView } from '@/api/system'
+
+const { t } = useI18n()
 
 const m = ref<MigrationsView | null>(null)
 const sqlView = ref<{ version: string; list: string[] } | null>(null)
 
 async function load() {
   try { m.value = await systemApi.migrations() }
-  catch (e: any) { ElMessage.error(e?.message || '结构信息加载失败') }
+  catch (e: any) { ElMessage.error(e?.message || t('mig.loadFailed')) }
 }
 
 async function showSql(version: string) {
@@ -71,7 +74,7 @@ async function showSql(version: string) {
     const r = await systemApi.migrationSql(version)
     const list = r.statements || r.sql || []
     sqlView.value = { version, list }
-  } catch (e: any) { ElMessage.error(e?.message || '读取脚本失败') }
+  } catch (e: any) { ElMessage.error(e?.message || t('mig.sqlFailed')) }
 }
 
 onMounted(load)

@@ -1,6 +1,6 @@
 <template>
   <div class="panel">
-    <div class="p-head"><h3>系统设置</h3>
+    <div class="p-head"><h3>{{ t('sys.title') }}</h3>
       <span v-if="pendingTip" class="pend">{{ pendingTip }}</span>
     </div>
 
@@ -9,7 +9,7 @@
     <div class="setrow">
       <div class="lab">
         <div class="lt">{{ t('common.language') }}</div>
-        <div class="desc">切换后立即生效，记在本机浏览器；未翻译的文案回退中文。</div>
+        <div class="desc">{{ t('sys.langDesc') }}</div>
       </div>
       <div class="ctl">
         <el-select v-model="lang" style="width:180px">
@@ -18,19 +18,19 @@
       </div>
     </div>
 
-    <div v-if="!groups.length" class="empty">加载中…</div>
+    <div v-if="!groups.length" class="empty">{{ t('sys.loading') }}</div>
     <div v-for="g in groups" :key="g.name" class="group">
-      <div class="gname">{{ g.name }}</div>
+      <div class="gname">{{ tr('group.' + g.name, g.name) }}</div>
       <div v-for="it in g.items" :key="it.key" class="setrow">
         <div class="lab">
-          <div class="lt">{{ it.label }}
-            <span v-if="it.pendingRestart" class="tag wn">未生效</span>
-            <span v-else-if="it.overridden" class="tag ok">已改过</span>
-            <span v-else-if="it.scope !== 'LIVE'" class="tag">重启生效</span>
+          <div class="lt">{{ tr('item.' + it.key.replace(/\./g, '_'), it.label) }}
+            <span v-if="it.pendingRestart" class="tag wn">{{ t('sys.tagPending') }}</span>
+            <span v-else-if="it.overridden" class="tag ok">{{ t('sys.tagChanged') }}</span>
+            <span v-else-if="it.scope !== 'LIVE'" class="tag">{{ t('sys.tagRestart') }}</span>
           </div>
-          <div class="desc">{{ it.desc }}</div>
-          <div class="def">默认：{{ it.defaultValue || '（空）' }}
-            <el-button v-if="it.overridden" text type="primary" size="small" @click="reset(it.key)">恢复默认</el-button>
+          <div class="desc">{{ tr('itemDesc.' + it.key.replace(/\./g, '_'), it.desc) }}</div>
+          <div class="def">{{ t('sys.defaultPrefix') }}{{ it.defaultValue || t('sys.emptyValue') }}
+            <el-button v-if="it.overridden" text type="primary" size="small" @click="reset(it.key)">{{ t('sys.resetDefault') }}</el-button>
           </div>
         </div>
         <div class="ctl">
@@ -38,7 +38,7 @@
                        @update:model-value="(v: boolean) => (edits[it.key] = v ? 'true' : 'false')" />
           <template v-else-if="it.type === 'INT'">
             <el-input v-model="edits[it.key]" type="number" style="width:140px" />
-            <span v-if="it.max > 0" class="range">允许 {{ it.min }} ~ {{ it.max }}</span>
+            <span v-if="it.max > 0" class="range">{{ t('sys.rangeAllowed', { min: it.min, max: it.max }) }}</span>
           </template>
           <el-input v-else-if="it.type === 'AREA'" v-model="edits[it.key]" type="textarea" :rows="3" />
           <el-input v-else v-model="edits[it.key]" />
@@ -47,23 +47,23 @@
     </div>
 
     <div class="savebar">
-      <el-button type="primary" :loading="saving" @click="save">保存设置</el-button>
+      <el-button type="primary" :loading="saving" @click="save">{{ t('sys.save') }}</el-button>
       <span class="msg" :class="{ ok: msgOk }">{{ msg }}</span>
     </div>
 
-    <div class="sect">只能改配置文件（这里故意不给开关）</div>
+    <div class="sect">{{ t('sys.readonlySect') }}</div>
     <div v-for="r in readonly" :key="r.label" class="ro">
-      <b>{{ r.label }}</b><span class="roval num">{{ r.value }}</span>
-      <div class="desc">{{ r.why }}</div>
+      <b>{{ tr('ro.' + r.label, r.label) }}</b><span class="roval num">{{ r.value }}</span>
+      <div class="desc">{{ tr('roWhy.' + r.label, r.why) }}</div>
     </div>
 
-    <div class="sect">演示数据</div>
+    <div class="sect">{{ t('sys.demoSect') }}</div>
     <div class="purge">
       <el-button v-for="p in PURGE_META" :key="p.kind" type="danger" plain size="small" @click="purge(p)">
-        清除{{ p.name.split('（')[0] }}演示数据
+        {{ t('sys.purgeBtn', { name: tr('purge.' + p.kind, p.name.split('（')[0]) }) }}
       </el-button>
     </div>
-    <div class="desc">不可恢复。如果对应演示开关仍开着，下次重启会重新生成，交付前记得关掉并保存。</div>
+    <div class="desc">{{ t('sys.purgeHint') }}</div>
   </div>
 </template>
 
@@ -74,7 +74,13 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { PURGE_META, systemApi, type PurgeKind, type SettingItem } from '@/api/system'
 import { LOCALES, currentLocale, setLocale } from '@/i18n'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
+
+/* 后端下发的设置项名称是中文，这里按 key 查译文；查不到就用原文（不会显示 key） */
+function tr(key: string, fallback: string): string {
+  const full = 'sys.' + key
+  return te(full) ? t(full) : fallback
+}
 
 /* 语言下拉双向绑定到 i18n 的 currentLocale：选完即写入 localStorage 并切换 */
 const lang = computed({
@@ -91,7 +97,7 @@ const msg = ref('')
 const msgOk = ref(false)
 
 const pendingTip = computed(() => pendingRestart.value > 0
-  ? `${pendingRestart.value} 项改了但没生效（等重启）` : '')
+  ? t('sys.pendingTip', { n: pendingRestart.value }) : '')
 
 async function load() {
   try {
@@ -100,7 +106,7 @@ async function load() {
     readonly.value = d.readonly || []
     pendingRestart.value = d.pendingRestart || 0
     for (const g of groups.value) for (const it of g.items) edits[it.key] = it.value ?? ''
-  } catch (e: any) { ElMessage.error(e?.message || '设置加载失败') }
+  } catch (e: any) { ElMessage.error(e?.message || t('sys.loadFailed')) }
 }
 
 async function save() {
@@ -113,37 +119,38 @@ async function save() {
       ((r.warnings || []).length ? '；' + r.warnings.join('；') : '')
     if (r && r.ok !== false) await load()
   } catch (e: any) {
-    msg.value = '保存失败：' + (e?.message || ''); msgOk.value = false
+    msg.value = t('sys.saveFailed') + (e?.message || ''); msgOk.value = false
   } finally { saving.value = false }
 }
 
 async function reset(key: string) {
   try {
     const r = await systemApi.resetSetting(key)
-    if (r && r.ok === false) { ElMessage.error(r.message || '恢复失败'); return }
+    if (r && r.ok === false) { ElMessage.error(r.message || t('sys.resetFailed')); return }
     await load()
-  } catch (e: any) { ElMessage.error(e?.message || '恢复失败') }
+  } catch (e: any) { ElMessage.error(e?.message || t('sys.resetFailed')) }
 }
 
 async function purge(p: { kind: PurgeKind; name: string; switchKey: string }) {
   try {
     await ElMessageBox.confirm(
-      `清除${p.name}的全部演示数据？这个操作不可恢复。如果是客户真实数据，点了就没了。`,
-      '清除演示数据', { type: 'warning', confirmButtonText: '确认清除', cancelButtonText: '取消' })
+      t('sys.purgeConfirmMsg', { name: tr('purge.' + p.kind, p.name) }),
+      t('sys.purgeConfirmTitle'),
+      { type: 'warning', confirmButtonText: t('sys.purgeConfirmBtn'), cancelButtonText: t('sys.cancelBtn') })
   } catch { return }
   try {
     const r = await systemApi.purge(p.kind)
-    if (r && r.ok === false) { ElMessage.error(r.message || '清除失败'); return }
+    if (r && r.ok === false) { ElMessage.error(r.message || t('sys.purgeFailed')); return }
     const sw = groups.value.flatMap((g) => g.items).find((i) => i.key === p.switchKey)
     const stillOn = sw && sw.value === 'true'
     if (stillOn) {
-      ElMessageBox.alert('注意：上面的演示数据开关还开着，下次重启会重新生成。交付前把它关掉并保存。',
-        '已清除', { type: 'warning', confirmButtonText: '知道了' }).catch(() => {})
+      ElMessageBox.alert(t('sys.purgeSwitchWarn'),
+        t('sys.clearedTitle'), { type: 'warning', confirmButtonText: t('sys.okBtn') }).catch(() => {})
     } else {
-      ElMessage.success(r.message || '已清除')
+      ElMessage.success(r.message || t('sys.cleared'))
     }
     await load()
-  } catch (e: any) { ElMessage.error('清除失败：' + (e?.message || '')) }
+  } catch (e: any) { ElMessage.error(t('sys.purgeFailed') + (e?.message || '')) }
 }
 
 onMounted(load)
