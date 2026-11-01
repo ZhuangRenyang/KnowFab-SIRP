@@ -2,6 +2,9 @@
 chcp 65001 >nul
 cd /d "%~dp0"
 echo 正在停止知造 SIRP ...
+rem 先通知守护循环：这是主动停止，别自动拉起（start.ps1 看到这个标记会退出守护）
+if not exist "runtime" mkdir "runtime"
+echo stop > "runtime\stop.flag"
 if exist "runtime\app.pid" (
   for /f %%i in (runtime\app.pid) do taskkill /F /PID %%i >nul 2>&1
   del /q "runtime\app.pid" >nul 2>&1

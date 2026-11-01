@@ -12,10 +12,11 @@
 #                                     指定数据库位置和账号
 #   sudo ./install.sh --db pg --db-pass '...'   用 PostgreSQL（可选）
 #   sudo PORT=9000 ./install.sh --db-pass '...'   换端口
-#   sudo ./install.sh --allow-web-restart --db-pass '...'
-#                                     允许网页上点"应用升级"直接重启服务
-#                                     （只给 devicehub 用户加一条 sudoers：
-#                                      仅允许 systemctl restart device-hub，别的都不行）
+#   sudo ./install.sh --no-web-restart --db-pass '...'
+#                                     关闭"网页一键重启/升级自动重启"
+#                                     （默认开启：只给 devicehub 用户加一条 sudoers，
+#                                      仅允许 systemctl restart device-hub，别的都不行。
+#                                      关掉后网页升级完需要管理员手动重启服务）
 #
 # 这个脚本做四件事：装运行时依赖 → 建用户和目录 → 注册 systemd 服务 → 起服务并自检。
 # 全程可重复执行（幂等），装坏了重跑一遍就行，不会把已有数据覆盖掉。
@@ -25,7 +26,7 @@ APP="device-hub"
 DIR="${DIR:-/opt/device-hub}"
 SVC_USER="${SVC_USER:-devicehub}"
 PORT="${PORT:-8080}"
-ALLOW_WEB_RESTART=0
+ALLOW_WEB_RESTART=1
 DB="mysql"             # mysql（默认）| pg。H2 已废弃（2026-10-27），驱动已从包里移除
 DB_HOST="127.0.0.1"
 DB_PORT=""
@@ -37,6 +38,7 @@ SOURCE="global"         # cn（Gitee，建好后替换地址）| global（GitHub
 while [ $# -gt 0 ]; do
   case "$1" in
     --allow-web-restart) ALLOW_WEB_RESTART=1 ;;
+    --no-web-restart) ALLOW_WEB_RESTART=0 ;;
     --db)        DB="$2"; shift ;;
     --db-host)   DB_HOST="$2"; shift ;;
     --db-port)   DB_PORT="$2"; shift ;;

@@ -35,6 +35,8 @@ $DataDir = Join-Path $Runtime 'data'
 $LogDir = Join-Path $Runtime 'logs'
 $ConfDir = Join-Path $Root 'config'
 $ConfFile = Join-Path $ConfDir 'application.yml'
+$Updates  = Join-Path $Root 'updates'
+$StopFlag = Join-Path $Runtime 'stop.flag'
 
 # 国内镜像（默认清华/阿里云），海外或镜像不可用时改这里
 $JreUrl = 'https://mirrors.tuna.tsinghua.edu.cn/Adoptium/17/jre/x64/windows/OpenJDK17U-jre_x64_windows_hotspot_17.0.20.1_1.zip'
@@ -86,9 +88,10 @@ function Resolve-Java {
   New-Item -ItemType Directory -Force -Path $Runtime | Out-Null
   $zip = Join-Path $Runtime 'jre.zip'
   Download $JreUrl $zip
-  # 用 tar 解压（Win10 自带），并用 .NET API 清理：避免触发企业环境里的批量删除拦截
-  & tar.exe -xf $zip -C $Runtime
-  if ($LASTEXITCODE -ne 0) { Die 'JRE 解压失败（可手动解压并把目录改名为 runtime\jre）' }
+  # 用 PowerShell 原生 Expand-Archive：不能调 tar.exe——客户机装了 Git Bash 时
+  # PATH 里的 MSYS tar 会把 D:\ 当远程主机（"Cannot connect to D: resolve failed"）
+  try { Expand-Archive -Path $zip -DestinationPath $Runtime -Force }
+  catch { Die 'JRE 解压失败（可手动解压并把目录改名为 runtime\jre）' }
   [IO.File]::Delete($zip)
   $inner = Get-ChildItem $Runtime -Directory | Where-Object { $_.Name -like '*jre*' -and $_.Name -ne 'jre' } | Select-Object -First 1
   if ($inner -and -not (Test-Path $JreDir)) { Rename-Item $inner.FullName 'jre' }
@@ -104,8 +107,8 @@ function Ensure-MariaDb {
     New-Item -ItemType Directory -Force -Path $Runtime | Out-Null
     $zip = Join-Path $Runtime 'mariadb.zip'
     Download $DbUrl $zip
-    & tar.exe -xf $zip -C $Runtime
-    if ($LASTEXITCODE -ne 0) { Die 'MariaDB 解压失败' }
+    try { Expand-Archive -Path $zip -DestinationPath $Runtime -Force }
+    catch { Die 'MariaDB 解压失败' }
     [IO.File]::Delete($zip)
     $inner = Get-ChildItem $Runtime -Directory | Where-Object { $_.Name -like 'mariadb-*' } | Select-Object -First 1
     if (-not $inner) { Die 'MariaDB 解压失败' }
@@ -136,6 +139,65 @@ function Ensure-MariaDb {
 
 function Test-Port([int]$p) {
   try { $c = New-Object Net.Sockets.TcpClient; $c.Connect('127.0.0.1', $p); $c.Close(); return $true } catch { return $false }
+}
+
+# ---------- 启动前应用待升级（对应 Linux 的 bin/apply-pending.sh） ----------
+# 原则同 Linux 版：永远不阻断启动。出任何问题都退回旧版本继续跑，原因写进 logs\update.log。
+function Apply-Pending {
+  $pending  = Join-Path $Updates 'pending.env'
+  $rollback = Join-Path $Updates 'rollback.flag'
+  $bak      = Join-Path $Root 'backups'
+  $ulogPath = Join-Path $LogDir 'update.log'
+  New-Item -ItemType Directory -Force -Path $Updates, $bak, $LogDir | Out-Null
+  $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+  $ulog = { param($m) Add-Content -Path $ulogPath -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') [apply-pending] $m" -ErrorAction SilentlyContinue }
+
+  try {
+    # 1) 回滚优先
+    if (Test-Path $rollback) {
+      $last = Get-ChildItem $bak -Directory -Filter 'apply-*' -ErrorAction SilentlyContinue |
+              Sort-Object Name -Descending | Select-Object -First 1
+      if ($last -and (Test-Path (Join-Path $last.FullName 'device-hub.jar'))) {
+        Copy-Item $Jar (Join-Path $bak "rolledback-$stamp.jar") -Force -ErrorAction SilentlyContinue
+        Copy-Item (Join-Path $last.FullName 'device-hub.jar') $Jar -Force
+        & $ulog "已回滚到 $($last.Name)"
+      } else { & $ulog '收到回滚请求，但没有可用备份' }
+      Remove-Item $rollback -Force -ErrorAction SilentlyContinue
+      return
+    }
+
+    # 2) 应用升级
+    if (-not (Test-Path $pending)) { return }
+    $kv = @{}
+    Get-Content $pending -ErrorAction SilentlyContinue | Where-Object { $_.Contains('=') } | ForEach-Object {
+      $i = $_.IndexOf('='); $kv[$_.Substring(0, $i).Trim()] = $_.Substring($i + 1).Trim()
+    }
+    $staged  = $kv['STAGED']
+    $wantSha = $kv['SHA256']
+    $toVer   = $kv['TO_VERSION']
+    $newJar  = if ($staged) { Join-Path $staged 'device-hub.jar' } else { $null }
+    if (-not $newJar -or -not (Test-Path $newJar)) {
+      & $ulog "升级文件缺失（STAGED=$staged），跳过本次升级"
+      Remove-Item $pending -Force -ErrorAction SilentlyContinue
+      return
+    }
+    if ($wantSha) {
+      $sha = (Get-FileHash $newJar -Algorithm SHA256).Hash.ToLower()
+      if ($sha -ne $wantSha.ToLower()) {
+        & $ulog "新 jar 校验不通过（期望 $wantSha，实际 $sha），放弃升级"
+        Remove-Item $pending -Force -ErrorAction SilentlyContinue
+        return
+      }
+    }
+    $bdir = Join-Path $bak "apply-$stamp"
+    New-Item -ItemType Directory -Force -Path $bdir | Out-Null
+    Copy-Item $Jar (Join-Path $bdir 'device-hub.jar') -Force
+    Copy-Item $newJar $Jar -Force
+    Remove-Item $pending -Force -ErrorAction SilentlyContinue
+    & $ulog "已应用 v$toVer（旧版备份在 backups\$stamp）"
+  } catch {
+    & $ulog "应用升级出错（保持当前版本继续启动）：$($_.Exception.Message)"
+  }
 }
 
 function Start-Db {
@@ -208,7 +270,6 @@ function Ensure-Database {
 
 # ---------- 4. 启动应用 ----------
 function Start-App($java) {
-  if (Test-Port $Port) { Die "端口 $Port 已被占用，换一个：start.bat -Port 8090" }
   Say "启动知造 SIRP（端口 $Port）"
   Clear-ProxyEnv
   $log = Join-Path $LogDir 'app.log'
@@ -238,36 +299,56 @@ Write-Host "目录：$Root"
 if (-not (Test-Path $Jar)) { Die "找不到 device-hub.jar（请把本脚本放在解压后的目录里）" }
 New-Item -ItemType Directory -Force -Path $Runtime, $LogDir | Out-Null
 
+if (Test-Port $Port) { Die "端口 $Port 已被占用，换一个：start.bat -Port 8090" }
 $java = Resolve-Java
 Ensure-MariaDb
 Start-Db
 Ensure-Config
 Ensure-Database
+Apply-Pending   # 首次启动前先应用待升级
 $proc = Start-App $java
 
 $url = "http://localhost:$Port/app/"
-# 首次启动会随机生成管理员密码并写到 data\initial-admin.txt，这里读出来告诉用户
-$adminPwd = ''
-$adminFile = Join-Path $Root 'data\initial-admin.txt'
-if (Test-Path $adminFile) {
-  $m = Select-String -Path $adminFile -Pattern '密码：(\S+)' | Select-Object -First 1
-  if ($m) { $adminPwd = $m.Matches[0].Groups[1].Value }
-}
-$loginLine = if ($adminPwd) { "admin / $adminPwd  （首次登录请改密码）" }
-             else { 'admin / 你之前设置的密码（首次密码在 data\initial-admin.txt）' }
 Write-Host ""
 Write-Host "======================================" -ForegroundColor Green
 Write-Host "  已启动： $url" -ForegroundColor Green
-Write-Host "  登录：   $loginLine" -ForegroundColor Green
+Write-Host "  登录：   admin / 123456（首次登录后请立刻改密码）" -ForegroundColor Green
 Write-Host "  数据：   $DataDir" -ForegroundColor Green
-Write-Host "  停止：   关闭本窗口，或运行 stop.bat" -ForegroundColor Green
+Write-Host "  停止：   运行 stop.bat" -ForegroundColor Green
 Write-Host "======================================" -ForegroundColor Green
 if (-not $NoBrowser) { Start-Process $url }
 
 if ($NoWait) { Write-Host "`n-NoWait：启动器退出，服务继续在后台运行"; exit 0 }
-Write-Host "`n日志：runtime\logs\app.log（Ctrl+C 只退出监视，服务仍在后台）"
-try {
-  Wait-Process -Id $proc.Id
-} catch {
-  Write-Host '应用已退出，查看 runtime\logs\app.err.log'
+
+# ---------- 守护循环：崩溃自愈 + 网页升级自动重启 ----------
+Write-Host "`n守护已开启：服务退出后自动拉起（含网页一键升级重启）；彻底停止请运行 stop.bat"
+Write-Host "日志：runtime\logs\app.log"
+$crash = 0
+while ($true) {
+  # 每轮启动前都先应用待升级（幂等：没有 pending/rollback 时立即返回），
+  # 避免上一轮 java 退出瞬间的时序竞态漏掉 pending
+  Apply-Pending
+  $proc = Start-App $java
+  Wait-Process -Id $proc.Id -ErrorAction SilentlyContinue
+  $code = if ($proc.HasExited) { $proc.ExitCode } else { 0 }
+
+  if (Test-Path $StopFlag) {
+    Remove-Item $StopFlag -Force -ErrorAction SilentlyContinue
+    Write-Host "`n已按 stop.bat 停止（守护退出）"
+    break
+  }
+  if (Test-Path (Join-Path $Updates 'pending.env')) {
+    Apply-Pending
+    $crash = 0
+    Write-Host "`n检测到升级包，已应用，正在重启…"
+    continue
+  }
+  if ($code -eq 0) { Write-Host "`n服务正常退出，守护结束"; break }
+  $crash++
+  if ($crash -ge 5) {
+    Write-Host "`n连续崩溃 $crash 次，已停止自动拉起。请查看 runtime\logs\app.err.log" -ForegroundColor Red
+    break
+  }
+  Write-Host "`n服务异常退出（code=$code），5 秒后第 $crash 次自动重启…" -ForegroundColor Yellow
+  Start-Sleep -Seconds 5
 }
