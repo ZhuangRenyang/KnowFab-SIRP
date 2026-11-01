@@ -63,7 +63,7 @@
             <div class="msg">{{ e.message || e.ruleName }}</div>
             <div class="meta">
               <span class="tag" :class="'lv-' + e.level.toLowerCase()">{{ LV[e.level] || e.level }}</span>
-              <span class="tag" :class="'st-' + e.state.toLowerCase()">{{ AST[e.state] || e.state }}</span>
+              <span class="tag" :class="'st-' + e.state.toLowerCase()">{{ t('status.alarm' + e.state.charAt(0) + e.state.slice(1).toLowerCase()) }}</span>
               <span>{{ e.deviceName }} <em>{{ e.deviceCode }}</em></span>
               <span v-if="e.location">{{ e.location }}</span>
               <span>{{ t('alarm.started', { time: fmtTime(e.startedAt) }) }}</span>
