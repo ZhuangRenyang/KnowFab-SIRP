@@ -4,45 +4,45 @@
 
     <div class="toolbar">
       <el-button type="primary" :loading="generating" @click="gen">
-        {{ generating ? '生成中…（调模型可能要十几秒）' : '立即生成' }}
+        {{ generating ? t('digest.generating') : t('digest.generate') }}
       </el-button>
-      <el-button @click="load">刷新</el-button>
+      <el-button @click="load">{{ t('digest.refresh') }}</el-button>
       <span class="spacer"></span>
       <span class="sched">{{ scheduleText }}</span>
-      <el-button v-if="auth.isAdmin" @click="cfgOpen = true">AI 设置</el-button>
+      <el-button v-if="auth.isAdmin" @click="cfgOpen = true">{{ t('digest.settings') }}</el-button>
     </div>
 
     <div class="panel main">
       <div class="p-head">
-        <h3>{{ current ? current.date + ' 设备早报' : '设备早报' }}</h3>
+        <h3>{{ current ? current.date + ' ' + t('digest.titleSuffix') : t('digest.titleSuffix') }}</h3>
         <span v-if="current" class="meta">{{ metaText }}</span>
       </div>
       <div v-if="current" class="body">{{ bodyText }}</div>
       <div v-else class="empty">
-        还没有生成过早报。点「立即生成」出一份昨天的，或者等明天 {{ hhmm }} 自动生成。
+        {{ t('digest.empty', { time: hhmm }) }}
       </div>
       <div v-if="facts" class="facts">
-        <div class="ebox"><span>设备在线</span><b class="num">{{ facts.online }}/{{ facts.deviceTotal }}</b></div>
-        <div class="ebox"><span>昨日产量</span><b class="num">{{ facts.output }}<i>件</i></b>
-          <em>前 7 日均 {{ facts.outputAvg7 }}</em></div>
-        <div class="ebox"><span>停机</span><b class="num">{{ facts.stopHours }}<i>h</i></b></div>
-        <div class="ebox"><span>昨日电费</span><b class="num">{{ facts.cost }}<i>元</i></b></div>
-        <div class="ebox"><span>未处理报警</span><b class="num">{{ facts.alarmOpen }}<i>条</i></b>
-          <em>严重 {{ facts.alarmCriticalOpen }}</em></div>
-        <div class="ebox"><span>本月需量</span><b class="num">{{ facts.demandPeak }}<i>kW</i></b>
-          <em>合同 {{ facts.contractDemand }}</em></div>
+        <div class="ebox"><span>{{ t('digest.online') }}</span><b class="num">{{ facts.online }}/{{ facts.deviceTotal }}</b></div>
+        <div class="ebox"><span>{{ t('digest.output') }}</span><b class="num">{{ facts.output }}<i>{{ t('digest.unitPiece') }}</i></b>
+          <em>{{ t('digest.avg7', { v: facts.outputAvg7 }) }}</em></div>
+        <div class="ebox"><span>{{ t('digest.stop') }}</span><b class="num">{{ facts.stopHours }}<i>h</i></b></div>
+        <div class="ebox"><span>{{ t('digest.cost') }}</span><b class="num">{{ facts.cost }}<i>{{ t('digest.unitYuan') }}</i></b></div>
+        <div class="ebox"><span>{{ t('digest.alarmOpen') }}</span><b class="num">{{ facts.alarmOpen }}<i>{{ t('digest.unitItem') }}</i></b>
+          <em>{{ t('digest.critical', { n: facts.alarmCriticalOpen }) }}</em></div>
+        <div class="ebox"><span>{{ t('digest.demand') }}</span><b class="num">{{ facts.demandPeak }}<i>kW</i></b>
+          <em>{{ t('digest.contract', { n: facts.contractDemand }) }}</em></div>
       </div>
     </div>
 
     <div class="panel">
-      <div class="p-head"><h3>历史早报</h3><span>点一行查看</span></div>
-      <div v-if="!history.length" class="empty">还没有历史早报</div>
+      <div class="p-head"><h3>{{ t('digest.history') }}</h3><span>{{ t('digest.historyHint') }}</span></div>
+      <div v-if="!history.length" class="empty">{{ t('digest.historyEmpty') }}</div>
       <table v-else class="etable">
-        <thead><tr><th>日期</th><th>来源</th><th>内容</th><th style="text-align:right">生成时间</th></tr></thead>
+        <thead><tr><th>{{ t('digest.thDate') }}</th><th>{{ t('digest.thSource') }}</th><th>{{ t('digest.thContent') }}</th><th style="text-align:right">{{ t('digest.thAt') }}</th></tr></thead>
         <tbody>
           <tr v-for="d in history" :key="d.date" class="hrow" @click="show(d)">
             <td>{{ d.date }}</td>
-            <td>{{ d.source === 'AI' ? 'AI' : '统计' }}</td>
+            <td>{{ d.source === 'AI' ? 'AI' : t('digest.srcStat') }}</td>
             <td class="clip">{{ (d.content || '').replace(/\n/g, ' ').slice(0, 80) }}</td>
             <td class="num ct">{{ d.createdText || '' }}</td>
           </tr>
@@ -56,10 +56,13 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import { aiApi, type DigestEntry, type DigestFacts } from '@/api/ai'
 import { usePolling } from '@/composables/usePolling'
+
+const { t } = useI18n()
 
 const auth = useAuthStore()
 const data = ref<{ enabled: boolean; hour: number; minute: number; nextRun?: string } | null>(null)
@@ -73,28 +76,28 @@ const facts = computed<DigestFacts | null>(() => current.value?.facts || null)
 const scheduleText = computed(() => {
   if (!data.value) return ''
   const base = data.value.enabled
-    ? `每天 ${String(data.value.hour).padStart(2, '0')}:${String(data.value.minute).padStart(2, '0')} 自动生成`
-    : 'AI 未启用（走本地模板）'
-  return `${base} · 下次 ${data.value.nextRun || '--'}`
+    ? t('digest.everyDay', { time: String(data.value.hour).padStart(2, '0') + ':' + String(data.value.minute).padStart(2, '0') })
+    : t('digest.aiOffLocal')
+  return base + t('digest.nextRun', { time: data.value.nextRun || '--' })
 })
 const warn = computed(() => {
   if (warnings.value.length) return warnings.value.join('；')
   if (data.value && !data.value.enabled) {
-    return 'AI 未启用，早报用系统统计生成（数字准，但没有分析和建议）。'
-      + (auth.isAdmin ? '点右上角「AI 设置」填一个 API Key 就能开。' : '让管理员在「AI 设置」里开启。')
+    return t('digest.offTip')
+      + (auth.isAdmin ? t('digest.offTipAdmin') : t('digest.offTipUser'))
   }
   return ''
 })
 const metaText = computed(() => {
   const d = current.value
   if (!d) return ''
-  const src = d.source === 'AI' ? `AI 生成 · ${d.model || ''}` : '系统统计（未调用 AI）'
+  const src = d.source === 'AI' ? t('digest.srcAi', { model: d.model || '' }) : t('digest.srcLocal')
   return src + (d.tokens ? ` · ${d.tokens} tokens` : '') + ` · ${d.createdText || ''}`
 })
 const bodyText = computed(() => {
   const d = current.value
   if (!d) return ''
-  return (d.content || '') + (d.source === 'AI' ? '\n\n（以上由 AI 归纳，数字以下方统计为准）' : '')
+  return (d.content || '') + (d.source === 'AI' ? t('digest.aiFooter') : '')
 })
 const hhmm = computed(() =>
   data.value ? `${String(data.value.hour).padStart(2, '0')}:${String(data.value.minute).padStart(2, '0')}` : '--')
@@ -106,7 +109,7 @@ async function load() {
     warnings.value = d.warnings || []
     current.value = d.digest || null
     history.value = d.history || []
-  } catch (e: any) { console.error('早报加载失败', e) }
+  } catch (e: any) { console.error(t('digest.loadFailed'), e) }
 }
 
 function show(d: DigestEntry) {
@@ -118,14 +121,14 @@ async function gen() {
   generating.value = true
   try {
     const r = await aiApi.generate()
-    if (!r.ok) { ElMessage.error(r.message || '生成失败'); return }
+    if (!r.ok) { ElMessage.error(r.message || t('digest.genFailed')); return }
     if (r.degraded) {
-      ElMessageBox.alert('AI 调用失败，已退回本地统计：' + (r.error || '未知原因'),
-        '已降级', { type: 'warning', confirmButtonText: '知道了' }).catch(() => {})
+      ElMessageBox.alert(t('digest.degradedMsg') + (r.error || t('digest.unknownReason')),
+        t('digest.degradedTitle'), { type: 'warning', confirmButtonText: t('digest.okBtn') }).catch(() => {})
     }
     await load()
   } catch (e: any) {
-    ElMessage.error('生成失败：' + (e?.message || ''))
+    ElMessage.error(t('digest.genFailed') + '：' + (e?.message || ''))
   } finally { generating.value = false }
 }
 
