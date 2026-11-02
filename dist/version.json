@@ -1,6 +1,6 @@
 {
-  "version": "1.0.14",
-  "notes": "新增月报导出：报表页选月份一键导出「生产月报」，一个 xlsx 含月度汇总、每日明细、设备月产量、电费四个 sheet。电费拆电度（尖峰/高峰/平段/低谷分时）与基本（需量/容量自动取更省），力调电费不编数字、提示按供电局结算单核对；当月报截至今日，历史月份出整月；单位产品电耗/电费一并算出",
-  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.14/device-hub-1.0.14-update.zip",
-  "sha256": "23e7cc7ef4e38eb9f4a47fae9d0fadff67b1cb5104ea3c85772b4fab518d5bfb"
+  "version": "1.0.15",
+  "notes": "新增数据补录：断网、抄表漏了、设备接入前那几天，可在报表页「数据补录」手工补电量与产量（选设备+日期范围，多天自动按天分摊）；补录单独存表，报表和导出单列「其中补录」，不与设备采集混淆；支持撤销，撤销后立即从统计移除、记录仍可查；补录电费按当天分时电价摊算并留快照",
+  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.15/device-hub-1.0.15-update.zip",
+  "sha256": "dbe5e8b63c264d578b6131e08d285b56e380952c9e34e4b721622ceed1ab082d"
 }
