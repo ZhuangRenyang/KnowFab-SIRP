@@ -69,6 +69,10 @@ def login():
 
 SKUS = [
     # code, name, category, unit, spec, purchase, sale, min, max
+    # P-001 / P-002 也要在：销售流程会引用。清单漏了的话，
+    # 脚本在全新库上跑到销售那步就 KeyError（老库能跑是因为早期版本灌过）。
+    ("P-001", "六角螺栓 M8", "成品", "件", "", 1.2, 2.5, 1000, None),
+    ("P-002", "法兰盘 DN50", "成品", "件", "DN50 PN16", 8.5, 15.0, 100, 5000),
     ("P-101", "减速机箱体", "成品", "件", "JZQ-350", 320, 580, 20, 200),
     ("P-102", "电机端盖", "成品", "件", "Y2-132", 45, 95, 50, 500),
     ("P-103", "齿轮轴", "成品", "件", "M3-Z24", 68, 140, 30, 300),
@@ -79,14 +83,24 @@ SKUS = [
 ]
 
 WAREHOUSES = [
+    # WH-01 / WH-02 也要在清单里：采购入库、成品出库都要引用它们。
+    # 以前清单里只有 WH-03，脚本在**全新库**上跑到入库那步就 KeyError。
+    ("WH-01", "成品一仓", "", ""),
+    ("WH-02", "半成品仓", "李四", ""),
     ("WH-03", "原材料仓", "王仓管", "13700000003"),
 ]
 
 PARTNERS = [
+    # 这三个（GYS-01 / KH-01 / C-001）是下面采购、销售流程要引用的：
+    # 漏了任何一条，脚本跑到一半会 KeyError，客户在**全新库**上跑演示数据
+    # 就会崩在中途（老库能跑是因为早期版本灌过，早期版本有这几条）。
+    ("GYS-01", "鼎盛五金", "SUPPLIER", "王经理", "13800000000"),
     ("GYS-02", "精工铸造", "SUPPLIER", "周经理", "13700000002"),
     ("GYS-03", "华远轴承", "SUPPLIER", "陈经理", "13700000004"),
+    ("KH-01", "恒昌机械", "CUSTOMER", "李工", "13900000000"),
     ("KH-02", "三一重工配套", "CUSTOMER", "刘工", "13800000002"),
     ("KH-03", "江淮农机", "CUSTOMER", "赵工", "13800000004"),
+    ("C-001", "某某机械厂", "CUSTOMER", "王工", ""),
 ]
 
 
@@ -689,6 +703,34 @@ def report(s, w):
             fs["arPre"], fs["apPre"], fs["monthIn"], fs["monthOut"]))
 
 
+def opening_stock(s, w):
+    """
+    期初备货：先把成品仓放够货，再走销售流程。
+    <p>
+    为什么要这一步：销售流程要从成品仓出 P-001 200 件、P-002 60 件、P-101 10 件，
+    而采购流程只往成品仓进 P-101 30 件。不备货的话，**全新库**上跑演示数据
+    会在销售那步报「库存不足」——老库能跑是因为早期版本灌过货，库里本来就剩。
+    """
+    global skipped
+    tag = "演示-期初备货"
+    if bill_exists(tag):
+        skipped += 1
+        return
+    st, r = call("POST", "/api/erp/stock/bills", {
+        "type": "OTHER_IN", "warehouseId": w["WH-01"],
+        "remark": "【%s】成品仓期初备货" % tag,
+        "lines": [
+            {"skuId": s["P-001"], "qty": 300, "unitPrice": 2.5},
+            {"skuId": s["P-002"], "qty": 120, "unitPrice": 15},
+            {"skuId": s["P-101"], "qty": 60, "unitPrice": 580},
+        ],
+    })
+    if not r.get("ok"):
+        fail("期初备货失败：%s" % r.get("message"))
+    created["bill"] += 1
+    ok("期初备货 %s（成品一仓：六角螺栓 300 / 法兰盘 120 / 减速机箱体 60）" % r["billNo"])
+
+
 def main():
     global BASE, USER, PASS
     ap = argparse.ArgumentParser()
@@ -703,6 +745,7 @@ def main():
     ensure_master()
     s, w, p = ids()
     purchase_flow(s, w, p)
+    opening_stock(s, w)        # 备货要在销售流程前面：销售要从成品仓出货
     sales_flow(s, w, p)
     stock_flow(s, w)
     history_flow(s, w, p)
