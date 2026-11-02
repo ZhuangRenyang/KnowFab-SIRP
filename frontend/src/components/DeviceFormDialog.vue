@@ -137,12 +137,16 @@
         <el-button size="small" @click="useTpl('light')">{{ t('devForm.tplLight') }}</el-button>
         <el-button size="small" @click="useTpl('diCounter')">{{ t('devForm.tplDi') }}</el-button>
         <el-button size="small" @click="useTpl('energy')">{{ t('devForm.tplEnergy') }}</el-button>
+        <el-button size="small" @click="useTpl('opcua')">{{ t('devForm.tplOpcua') }}</el-button>
         <el-button size="small" @click="useTpl('relay')">{{ t('devForm.tplRelay') }}</el-button>
         <el-button size="small" @click="useTpl('empty')">{{ t('devForm.tplEmpty') }}</el-button>
       </div>
       <div class="hint" style="margin-bottom:6px">
         {{ t('devForm.writableHintA') }} <code>"writable": true</code>{{ t('devForm.writableHintB') }}
         <b>{{ t('devForm.writableHintC') }}</b>{{ t('devForm.writableHintD') }}
+      </div>
+      <div v-if="isOpcUa" class="hint" style="margin-bottom:6px;color:var(--accent)">
+        {{ t('devForm.opcuaHint') }}
       </div>
       <el-input
         v-model="f.pointsText" type="textarea" :rows="12"
@@ -205,14 +209,16 @@ const f = reactive({
    此函数 2026-11-01 补上——第一版基座就只有模板引用没有实现） */
 function onProto() {
   if (f.protocol === 'modbus-tcp' || f.protocol === 'modbus-rtu-tcp') f.port = 502
+  if (f.protocol === 'opcua') f.port = 4840
 }
 
 const skuList = ref<any[]>([])
 const whList = ref<any[]>([])
 
-const isNet = computed(() => f.protocol === 'modbus-tcp' || f.protocol === 'modbus-rtu-tcp')
+const isNet = computed(() => f.protocol === 'modbus-tcp' || f.protocol === 'modbus-rtu-tcp' || f.protocol === 'opcua')
 const isRtuTcp = computed(() => f.protocol === 'modbus-rtu-tcp')
 const isRtu = computed(() => f.protocol === 'modbus-rtu')
+const isOpcUa = computed(() => f.protocol === 'opcua')
 
 /* 设备模板：内置（随版本） + 我的模板（落库）。选中即预填通信参数 + 点表 */
 const tplId = ref('')

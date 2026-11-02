@@ -47,8 +47,9 @@ can start it with one command.
 - **One command, zero prerequisites.** Bundled Java 17 + MariaDB; a single line on Windows or Linux.
   No Docker, no pre-installed database, and the browser opens by itself. Everything lives in one
   directory — **copy it as a backup, delete it to uninstall**.
-- **Old machines can count too.** Three wiring paths: Ethernet Modbus TCP, RS-485 pass-through, and
-  relay + limit-switch pulse counting. A twenty-year-old press with no network port still gets one
+- **Old machines can count too.** Four wiring paths: Ethernet Modbus TCP, **OPC UA** (most new PLCs
+  ship it, e.g. S7-1500 / Inovance / Omron NX), RS-485 pass-through, and relay + limit-switch
+  pulse counting. A twenty-year-old press with no network port still gets one
   count per part.
 - **Output becomes inventory automatically.** Every count posts into finished-goods stock — nobody
   scans anything. Purchasing / inventory / sales / finance share one ledger, so "the books don't
@@ -158,8 +159,8 @@ three walls:
 3. **Machine data and business data live in two worlds** — output on the floor, inventory in a
    spreadsheet, and the books never reconcile.
 
-KnowFab SIRP's answer: **three integration paths cover machines of any vintage** (direct Ethernet,
-RS-485 pass-through, relay + limit-switch counting). Every finished part posts into stock
+KnowFab SIRP's answer: **four integration paths cover machines of any vintage** (direct Ethernet
+Modbus TCP, OPC UA, RS-485 pass-through, relay + limit-switch counting). Every finished part posts into stock
 automatically, purchasing–inventory–sales–finance share one ledger, and the data never leaves your
 server room.
 

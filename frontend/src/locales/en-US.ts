@@ -607,12 +607,14 @@ export default {
     tplLight: 'Stack light (dry contact)',
     tplDi: 'DI counter (legacy)',
     tplEnergy: 'Energy meter',
+    tplOpcua: 'OPC UA sample',
     tplRelay: 'Relay / remote control',
     tplEmpty: 'Clear',
     writableHintA: 'To control remotely, add',
     writableHintB: ' to the point. Only coils (functionCode 1) and holding registers (functionCode 3) are supported.',
     writableHintC: 'Without it the point stays read-only',
     writableHintD: ' — the system never writes to a device by default.',
+    opcuaHint: 'OPC UA points address nodes by nodeId (same notation as UaExpert), e.g. ns=2;s=Machine1.Output. The ns index differs per vendor (S7-1500 usually ns=3, Inovance usually ns=4) — use what you see on site.',
     pointsPh: 'Point table (JSON array)',
     cancel: 'Cancel',
     save: 'Save'
@@ -622,6 +624,7 @@ export default {
     modbusTcp: 'modbus-tcp (Ethernet · standard Modbus TCP)',
     rtuTcp: 'modbus-rtu-tcp (serial converter passthrough)',
     rtu: 'modbus-rtu (local RS-485 / serial)',
+    opcua: 'opcua (OPC UA: S7-1500 / Inovance / Omron NX...)',
     sim: 'sim (simulated, works without hardware)'
   },
   brand: {

@@ -611,12 +611,14 @@ export default {
     tplLight: '三色灯干接点',
     tplDi: 'DI 计数（老设备）',
     tplEnergy: '电表',
+    tplOpcua: 'OPC UA 示例',
     tplRelay: '继电器 / 远程控制',
     tplEmpty: '清空',
     writableHintA: '要远程控制：给对应点位加',
     writableHintB: '，只支持线圈（functionCode 1）与保持寄存器（functionCode 3）。',
     writableHintC: '不勾就是只读',
     writableHintD: '——系统默认永远不会写设备。',
+    opcuaHint: 'OPC UA 点表用 nodeId 定位节点（写法同 UaExpert），如 ns=2;s=Machine1.Output；ns 索引各品牌不同（S7-1500 常见 ns=3，汇川常见 ns=4），请以现场看到的为准。',
     pointsPh: '点表 JSON 数组',
     cancel: '取消',
     save: '保存'
@@ -626,6 +628,7 @@ export default {
     modbusTcp: 'modbus-tcp（网口 · 标准 Modbus TCP）',
     rtuTcp: 'modbus-rtu-tcp（串口服务器透传）',
     rtu: 'modbus-rtu（本地 485 / 串口）',
+    opcua: 'opcua（OPC UA，S7-1500/汇川/欧姆龙等）',
     sim: 'sim（模拟，没硬件也能试）'
   },
   brand: {

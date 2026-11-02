@@ -15,6 +15,14 @@ public class PointDef {
     /** 寄存器地址（Modbus 从 0 开始） */
     private int address;
 
+    /**
+     * OPC UA 节点标识（该协议专用，Modbus 忽略）。
+     * 支持 NodeId 字符串写法：{@code ns=2;s=Machine1.Output}、{@code ns=4;i=1234}。
+     * 带命名空间索引 ns 的一定要写全——不同品牌 PLC 的默认 ns 不一样
+     * （西门子 S7-1500 常见 ns=3，汇川常见 ns=4），写错读不到值。
+     */
+    private String nodeId;
+
     /** 功能码：1=线圈 2=离散输入 3=保持寄存器 4=输入寄存器 */
     private int functionCode = 3;
 
@@ -104,6 +112,14 @@ public class PointDef {
 
     public void setAddress(int address) {
         this.address = address;
+    }
+
+    public String getNodeId() {
+        return nodeId;
+    }
+
+    public void setNodeId(String nodeId) {
+        this.nodeId = nodeId;
     }
 
     public int getFunctionCode() {

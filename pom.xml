@@ -65,6 +65,16 @@
             <version>2.10.4</version>
         </dependency>
 
+        <!-- OPC UA 客户端（Eclipse Milo）。为什么用它：西门子 S7-1500、汇川、
+             欧姆龙 NX 等新 PLC 默认带 OPC UA Server，是比 Modbus 更现代的统一入口；
+             纯 Java、无原生依赖，和"一个安装包"的交付方式兼容。
+             版本锁 0.6.x：API 稳定，Netty 4.1 与 Spring Boot 3.2 兼容。 -->
+        <dependency>
+            <groupId>org.eclipse.milo</groupId>
+            <artifactId>sdk-client</artifactId>
+            <version>0.6.11</version>
+        </dependency>
+
         <!-- 报表导出 xlsx。选 POI 而不是手搓 XML：厂里要打印、要贴进月报，
              格式错了客户第一眼就否掉。 -->
         <dependency>
