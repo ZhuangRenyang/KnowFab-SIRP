@@ -52,10 +52,11 @@ public class DataInitializer implements ApplicationRunner {
         }
         log.info("首次启动，写入示例设备（模拟数据，不接硬件也能跑）");
 
-        repo.save(build("CNC-01", "一号加工中心", "一车间 A 区", "sim", 1000, sampleCnc()));
-        repo.save(build("INJ-01", "一号注塑机", "二车间 B 区", "sim", 1500, sampleInjection()));
-        repo.save(build("PRESS-01", "315T 冲压机", "一车间 C 区", "sim", 800, samplePress()));
-        repo.save(build("METER-01", "一车间总电表", "配电房", "sim", 2000, sampleMeter()));
+        repo.save(build("CNC-01", "一号加工中心", "一车间 A 区", "sim", 1000, 48d, sampleCnc()));
+        repo.save(build("INJ-01", "一号注塑机", "二车间 B 区", "sim", 1500, 60d, sampleInjection()));
+        repo.save(build("PRESS-01", "315T 冲压机", "一车间 C 区", "sim", 800, 70d, samplePress()));
+        // 总电表没有产量，理想节拍也没意义 → 传 null
+        repo.save(build("METER-01", "一车间总电表", "配电房", "sim", 2000, null, sampleMeter()));
     }
 
     /** 老库升级：模拟设备没有电量点就补上，让能耗页有数据可看 */
@@ -108,7 +109,7 @@ public class DataInitializer implements ApplicationRunner {
         if (!allSim || hasMeter) {
             return;
         }
-        repo.save(build("METER-01", "一车间总电表", "配电房", "sim", 2000, sampleMeter()));
+        repo.save(build("METER-01", "一车间总电表", "配电房", "sim", 2000, null, sampleMeter()));
         log.info("演示环境已补充「METER-01 一车间总电表」——这是现场最省事的接入方式："
                 + "不改机器，只在电控柜里加一块多功能电表，走 485 读电量");
     }
@@ -131,8 +132,18 @@ public class DataInitializer implements ApplicationRunner {
         return list;
     }
 
+    /**
+     * 建一台示例设备。
+     *
+     * @param idealCycleSec 理想节拍（秒/件）。DH-15 的 OEE 性能因子要用它。
+     *        示例设备给的是按模拟器实际节拍取的整数（略低于实际值，
+     *        这样演示里性能率落在 98~99%，不出现可疑的 100% 或 >100%），
+     *        不给的话演示环境里 OEE 三项全是「--」，看不出这东西能干什么。
+     *        客户自己的机器按「状态最好时加工一件要多少秒」填。
+     */
     private DeviceEntity build(String code, String name, String location,
-                               String protocol, int pollMs, List<PointDef> points) throws Exception {
+                               String protocol, int pollMs, Double idealCycleSec,
+                               List<PointDef> points) throws Exception {
         DeviceEntity d = new DeviceEntity();
         d.setCode(code);
         d.setName(name);
@@ -143,6 +154,7 @@ public class DataInitializer implements ApplicationRunner {
         d.setUnitId(1);
         d.setApiKey("key-" + code.toLowerCase());
         d.setPointsJson(mapper.writeValueAsString(points));
+        d.setIdealCycleSec(idealCycleSec);
         return d;
     }
 

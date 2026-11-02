@@ -6,6 +6,8 @@ package com.factory.hub.driver;
 public class DriverContext {
 
     private String host = "127.0.0.1";
+    /** 设备编码。模拟器要靠它算这台机器的产量速率（跟播种的演示数据用同一套公式） */
+    private String code = "";
     private int port = 502;
     private String serialPort = "COM3";
     private int baudRate = 9600;
@@ -22,6 +24,14 @@ public class DriverContext {
 
     public void setHost(String host) {
         this.host = host;
+    }
+
+    public String getCode() {
+        return code;
+    }
+
+    public void setCode(String code) {
+        this.code = code;
     }
 
     public int getPort() {

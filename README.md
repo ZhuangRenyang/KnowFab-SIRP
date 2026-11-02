@@ -208,6 +208,8 @@ python tools/smoke-all.py    # 99 API smoke checks — all green means the insta
 | ![finance](docs/screenshots/finance.png) | ![report](docs/screenshots/report.png) |
 | **Machine output (day / month / year / all)** | **Stock documents (7 types, fully traceable)** |
 | ![output](docs/screenshots/prod-month.png) | ![bills](docs/screenshots/stock-bills.png) |
+| **OEE (availability × performance × quality) with a 30-day trend** | |
+| ![oee](docs/screenshots/oee.png) | |
 
 ## Real hardware, real screen
 
@@ -239,8 +241,14 @@ cable, zero PLC code changes:
 - **Reports** — business overview / inventory movement (opening + in − out = closing) /
   inbound-outbound statistics / purchasing and sales execution, all exportable to Excel; documents
   carry a **business date**, so month-end back-filling never leaks into the wrong month
+- **OEE** — availability × performance × quality, per device and plant-wide, with a 7/30/90-day
+  trend and a moving average (one day swings on a single counter — the average is the trend).
+  Standard capacity comes from a per-device **ideal cycle time**; the quality factor from a reject
+  counter or a manual defect entry. A factor that cannot be computed is shown as "—" **with the
+  reason** (no ideal cycle time? no defect data?) — never as a made-up number
 - **Energy** — sub-metering, peak / flat / valley / super-peak tariffs, dual-track basic-charge vs.
-  demand billing, 15-minute demand chart with a contract red line
+  demand billing, 15-minute demand chart with a contract red line, and **national-standard
+  energy-efficiency benchmarking** (GB25323-2023 limits) for green-factory filings
 - **AI** — a daily briefing at 07:00 (optionally pushed to WeCom), plus an **AI assistant for the
   whole team**: ask about inventory / output / devices / orders / finance in natural language,
   scoped by role (sales can only ask about stock), implemented as tool calls rather than generated
@@ -301,6 +309,7 @@ there).
 | [docs/COMPETITORS.md](docs/COMPETITORS.md) | Competitor comparison and talk tracks *(Chinese)* |
 | [docs/DEMO.md](docs/DEMO.md) | Demo guide: seeding data and a recommended tour *(Chinese)* |
 | [docs/RELEASE.md](docs/RELEASE.md) | Release process: tag → upload release assets → clients upgrade via *Check for updates* *(Chinese)* |
+| [tools/verify-release.sh](tools/verify-release.sh) | Release verification *(shell)*: pushes the published package through the real customer upgrade path — signature check, migration on an old database, jar swap, tamper rejection, rollback — on a throwaway database, never on yours |
 
 ## Community (中文交流群)
 

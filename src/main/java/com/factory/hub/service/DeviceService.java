@@ -64,6 +64,9 @@ public class DeviceService {
     public DriverContext contextOf(DeviceEntity d) {
         DriverContext ctx = new DriverContext();
         ctx.setHost(d.getHost());
+        // 模拟器要靠编码算这台机器的产量速率（跟播种的演示数据同一套公式），
+        // 不给的话两边对不上，OEE 的性能率会离谱
+        ctx.setCode(d.getCode() == null ? "" : d.getCode());
         ctx.setPort(d.getPort() == null ? 502 : d.getPort());
         ctx.setSerialPort(d.getSerialPort());
         ctx.setBaudRate(d.getBaudRate() == null ? 9600 : d.getBaudRate());

@@ -127,6 +127,10 @@ serial protocols. A simulator driver (`sim`) ships in the box so you can develop
   window against a contract limit.
 - **Reports** — production is aggregated into an hourly table, which is the single source for shift
   output, OEE-style availability, downtime reasons and Excel export.
+- **OEE** — availability × performance × quality, per device and plant-wide, with a 7/30/90-day
+  trend and a moving average. Standard capacity comes from a per-device ideal cycle time, the
+  quality factor from a reject counter or a manual defect entry. A factor that cannot be computed
+  is shown as "—" **with the reason** — never as a made-up number.
 - **AI** — the assistant answers in natural language by calling tools (not by generating SQL), so
   permissions apply exactly as in the UI. It supports DeepSeek / Qwen / Ollama and can be disabled
   entirely in settings.

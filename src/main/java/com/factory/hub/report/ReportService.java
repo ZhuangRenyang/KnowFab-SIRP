@@ -484,8 +484,9 @@ public class ReportService {
         double run = 0, output = 0, defect = 0, counted = 0, theoretical = 0;
         int noCycle = 0, noDefect = 0;
         for (Map<String, Object> row : deviceRows) {
+            double rowOutput = d(row.get("output"));
             run += d(row.get("runSec"));
-            output += d(row.get("output"));
+            output += rowOutput;
             defect += d(row.get("defect"));
             counted += d(row.get("countedSec"));
             Object o = row.get("oee");
@@ -497,7 +498,9 @@ public class ReportService {
             Object th = m.get("theoreticalOutput");
             if (th instanceof Number num) {
                 theoretical += num.doubleValue();
-            } else {
+            } else if (rowOutput > 0) {
+                // 只有「真的产了东西」的设备才卡性能率：电表这种没有产量点的设备，
+                // 它不参与性能计算，也不该把全厂的性能率拖成算不出来
                 noCycle++;
             }
             if (!Boolean.TRUE.equals(m.get("hasDefectData"))) {

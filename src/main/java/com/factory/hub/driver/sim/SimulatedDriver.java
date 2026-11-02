@@ -38,6 +38,10 @@ public class SimulatedDriver implements ProtocolDriver {
     /** 设备状态机：0 停机 / 1 待机 / 2 运行 / 3 报警 */
     private int status = 2;
     private long outputCount = 0;
+    /** 上一次累计产量到哪一刻了（产量按时间推，不按轮询次数） */
+    private long lastOutputTs = 0L;
+    /** 产量的小数余量：不足一件的部分留着，下次凑够再加 */
+    private double outputFrac = 0d;
     private double temperature = 42.0;
 
     /** 模拟电表的累计电量，只增不减。负数表示还没初始化 */
@@ -59,9 +63,24 @@ public class SimulatedDriver implements ProtocolDriver {
         return connected;
     }
 
+    /**
+     * 这台机器的产量速率（件/小时）。
+     * <p>
+     * 跟 {@code DemoProdSeeder} 里播种历史数据用的是同一个公式——
+     * 实时采集和历史数据必须说得通同一件事，否则报表上一边说一天产 800 件、
+     * 一边说一天产 30000 件，客户没法解释。
+     */
+    private static double piecesPerHour(DriverContext ctx) {
+        String code = ctx.getCode() == null ? "" : ctx.getCode();
+        return 40 + Math.abs(code.hashCode()) % 50;
+    }
+
     @Override
     public Map<String, Object> read(DriverContext ctx, List<PointDef> points) {
         tick++;
+        if (lastOutputTs == 0L) {
+            lastOutputTs = System.currentTimeMillis();
+        }
 
         // 每 30 个周期换一次状态，模拟真实的换活/停机节奏
         if (tick % 30 == 0) {
@@ -89,8 +108,24 @@ public class SimulatedDriver implements ProtocolDriver {
             energyKwh += kw * (gap / 3_600_000d) * SIM_SPEED;
         }
 
+        // 产量按「运行时长 × 速率」算，**不能按轮询次数算**：
+        // 以前每轮加 0~2 件，于是把轮询间隔从 1500ms 改成 800ms，
+        // 同一台机器的产量凭空涨了近一倍——客户改个采集频率就能改产量。
+        // 速率跟播种的演示历史用同一套公式（见 DemoProdSeeder），
+        // 否则实时数据和历史数据对不上，OEE 的性能率会离谱。
         if (status == 2) {
-            outputCount += random.nextInt(3);
+            long outGap = Math.min(now - lastOutputTs, MAX_GAP_MS);
+            if (outGap > 0) {
+                lastOutputTs = now;
+                // 小数要留着：一次轮询才 1 秒，按 50 件/小时算是 0.014 件，
+                // 直接取整就永远是 0，产量不动了。攒够一件再加
+                outputFrac += outGap / 3_600_000d * piecesPerHour(ctx);
+                long whole = (long) outputFrac;
+                if (whole > 0) {
+                    outputCount += whole;
+                    outputFrac -= whole;
+                }
+            }
         }
         temperature += (random.nextDouble() - 0.45) * 0.6;
         temperature = Math.max(30.0, Math.min(85.0, temperature));

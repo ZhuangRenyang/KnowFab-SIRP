@@ -71,6 +71,11 @@ Otras formas de instalación:
   alertas / inventario físico) · ventas (pedido → envío → devolución, con validación estricta de
   existencias antes de enviar) · finanzas (cuentas por cobrar y pagar, cobros y pagos, cuatro tramos
   de antigüedad) — el inventario tiene un único algoritmo, así que los números siempre cuadran
+- **OEE** — disponibilidad × rendimiento × calidad, por equipo y para toda la planta, con tendencia
+  de 7/30/90 días y media móvil. La capacidad estándar sale del **tiempo de ciclo ideal** de cada
+  equipo; la tasa de calidad, de un contador de rechazos o de las cantidades de defecto introducidas
+  a mano. Lo que no se puede calcular se muestra como «—» **con el motivo** (¿sin tiempo de ciclo
+  ideal? ¿sin datos de defecto?) — nunca como un número inventado
 - **Informes** — panorama del negocio / movimiento de inventario (inicial + entradas − salidas =
   final) / estadísticas de entradas y salidas / ejecución de compras y ventas, todo exportable a
   Excel; los documentos llevan **fecha de negocio**, así que el registro tardío de fin de mes no cae

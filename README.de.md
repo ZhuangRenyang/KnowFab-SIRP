@@ -73,6 +73,11 @@ Weitere Wege:
 - **Auswertungen** — Geschäftsüberblick / Lagerbewegung (Anfang + Zu − Ab = Ende) / Ein- und
   Auslagerungsstatistik / Einkaufs- und Vertriebsausführung; alles als Excel exportierbar; Belege
   tragen ein **Geschäftsdatum**, damit Nachbuchungen am Monatsende nicht im falschen Monat landen
+- **OEE** — Verfügbarkeit × Leistung × Qualität, je Maschine und für den ganzen Betrieb, dazu ein
+  7/30/90-Tage-Trend mit gleitendem Mittelwert. Die Normkapazität kommt aus der **idealen
+  Zykluszeit** je Maschine, die Qualitätsrate aus einem Reject-Zähler oder manuell erfassten
+  Ausschussmengen. Was nicht berechenbar ist, erscheint als „—“ **mit Begründung** (keine ideale
+  Zykluszeit? keine Ausschussdaten?) — nie als erfundene Zahl
 - **Energie** — Unterzähler, Tarife HT/NT/Spitze, Grundpreis und Leistungspreis,
   15-Minuten-Lastgang mit Vertragslinie
 - **KI** — Tagesbericht um 07:00 und **KI-Assistent für alle**: natürliche Fragen zu Lager,

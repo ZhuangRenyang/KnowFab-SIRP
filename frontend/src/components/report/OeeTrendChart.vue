@@ -60,13 +60,31 @@ const LOW_COVERAGE = 90
 const oeeLine = computed(() => pick(props.points, 'oee'))
 const maLine = computed(() => movingAverage(oeeLine.value, props.window))
 
-/** 一个点都画不出来？（全厂 OEE 要求每台设备都配齐，缺一个就整张图画不出来） */
-const hasAny = computed(() => {
-  const keys: Array<keyof OeePoint> = mode.value === 'oee'
-    ? ['oee']
-    : ['availability', 'performance', 'quality']
+/** 这个模式下有没有能画出来的点 */
+function hasDataFor(keys: Array<keyof OeePoint>): boolean {
   return props.points.some((p) => p && keys.some((k) => typeof p[k] === 'number'))
+}
+
+const hasOee = computed(() => hasDataFor(['oee']))
+const hasFactors = computed(() => hasDataFor(['availability', 'performance', 'quality']))
+
+/**
+ * 实际画的模式。
+ * <p>
+ * 全厂 OEE 常常算不出来（缺不良数数据、少一台设备配节拍），
+ * 那就退一步把能算的那几项画出来——「可用率」本身是能算的，
+ * 比给一张空图有用。空图只在该真的一点都画不出来时才出现。
+ */
+const effectiveMode = computed(() => {
+  if (mode.value === 'oee' && !hasOee.value && hasFactors.value) {
+    return 'factors'
+  }
+  return mode.value
 })
+
+/** 一个点都画不出来？（该真的一点数据都没有） */
+const hasAny = computed(() =>
+  effectiveMode.value === 'oee' ? hasOee.value : hasFactors.value)
 
 /** 缺什么导致的——把后端给的人话说明摆出来 */
 const reasons = computed(() => {
@@ -79,7 +97,7 @@ const series = computed(() => {
   const acc = css('--accent')
   const muted = css('--muted')
   const list: any[] = []
-  if (mode.value === 'oee') {
+  if (effectiveMode.value === 'oee') {
     list.push({
       name: t('oee.trendRaw'), type: 'line', smooth: false, connectNulls: false,
       symbol: 'circle', symbolSize: 3, z: 2,
@@ -141,7 +159,7 @@ function draw() {
   if (!chartEl.value || !props.dates.length) return
   setOption({
     grid: { left: 6, right: 12, top: 26, bottom: 4, containLabel: true },
-    legend: { show: mode.value === 'factors', top: 0, itemWidth: 14, itemHeight: 8 },
+    legend: { show: effectiveMode.value === 'factors', top: 0, itemWidth: 14, itemHeight: 8 },
     tooltip: {
       trigger: 'axis',
       axisPointer: { type: 'line' },
@@ -177,7 +195,7 @@ function draw() {
 }
 
 onMounted(() => { if (chartEl.value) init(chartEl.value); draw() })
-watch(() => [props.dates, props.points, mode.value], draw, { deep: true })
+watch(() => [props.dates, props.points, effectiveMode.value], draw, { deep: true })
 onScopeDispose(() => dispose())
 </script>
 
