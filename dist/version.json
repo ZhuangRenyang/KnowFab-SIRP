@@ -1,6 +1,6 @@
 {
-  "version": "1.0.11",
-  "notes": "新增 OPC UA 采集协议：西门子 S7-1500、汇川、欧姆龙 NX 等自带 OPC UA 的新 PLC 可直接接入（匿名连接，点表填 nodeId 即可，如 ns=2;s=Machine1.Output）；支持批量读取与远程写入（自动按点位类型转换）；设备表单新增 OPC UA 协议与示例点表",
-  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.11/device-hub-1.0.11-update.zip",
-  "sha256": "cfe0a30730b9bbe5dfe3bd7d81d86cc213736dd212227cfe49bfa9690259988a"
+  "version": "1.0.12",
+  "notes": "新增用能单元分项计量（DH-11）：能耗页可按车间/产线查看用电与电费，占比一目了然，合计自动与全厂对账（车间合计 + 未分配 = 全厂）；未挂产线的设备单独列示，不做假账。数据直接取自产线管理的车间字段，改产线归属即同步生效",
+  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.12/device-hub-1.0.12-update.zip",
+  "sha256": "37f29dc0842889c52b1742422c1adfe98da274f7d856643815b14087f6a90658"
 }
