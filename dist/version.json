@@ -1,6 +1,6 @@
 {
-  "version": "1.0.18",
-  "notes": "新增告警限值分级：同一个测点可配预警/告警/停机三级限值，越限只报命中的最高那一档（一个测点不会报三次），减少误报疲劳；档位阈值配反会被当场拦下并指出是哪两档；等级名称统一为「停机/告警/预警」。存量告警规则无需改动即可继续使用",
-  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.18/device-hub-1.0.18-update.zip",
-  "sha256": "891dc9076dcb4bcfbf4d703300f382524235315cd1af7073ffba6c01566b980f"
+  "version": "1.0.19",
+  "notes": "修复需量超合同告警重启后自动消失：服务重启后未恢复的需量告警会保留下来（状态、发生时间都不变），不会再凭空多出一条；关掉需量预警或需量回落到合同范围内时，告警的解除理由现在说明真实原因，不再写成「规则已删除或停用」这种误导性的说法。历史记录中被误关的需量告警会在数据库升级时一并订正",
+  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.19/device-hub-1.0.19-update.zip",
+  "sha256": "0500b1dad82458cb8ce3bd99deb79314853bb553c823020c975a53a904506ee2"
 }
