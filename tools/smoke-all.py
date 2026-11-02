@@ -122,11 +122,17 @@ def sec_devices():
     # 产量统计四张表（日/月/年/综合）：各点之和必须等于对应 KPI——口径不能各算各的
     st, ps = req("GET", "/api/erp/prod/status?code=%s" % urllib.parse.quote(code))
     if st == 200 and (ps.get("hasCount") or ps.get("auto")):
+        # 产量是实时涨的：status 和后面那张图不是同一时刻的快照，
+        # 中间隔几个请求，计数器可能又跳了几件。所以对比要给一点容差，
+        # 不然这个检查会时不时自己挂（跟口径对不对没关系）。
+        def close(a, b):
+            return abs(float(a) - float(b)) <= max(5.0, abs(float(b)) * 0.0005)
+
         st, day = req("GET", "/api/erp/prod/chart?code=%s&mode=day" % urllib.parse.quote(code))
         pts = day.get("points") or []
         dsum = round(sum(float(x["qty"]) for x in pts), 2)
         check(s, "日表24小时=今日", st == 200 and len(pts) == 24
-              and abs(dsum - float(ps.get("today", -1))) < 0.01,
+              and close(dsum, ps.get("today", -1)),
               "24点 和%s / 今日%s" % (dsum, ps.get("today")))
         # 月表按当月实际天数铺满（28/29/30/31），未到的天为 0
         st, mon = req("GET", "/api/erp/prod/chart?code=%s&mode=month" % urllib.parse.quote(code))
@@ -136,12 +142,12 @@ def sec_devices():
         today = datetime.date.today()
         ndays = _cal.monthrange(today.year, today.month)[1]
         check(s, "月表=当月整月天数", st == 200 and len(mpts) == ndays
-              and abs(msum - float(ps.get("month", -1))) < 0.01,
+              and close(msum, ps.get("month", -1)),
               "%d点(本月%d天) 和%s / 本月%s" % (len(mpts), ndays, msum, ps.get("month")))
         st, yr = req("GET", "/api/erp/prod/chart?code=%s&mode=year" % urllib.parse.quote(code))
         ysum = round(sum(float(x["qty"]) for x in (yr.get("points") or [])), 2)
         check(s, "年表12月=今年", st == 200 and len(yr.get("points") or []) == 12
-              and abs(ysum - float(ps.get("year", -1))) < 0.01,
+              and close(ysum, ps.get("year", -1)),
               "和%s / 今年%s" % (ysum, ps.get("year")))
         st, al = req("GET", "/api/erp/prod/chart?code=%s&mode=all" % urllib.parse.quote(code))
         n_all = len(al.get("points") or [])

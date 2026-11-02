@@ -1,6 +1,8 @@
 package com.factory.hub.system;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
@@ -33,6 +35,42 @@ public class MigrationService {
     public MigrationService(SchemaMigrationRepository repo, VersionService versionService) {
         this.repo = repo;
         this.versionService = versionService;
+    }
+
+    /**
+     * 把「已成功执行的最大版本」写进 app_setting.system.schemaVersion。
+     * <p>
+     * 以前只有 {@link #status()} 会顺手写，于是有两个别扭的地方：
+     * 新装的库这一行压根不存在，系统页显示「数据库结构版本 0」——
+     * 库其实已经是最新结构了，界面上却像个没迁移过的旧库；
+     * 升级后也停在旧版本，要等人打开「数据库迁移」页面才纠正。
+     * <p>
+     * 应用一起来就写一次，界面上的数才是真的。迁移脚本本身不建表
+     * （表是 Hibernate 建的），所以这件事只能在应用起来之后做。
+     */
+    private void syncSchemaVersion() {
+        try {
+            String maxOk = repo.findAllByOrderByVersionDesc().stream()
+                    .filter(m -> m.isOk())
+                    .map(SchemaMigration::getVersion)
+                    .max(VersionService::compare)
+                    .orElse(null);
+            if (maxOk == null) {
+                return;
+            }
+            if (VersionService.compare(maxOk, versionService.schemaVersion()) > 0) {
+                versionService.schemaVersion(maxOk);
+            }
+        } catch (Exception e) {
+            // 写不进去也不能影响启动：只是个显示用的数
+            System.out.println("[migration] 写库结构版本失败（不影响启动）: " + e.getMessage());
+        }
+    }
+
+    /** 应用就绪后立刻把版本对上（不用等人点开迁移页面） */
+    @EventListener(ApplicationReadyEvent.class)
+    public void onReady() {
+        syncSchemaVersion();
     }
 
     public Path dir() {
@@ -106,9 +144,7 @@ public class MigrationService {
         // 结构版本取"已成功执行的最大版本"，顺手纠正存库的值。
         // 之前这个值只靠升级包写，一旦有人手工换 jar 就会一直是旧的。
         String maxOk = doneVersions.stream().max(VersionService::compare).orElse("0");
-        if (VersionService.compare(maxOk, versionService.schemaVersion()) > 0) {
-            versionService.schemaVersion(maxOk);
-        }
+        syncSchemaVersion();
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("ok", true);
