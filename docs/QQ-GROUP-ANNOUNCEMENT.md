@@ -51,11 +51,16 @@ gitee.com/ZhuangRenyang/KnowFab-SIRP
 
 ## 二、群简介（短版，粘在群介绍栏）
 
+> 不写版本号——写「见群公告」，发版就不用回来改简介。
+
 ```
 知造 KnowFab-SIRP — 让所有机器都报产量。
-接 PLC/继电器/电表，产量自动上屏、自动进库存开单据。
-不改 PLC 程序 · 一个安装包 · 断网可用 · 开源。
-最新版 v1.0.4，安装命令见群公告。
+接 PLC / 继电器 / 电表 / 485 老设备，产量自动上屏、自动进库存、自动开单据。
+不改 PLC 程序 · 不装数据库 · 一个安装包 · 断网可用 · 开源免费。
+自带轻量 ERP：采购 / 销售 / 库存 / 财务 / 报表。
+安装命令和最新版见群公告。源码：
+github.com/ZhuangRenyang/KnowFab-SIRP
+gitee.com/ZhuangRenyang/KnowFab-SIRP
 ```
 
 ---

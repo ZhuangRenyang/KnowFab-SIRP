@@ -1,6 +1,6 @@
 {
-  "version": "1.0.22",
-  "notes": "修复：系统页显示的「数据库结构版本」不对——新装的机器会显示 0、升级完会停在旧版本，要等人工打开「数据库迁移」页面才纠正。现在服务一启动就自动写对了。另外修了一个会偶尔自己失败的例行检查（产量是实时变化的，两次取数不是同一时刻）",
-  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.22/device-hub-1.0.22-update.zip",
-  "sha256": "c6184e6be599855b19a8939f9332becc1d399ae6dbfdfff9c5552d4bbe419db7"
+  "version": "1.0.23",
+  "notes": "报表页的 OEE 更好用了：示例设备预配了理想节拍，打开就能看到可用率和性能率（之前三项全是「--」）；全厂 OEE 不会被没产量的电表拖成算不出来；趋势图算不出 OEE 时会退一步画出能算的可用率。另外修了模拟器的一个老问题：产量是按轮询次数算的，改一下采集频率产量就跟着变，现在改成按运行时间算，实时数据和历史数据也对得上了",
+  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.23/device-hub-1.0.23-update.zip",
+  "sha256": "f7c22ff6fb30907812ee6c76e0e3539d33d6ef71389197b0b27bf69db07cba64"
 }
