@@ -1,6 +1,6 @@
 {
-  "version": "1.0.20",
-  "notes": "新增 OEE 设备综合效率：报表页可��看「可用率 × 性能 × 良率」三项因子和 OEE 总值，设备明细里每台机器一行；给设备配一个「理想节拍（秒/件）」就能算性能率，机床有不良品计数器的点表配 role=reject 就能自动算良率，没有的可以用「产量补录」录不良数。数据不全时不会给你一个凑出来的数——缺哪一项会直接写明缺什么、怎么补",
-  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.20/device-hub-1.0.20-update.zip",
-  "sha256": "ebb0ab7062eb071dbff778e78e911bc7bd9f98c7bcc008b006502751dd1e4986"
+  "version": "1.0.21",
+  "notes": "报表页新增 OEE 历史趋势图：厂级和单设备两级，可看 7/30/90 天的效率走势，单设备还能切换看「可用率/性能/良率」三因子。图上带移动平均线（单日数字抖动大，看均线才是趋势）、数据没采全的日子会标出来（那几天的数别当真），算不出来的那天是断线不是 0。另外修了报表的一个老问题：以前日报和趋势里有一天的边界小时被相邻两天各算了一次（产量和时长会偏多约 4%），AI 早报的数字也跟着不对，这次一并修正",
+  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.21/device-hub-1.0.21-update.zip",
+  "sha256": "e3ca44764d031b5c54a5585e54c64c95672b034ce59edcb659667c7d8cf8a185"
 }
