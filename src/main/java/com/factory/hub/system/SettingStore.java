@@ -40,10 +40,12 @@ public class SettingStore {
     public static final String DEMO_DEMAND = "demand.demo-seed";
     public static final String ALARM_STORM = "alarm.storm-threshold";
     public static final String ALARM_RETAIN_DAYS = "alarm.retain-days";
+    public static final String AUDIT_RETAIN_DAYS = "audit.retain-days";
 
     /** 分组顺序就是页面上的显示顺序 */
     private static final String G_UPDATE = "更新与升级";
     private static final String G_ALARM = "告警";
+    private static final String G_AUDIT = "审计";
     private static final String G_DEMO = "演示数据";
 
     private static final List<SettingDef> DEFS = List.of(
@@ -60,6 +62,10 @@ public class SettingStore {
             SettingDef.number(ALARM_RETAIN_DAYS, G_ALARM, "告警历史保留天数",
                     "alarm.retain-days", "180", 1, 3650,
                     "只清理已恢复的告警。没恢复的永远留着——那是没处理的事故，不能自动消失。"),
+
+            SettingDef.number(AUDIT_RETAIN_DAYS, G_AUDIT, "审计日志保留天数",
+                    "audit.retain-days", "180", 1, 3650,
+                    "审计日志保留多少天。超期的记录会被自动清理，查不回来了——要追溯的改动得在这之前查清楚。"),
 
             SettingDef.bool(DEMO_ENERGY, G_DEMO, "能耗演示数据",
                     "energy.demo-seed", "true", SettingDef.RESTART,

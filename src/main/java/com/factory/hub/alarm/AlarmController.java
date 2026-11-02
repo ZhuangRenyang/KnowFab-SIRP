@@ -1,5 +1,7 @@
 package com.factory.hub.alarm;
 
+import com.factory.hub.audit.AuditLog;
+import com.factory.hub.audit.AuditService;
 import com.factory.hub.model.DeviceEntity;
 import com.factory.hub.model.PointDef;
 import com.factory.hub.service.DeviceService;
@@ -36,11 +38,15 @@ public class AlarmController {
     private final AlarmEngine engine;
     private final AlarmEventRepository repo;
     private final DeviceService deviceService;
+    private final AuditService audit;
+    /** 告警的人话描述（审计文案用），单独的类——文案和告警逻辑不是一回事 */
+    private final AlarmDescribe describe;
 
     public AlarmController(AlarmService alarmService, AlarmRuleStore ruleStore,
                            NotifyStore notifyStore, AlarmNotifier notifier,
                            AlarmEngine engine, AlarmEventRepository repo,
-                           DeviceService deviceService) {
+                           DeviceService deviceService, AuditService audit,
+                           AlarmDescribe describe) {
         this.alarmService = alarmService;
         this.ruleStore = ruleStore;
         this.notifyStore = notifyStore;
@@ -48,6 +54,8 @@ public class AlarmController {
         this.engine = engine;
         this.repo = repo;
         this.deviceService = deviceService;
+        this.audit = audit;
+        this.describe = describe;
     }
 
     /* ==================== 告警列表 ==================== */
@@ -72,10 +80,21 @@ public class AlarmController {
     public Map<String, Object> ack(@PathVariable Long id,
                                    @RequestBody(required = false) Map<String, Object> body) {
         String by = body == null ? null : str(body.get("by"));
+        // 先把告警读出来：确认之后就没法从引擎里拿到标题了，审计要写给人看
+        AlarmEvent ev = repo.findById(id).orElse(null);
         String err = alarmService.ack(id, by);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("ok", err == null);
         out.put("message", err == null ? "已确认" : err);
+        String title = ev == null ? null : describe.alarmTitle(ev);
+        String detail = "确认告警 #" + id + (title == null ? "" : "：" + title);
+        if (err == null) {
+            audit.ok(AuditLog.CAT_ALARM, AuditLog.ACT_UPDATE, String.valueOf(id),
+                    title == null ? String.valueOf(id) : title, detail);
+        } else {
+            audit.fail(AuditLog.CAT_ALARM, AuditLog.ACT_UPDATE, String.valueOf(id),
+                    title == null ? String.valueOf(id) : title, detail, err);
+        }
         return out;
     }
 
@@ -83,6 +102,8 @@ public class AlarmController {
     public Map<String, Object> ackAll(@RequestBody(required = false) Map<String, Object> body) {
         String by = body == null ? null : str(body.get("by"));
         int n = alarmService.ackAll(by);
+        audit.ok(AuditLog.CAT_ALARM, AuditLog.ACT_UPDATE, "all", "全部未处理告警",
+                "批量确认告警 " + n + " 条");
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("ok", true);
         out.put("count", n);
@@ -133,6 +154,8 @@ public class AlarmController {
         if (old != null) {
             wasEnabled = old.isEnabled();
         }
+        // 库里找不到同 id 的规则 = 这是一条新规则
+        boolean created = old == null;
 
         AlarmRule saved = ruleStore.save(rule);
 
@@ -140,6 +163,11 @@ public class AlarmController {
         if (wasEnabled && !saved.isEnabled()) {
             engine.closeByRule(saved.getId(), "规则已停用");
         }
+        String detail = (created ? "新增告警规则 " : "修改告警规则 ") + saved.getName()
+                + "（" + saved.typeName() + "，" + describe.describeCondition(saved)
+                + "，" + (saved.isEnabled() ? "已启用" : "已停用") + "）";
+        audit.ok(AuditLog.CAT_ALARM, created ? AuditLog.ACT_CREATE : AuditLog.ACT_UPDATE,
+                saved.getId(), saved.getName(), detail);
         out.put("ok", true);
         out.put("message", "已保存，立即生效");
         out.put("rule", saved);
@@ -149,8 +177,18 @@ public class AlarmController {
     @DeleteMapping("/rules/{id}")
     public Map<String, Object> deleteRule(@PathVariable String id) {
         Map<String, Object> out = new LinkedHashMap<>();
+        // 先记下规则名，删完就查不到了
+        AlarmRule old = ruleStore.byId(id);
+        String ruleName = old == null ? id : old.getName();
         engine.closeByRule(id, "规则已删除");
         boolean ok = ruleStore.delete(id);
+        if (ok) {
+            audit.ok(AuditLog.CAT_ALARM, AuditLog.ACT_DELETE, id, ruleName,
+                    "删除告警规则「" + ruleName + "」，该规则挂着的告警一并关闭");
+        } else {
+            audit.fail(AuditLog.CAT_ALARM, AuditLog.ACT_DELETE, id, ruleName,
+                    "删除告警规则「" + ruleName + "」", "规则不存在");
+        }
         out.put("ok", ok);
         out.put("message", ok ? "已删除" : "规则不存在");
         return out;
@@ -257,6 +295,8 @@ public class AlarmController {
         if (cfg == null) {
             out.put("ok", false);
             out.put("message", "配置为空");
+            audit.fail(AuditLog.CAT_ALARM, AuditLog.ACT_UPDATE, "notify", "通知配置",
+                    "保存通知配置", "配置为空");
             return out;
         }
         if (cfg.isEnabled()) {
@@ -265,10 +305,15 @@ public class AlarmController {
             if (!any) {
                 out.put("ok", false);
                 out.put("message", "没有可用的通知渠道，地址填完整再打开总开关");
+                audit.fail(AuditLog.CAT_ALARM, AuditLog.ACT_UPDATE, "notify", "通知配置",
+                        "保存通知配置", "没有可用的通知渠道，地址填完整再打开总开关");
                 return out;
             }
         }
         notifyStore.save(cfg);
+        // 只记渠道名称和启停状态，不记地址和 token——那两样等于把机器人钥匙贴到日志上
+        audit.ok(AuditLog.CAT_ALARM, AuditLog.ACT_UPDATE, "notify", "通知配置",
+                describe.describeNotify(cfg));
         out.put("ok", true);
         out.put("message", "已保存，立即生效");
         out.put("config", notifyStore.current());
@@ -302,9 +347,13 @@ public class AlarmController {
         if (body == null || !Boolean.TRUE.equals(body.get("confirm"))) {
             out.put("ok", false);
             out.put("message", "这个操作会删除全部告警历史，不可恢复。请传 {\"confirm\": true} 确认");
+            audit.fail(AuditLog.CAT_ALARM, AuditLog.ACT_PURGE, "alarms", "告警历史",
+                    "清空告警历史", "未确认，操作被拒绝");
             return out;
         }
         int n = repo.purgeAll();
+        audit.ok(AuditLog.CAT_ALARM, AuditLog.ACT_PURGE, "alarms", "告警历史",
+                "清空告警历史 " + n + " 条（不可恢复）");
         out.put("ok", true);
         out.put("deleted", n);
         out.put("message", "已删除 " + n + " 条告警记录");
@@ -317,6 +366,10 @@ public class AlarmController {
         return repo.findById(id).map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
+
+    /* ==================== 审计辅助 ==================== */
+    /* 告警的人话描述（标题 / 规则条件 / 通知配置）已经挪到 AlarmDescribe：
+       那几个是纯展示逻辑，跟告警的增删改查是两件事，混在一起两边都不好找。 */
 
     private static String str(Object o) {
         return o == null ? null : String.valueOf(o);

@@ -97,7 +97,10 @@ public class SecurityConfig {
 
                         // ---- 只有管理员 ----
                         .requestMatchers("/api/system/update/**", "/api/users/**",
-                                "/api/system/settings/**", "/api/system/migrations/**")
+                                "/api/system/settings/**", "/api/system/migrations/**",
+                                // 审计日志含操作人、来源 IP 和全部配置改动，
+                                // 连车间主任都不该看到"谁改了数据库密码"，只给管理员
+                                "/api/audit/**")
                         .hasRole("ADMIN")
                         // 设备发现（网段扫描 + 寄存器探测）：本质是台网络扫描器，
                         // 只读且限了量，也只给管理员用
@@ -137,6 +140,9 @@ public class SecurityConfig {
                         // 生成早报会花钱调外部接口，但不改配置，车间主任也放开
                         .requestMatchers(HttpMethod.POST, "/api/ai/digest/generate")
                         .hasAnyRole("ADMIN", "MANAGER")
+                        // 操作审计的权限收口在上面「只有管理员」那条里（/api/audit/** → ADMIN）。
+                        // 这里不再重复写一条"管理员 + 车间主任"的规则：两条都在的话，
+                        // 以后谁调整顺序，车间主任就会被悄悄放开，和"只给管理员"的决定相反。
 
                         // ---- 其余一律要登录（班组长能看、能确认告警）----
                         .requestMatchers("/api/**").authenticated()

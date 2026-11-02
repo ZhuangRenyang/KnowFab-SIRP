@@ -1,5 +1,7 @@
 package com.factory.hub.report;
 
+import com.factory.hub.audit.AuditLog;
+import com.factory.hub.audit.AuditService;
 import com.factory.hub.demand.DemandService;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -38,17 +40,19 @@ public class ReportController {
     private final EnergyService energyService;
     private final DemandService demandService;
     private final ObjectMapper mapper;
+    private final AuditService audit;
 
     public ReportController(ReportService service, ShiftStore shiftStore,
                             ProdHourlyRepository repo,
                             EnergyService energyService, DemandService demandService,
-                            ObjectMapper mapper) {
+                            ObjectMapper mapper, AuditService audit) {
         this.service = service;
         this.shiftStore = shiftStore;
         this.repo = repo;
         this.energyService = energyService;
         this.demandService = demandService;
         this.mapper = mapper;
+        this.audit = audit;
     }
 
     @GetMapping("/daily")
@@ -83,15 +87,43 @@ public class ReportController {
                 Map<String, Object> bad = new LinkedHashMap<>();
                 bad.put("ok", false);
                 bad.put("message", w);
+                audit.fail(AuditLog.CAT_REPORT, AuditLog.ACT_UPDATE, "shifts", "班次设置",
+                        describeShifts(plan), w);
                 return bad;
             }
         }
         shiftStore.save(plan);
+        audit.ok(AuditLog.CAT_REPORT, AuditLog.ACT_UPDATE, "shifts", "班次设置",
+                describeShifts(plan));
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("ok", true);
         out.put("message", "班次已保存，历史报表按新班次重算");
         out.put("warnings", problems);
         return out;
+    }
+
+    /** 班次摘要：方案名 + 每个班次的起止时间 */
+    private String describeShifts(ShiftPlan plan) {
+        if (plan == null) {
+            return "保存班次设置";
+        }
+        List<ShiftPlan.Shift> shifts = plan.getShifts();
+        String planName = plan.getName() == null || plan.getName().isBlank()
+                ? "未命名方案" : plan.getName();
+        StringBuilder sb = new StringBuilder();
+        sb.append("保存班次方案「").append(planName).append("」，共 ")
+                .append(shifts == null ? 0 : shifts.size()).append(" 个班次");
+        if (shifts != null && !shifts.isEmpty()) {
+            sb.append("：");
+            for (int i = 0; i < shifts.size(); i++) {
+                ShiftPlan.Shift s = shifts.get(i);
+                if (i > 0) {
+                    sb.append("、");
+                }
+                sb.append(s.getName()).append(" ").append(s.getStart()).append("-").append(s.getEnd());
+            }
+        }
+        return sb.toString();
     }
 
     @GetMapping("/export")

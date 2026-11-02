@@ -1,5 +1,7 @@
 package com.factory.hub.system;
 
+import com.factory.hub.audit.AuditLog;
+import com.factory.hub.audit.AuditService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.env.Environment;
@@ -53,16 +55,42 @@ public class DbPasswordController {
     private static final Pattern NEW_PWD = Pattern.compile("^[A-Za-z0-9!@#$%^&*._+\\-]{6,64}$");
 
     private final Environment env;
+    private final AuditService audit;
 
-    public DbPasswordController(Environment env) {
+    public DbPasswordController(Environment env, AuditService audit) {
         this.env = env;
+        this.audit = audit;
     }
 
     public record DbPasswordChange(String oldPassword, String newPassword) {
     }
 
+    /**
+     * 改数据库密码。
+     * <p>
+     * 审计在方法出口统一写：整个流程有七八个失败出口（当前密码错、新密码不合规、
+     * 回滚出错……），挨个埋容易漏一个，而漏掉的那个恰恰是"改密码失败"这种最该看的。
+     * <p>
+     * 密码本身绝不进审计：detail 只写"修改数据库连接密码（密码本身不记入审计）"。
+     */
     @PostMapping("/db-password")
     public Map<String, Object> change(@RequestBody DbPasswordChange req) throws IOException {
+        Map<String, Object> out = doChange(req);
+        String detail = "修改数据库连接密码（密码本身不记入审计）";
+        String oldPwd = req == null ? null : req.oldPassword();
+        String newPwd = req == null ? null : req.newPassword();
+        if (Boolean.TRUE.equals(out.get("ok"))) {
+            audit.ok(AuditLog.CAT_SYSTEM, AuditLog.ACT_UPDATE, "db-password",
+                    "数据库连接密码", detail);
+        } else {
+            audit.fail(AuditLog.CAT_SYSTEM, AuditLog.ACT_UPDATE, "db-password",
+                    "数据库连接密码", detail, redact(messageOf(out), oldPwd, newPwd));
+        }
+        return out;
+    }
+
+    /** 真正的改密码流程。原样搬过来，业务逻辑一个字没动 */
+    private Map<String, Object> doChange(DbPasswordChange req) throws IOException {
         String oldPwd = req.oldPassword() == null ? "" : req.oldPassword();
         String newPwd = req.newPassword() == null ? "" : req.newPassword();
 
@@ -163,5 +191,33 @@ public class DbPasswordController {
     @SuppressWarnings("unchecked")
     private static Map<String, Object> castMap(Object o) {
         return (Map<String, Object>) o;
+    }
+
+    /* ==================== 审计辅助 ==================== */
+
+    /**
+     * 把消息里的新旧密码抹掉。
+     * <p>
+     * 正常情况下错误消息不会带密码（MySQL 的 "Access denied ... (using password: YES)"
+     * 也不回显），但这是审计表——万一哪天数据库驱动的报错变了，
+     * 把密码写进审计表就等于把它抄了一份出去。宁可多写两行代码。
+     */
+    private static String redact(String msg, String oldPwd, String newPwd) {
+        String s = msg == null ? "未知错误" : msg;
+        if (oldPwd != null && !oldPwd.isBlank()) {
+            s = s.replace(oldPwd, "***");
+        }
+        if (newPwd != null && !newPwd.isBlank()) {
+            s = s.replace(newPwd, "***");
+        }
+        return s;
+    }
+
+    private static String messageOf(Map<String, Object> out) {
+        if (out == null) {
+            return "未知错误";
+        }
+        Object m = out.get("message");
+        return m == null ? "操作失败" : String.valueOf(m);
     }
 }

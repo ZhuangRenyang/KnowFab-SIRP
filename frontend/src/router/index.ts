@@ -15,6 +15,7 @@ export const router = createRouter({
     { path: '/ai/chat', component: () => import('@/views/AiChatView.vue'), meta: { title: 'AI 助手' } },
     { path: '/system', component: () => import('@/views/SystemView.vue'), meta: { title: '系统', roles: ['ADMIN'] } },
     { path: '/users', component: () => import('@/views/UserManageView.vue'), meta: { title: '用户管理', roles: ['ADMIN'] } },
+    { path: '/audit', component: () => import('@/views/AuditView.vue'), meta: { title: '操作审计', roles: ['ADMIN'] } },
     { path: '/erp/lines', component: () => import('@/views/ErpLineView.vue'), meta: { title: '产线管理' } },
     { path: '/erp/base', component: () => import('@/views/ErpBaseView.vue'), meta: { title: '基础资料' } },
     { path: '/erp/purchase', component: () => import('@/views/ErpPurchaseView.vue'), meta: { title: '采购管理' } },

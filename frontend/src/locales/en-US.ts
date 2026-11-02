@@ -80,6 +80,7 @@ export default {
     salesQuery: 'Sales Lookup',
     system: 'Settings',
     users: 'Users',
+    audit: 'Audit log',
     brandSub: 'AI Smart Factory',
     wsOnline: 'Live',
     wsOffline: 'Disconnected, reconnecting',
@@ -766,6 +767,54 @@ export default {
     delTitle: 'Delete user',
     delFailed: 'Delete failed'
   },
+  /* 操作审计（DH-24）：只读页面，页面上的记录不可改也不可删 */
+  audit: {
+    title: 'Audit log',
+    lead: 'Who changed what, and when — every change to devices, tariffs, shifts, alarm rules and user permissions leaves a record. Audit entries are append-only: they can never be edited or deleted.',
+    rangeStart: 'Start date',
+    rangeEnd: 'End date',
+    allCategories: 'All categories',
+    keywordPh: 'Search object / ID / operator / detail',
+    query: 'Query',
+    reset: 'Reset',
+    listTitle: 'Audit records',
+    count: '{n} records',
+    limitHint: 'Showing the most recent {n} records only. Narrow the date range to look further back.',
+    empty: 'No audit records in this period. Change a device config, a tariff plan or a user permission, and a record will show up here.',
+    loadFailed: 'Failed to load audit records: {msg}',
+    ok: 'Success',
+    fail: 'Failed',
+    colTime: 'Time',
+    colCategory: 'Category',
+    colAction: 'Action',
+    colTarget: 'Object',
+    colDetail: 'Detail',
+    colOperator: 'Operator',
+    colIp: 'IP',
+    colResult: 'Result'
+  },
+  /* 审计域字典：后端枚举 → 英文标签 */
+  auditDict: {
+    cat: {
+      DEVICE: 'Device',
+      ENERGY: 'Energy',
+      ALARM: 'Alarm',
+      REPORT: 'Report',
+      SYSTEM: 'System',
+      MANUAL: 'Manual entry',
+      USER: 'User'
+    },
+    act: {
+      CREATE: 'Create',
+      UPDATE: 'Update',
+      DELETE: 'Delete',
+      WRITE: 'Remote write',
+      PURGE: 'Purge',
+      REVOKE: 'Revoke',
+      RESET: 'Reset',
+      LOGIN: 'Failed sign-in'
+    }
+  },
   salesQuery: {
     tip: 'Committable = on hand − confirmed but unshipped. Check this column before promising a delivery date, not the on-hand figure.',
     skuCount: 'Products with stock',
@@ -917,7 +966,8 @@ export default {
     group: {
       '更新与升级': 'Updates & upgrade',
       '告警': 'Alarms',
-      '演示数据': 'Demo data'
+      '演示数据': 'Demo data',
+      '审计': 'Audit'
     },
     purge: {
       energy: 'Energy (cost, peak/off-peak kWh)',
@@ -928,6 +978,7 @@ export default {
       'update_allow-web-restart': 'Allow one-click restart from the web',
       'alarm_storm-threshold': 'Alarm storm merge threshold',
       'alarm_retain-days': 'Alarm history retention (days)',
+      'audit_retain-days': 'Audit log retention (days)',
       'energy_demo-seed': 'Energy demo data',
       'report_demo-seed': 'Report demo data',
       'demand_demo-seed': 'Demand demo data'
@@ -936,6 +987,7 @@ export default {
       'update_allow-web-restart': 'When on, the Apply upgrade button can restart the service directly so the customer does not have to log in to the server. Requires that install.sh --allow-web-restart granted sudo rights to the service account during installation, otherwise the button fails and explains why. If it is not permitted, leave it off — asking an admin to run sudo systemctl restart device-hub is safer.',
       'alarm_storm-threshold': 'When more than this many alarms fire in one cycle, they are merged into a single notification. If a switch dies, every device goes offline at once — sending them one by one floods the group and nobody can see where the real problem is.',
       'alarm_retain-days': 'Only recovered alarms are purged. Unrecovered ones are kept forever — those are incidents nobody has handled yet and must not disappear on their own.',
+      'audit_retain-days': 'How many days of audit records to keep. Records past this age are purged automatically and cannot be recovered — check what you need to trace before it expires.',
       'energy_demo-seed': 'The switch only controls whether data is generated at startup. Fake data that already exists must be cleared below, otherwise the customer sees fake electricity bills.',
       'report_demo-seed': 'Same as above. After turning the switch off, remember to clear existing data, otherwise the output in reports is made up.',
       'demand_demo-seed': 'Same as above. Fake demand makes the basic charge wrong, so it must be cleared before delivery.'

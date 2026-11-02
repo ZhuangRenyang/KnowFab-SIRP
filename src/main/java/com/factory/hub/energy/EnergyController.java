@@ -1,5 +1,8 @@
 package com.factory.hub.energy;
 
+import com.factory.hub.audit.AuditLog;
+import com.factory.hub.audit.AuditService;
+
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -30,14 +33,17 @@ public class EnergyController {
     private final EnergyRepository repo;
     private final BenchmarkStore benchmarkStore;
     private final EnergyBenchmarkService benchmarkService;
+    private final AuditService audit;
 
     public EnergyController(EnergyService energyService, TariffStore tariffStore, EnergyRepository repo,
-                            BenchmarkStore benchmarkStore, EnergyBenchmarkService benchmarkService) {
+                            BenchmarkStore benchmarkStore, EnergyBenchmarkService benchmarkService,
+                            AuditService audit) {
         this.energyService = energyService;
         this.tariffStore = tariffStore;
         this.repo = repo;
         this.benchmarkStore = benchmarkStore;
         this.benchmarkService = benchmarkService;
+        this.audit = audit;
     }
 
     /** 首页大数字 + 峰谷分布 + 日趋势 */
@@ -98,6 +104,8 @@ public class EnergyController {
             plan.setName("未命名方案");
         }
         tariffStore.save(plan);
+        audit.ok(AuditLog.CAT_ENERGY, AuditLog.ACT_UPDATE, "tariff", plan.getName(),
+                "保存电价方案「" + plan.getName() + "」，共 " + plan.getSegments().size() + " 个时段");
         out.put("ok", true);
         out.put("message", "已保存，立即生效");
         out.put("plan", tariffStore.current());
@@ -148,7 +156,14 @@ public class EnergyController {
             out.put("warnings", warnings);
             return out;
         }
+        boolean created = bm.getId() == null || bm.getId().isBlank();
         EnergyBenchmark saved = benchmarkStore.save(bm);
+        audit.ok(AuditLog.CAT_ENERGY, created ? AuditLog.ACT_CREATE : AuditLog.ACT_UPDATE,
+                saved.getId(), saved.displayName(),
+                (created ? "新增能效对标 " : "修改能效对标 ") + saved.displayName()
+                        + "（" + saved.getStandardNo() + "，" + saved.normScope() + "）"
+                        + " 先进=" + saved.getAdvancedValue() + " 准入=" + saved.getAccessValue()
+                        + " 限定=" + saved.getLimitValue());
         out.put("ok", true);
         out.put("message", "已保存，报表立即按新标杆计算");
         out.put("row", saved);
@@ -159,8 +174,15 @@ public class EnergyController {
     /** 删除一条对标值 */
     @DeleteMapping("/benchmarks/{id}")
     public Map<String, Object> removeBenchmark(@PathVariable String id) {
+        String bmName = benchmarkStore.list().stream()
+                .filter(b -> id != null && id.equals(b.getId()))
+                .map(EnergyBenchmark::displayName).findFirst().orElse(id);
         Map<String, Object> out = new LinkedHashMap<>();
         boolean removed = benchmarkStore.remove(id);
+        if (removed) {
+            audit.ok(AuditLog.CAT_ENERGY, AuditLog.ACT_DELETE, id, bmName,
+                    "删除能效对标 " + bmName);
+        }
         out.put("ok", removed);
         out.put("message", removed ? "已删除" : "没有找到这条对标值");
         return out;
@@ -185,6 +207,8 @@ public class EnergyController {
             return out;
         }
         int n = repo.purgeAll();
+        audit.ok(AuditLog.CAT_ENERGY, AuditLog.ACT_PURGE, "energy", "能耗历史",
+                "清空能耗历史 " + n + " 条（不可恢复）");
         out.put("ok", true);
         out.put("deleted", n);
         out.put("message", "已删除 " + n + " 条能耗记录。当前小时的实时数据会继续累积");

@@ -84,6 +84,7 @@ export default {
     salesQuery: '销售查询',
     system: '系统',
     users: '用户管理',
+    audit: '操作审计',
     brandSub: 'AI 智慧工厂',
     wsOnline: '实时连接',
     wsOffline: '已断开，重连中',
@@ -770,6 +771,54 @@ export default {
     delTitle: '删除用户',
     delFailed: '删除失败'
   },
+  /* 操作审计（DH-24）：只读页面，页面上的记录不可改也不可删 */
+  audit: {
+    title: '操作审计',
+    lead: '谁在什么时候改了哪项配置——设备、电价、班次、告警规则、用户权限的每次改动都会留一条。审计只增不改不删。',
+    rangeStart: '开始日期',
+    rangeEnd: '结束日期',
+    allCategories: '全部分类',
+    keywordPh: '搜对象名 / 对象标识 / 操作人 / 详情',
+    query: '查询',
+    reset: '重置',
+    listTitle: '审计记录',
+    count: '共 {n} 条',
+    limitHint: '只显示最近 {n} 条，更早的记录请缩小日期范围再查。',
+    empty: '这段时间没有审计记录。改了设备配置、电价方案或用户权限之后，这里就会多一条。',
+    loadFailed: '审计记录加载失败：{msg}',
+    ok: '成功',
+    fail: '失败',
+    colTime: '时间',
+    colCategory: '分类',
+    colAction: '操作',
+    colTarget: '对象',
+    colDetail: '详情',
+    colOperator: '操作人',
+    colIp: 'IP',
+    colResult: '结果'
+  },
+  /* 审计域字典：后端枚举 → 中文标签 */
+  auditDict: {
+    cat: {
+      DEVICE: '设备',
+      ENERGY: '能耗',
+      ALARM: '告警',
+      REPORT: '报表',
+      SYSTEM: '系统',
+      MANUAL: '补录',
+      USER: '用户'
+    },
+    act: {
+      CREATE: '新增',
+      UPDATE: '修改',
+      DELETE: '删除',
+      WRITE: '远程写入',
+      PURGE: '清空',
+      REVOKE: '撤销',
+      RESET: '重置',
+      LOGIN: '登录失败'
+    }
+  },
   salesQuery: {
     tip: '可承诺量 = 现存量 − 已确认订单未发货数量。答应客户前先看这一列，别只看现存。',
     skuCount: '可查商品',
@@ -921,7 +970,8 @@ export default {
     group: {
       '更新与升级': '更新与升级',
       '告警': '告警',
-      '演示数据': '演示数据'
+      '演示数据': '演示数据',
+      '审计': '审计'
     },
     purge: {
       energy: '能耗（电费、峰谷电量）',
@@ -932,6 +982,7 @@ export default {
       'update_allow-web-restart': '允许网页上一键重启',
       'alarm_storm-threshold': '批量告警合并阈值',
       'alarm_retain-days': '告警历史保留天数',
+      'audit_retain-days': '审计日志保留天数',
       'energy_demo-seed': '能耗演示数据',
       'report_demo-seed': '报表演示数据',
       'demand_demo-seed': '需量演示数据'
@@ -940,6 +991,7 @@ export default {
       'update_allow-web-restart': '打开后，「应用升级」按钮能直接重启服务，客户不用登服务器敲命令。前提是安装时用过 install.sh --allow-web-restart 给服务账号开过 sudo 规则，否则按钮会失败并提示原因。开不了就别硬开，让管理员执行 sudo systemctl restart device-hub 更稳妥。',
       'alarm_storm-threshold': '同一轮触发超过这个条数，合并成一条通知发出去。交换机一挂全厂离线，逐条发会把群刷爆，也没人看得出问题在哪。',
       'alarm_retain-days': '只清理已恢复的告警。没恢复的永远留着——那是没处理的事故，不能自动消失。',
+      'audit_retain-days': '审计日志保留多少天。超期的记录会被自动清理，查不回来了——要追溯的改动得在这之前查清楚。',
       'energy_demo-seed': '开关只影响「启动时要不要生成」。已经生成的假数据必须在下面点清除，否则客户会看到假电费。',
       'report_demo-seed': '同上。关掉开关后记得清掉已有数据，否则报表里的产量是编的。',
       'demand_demo-seed': '同上。假需量会让基本电费算错，交付前必须清。'

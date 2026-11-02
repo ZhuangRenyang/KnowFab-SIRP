@@ -1,5 +1,7 @@
 package com.factory.hub.web;
 
+import com.factory.hub.audit.AuditLog;
+import com.factory.hub.audit.AuditService;
 import com.factory.hub.collect.CollectScheduler;
 import com.factory.hub.collect.SnapshotStore;
 import com.factory.hub.erp.ErpProdLine;
@@ -49,13 +51,15 @@ public class DeviceController {
     private final ErpProdLineRepository lineRepo;
     /** 今日产量（live+DB 混合口径）——设备卡片完成率用 */
     private final com.factory.hub.report.ProdRollup rollup;
+    private final AuditService audit;
 
     public DeviceController(DeviceService deviceService,
                             SnapshotStore store,
                             CollectScheduler scheduler,
                             ObjectMapper mapper,
                             ErpProdLineRepository lineRepo,
-                            com.factory.hub.report.ProdRollup rollup
+                            com.factory.hub.report.ProdRollup rollup,
+                            AuditService audit
                             ) {
         this.deviceService = deviceService;
         this.store = store;
@@ -63,6 +67,7 @@ public class DeviceController {
         this.mapper = mapper;
         this.lineRepo = lineRepo;
         this.rollup = rollup;
+        this.audit = audit;
     }
 
     @GetMapping("/devices")
@@ -112,12 +117,17 @@ public class DeviceController {
             return ResponseEntity.badRequest().body(Map.of("ok", false, "message", err));
         }
         DeviceEntity d = deviceService.byCode(req.code());
+        boolean created = d == null;
         if (d == null) {
             d = new DeviceEntity();
         }
         apply(d, req);
         deviceService.save(d);
         scheduler.reload();
+        audit.ok(AuditLog.CAT_DEVICE, created ? AuditLog.ACT_CREATE : AuditLog.ACT_UPDATE,
+                d.getCode(), d.getName(),
+                (created ? "新增设备 " : "修改设备配置 ") + d.getCode() + "（" + d.getName() + "），协议 "
+                        + d.getProtocol() + "，点表 " + (req.points() == null ? 0 : req.points().size()) + " 个");
         return ResponseEntity.ok(toView(d, rollup.todayByDevice(List.of(d))
                 .getOrDefault(d.getCode(), 0d)));
     }
@@ -139,6 +149,9 @@ public class DeviceController {
         apply(d, req);
         deviceService.save(d);
         scheduler.reload();
+        audit.ok(AuditLog.CAT_DEVICE, AuditLog.ACT_UPDATE, d.getCode(), d.getName(),
+                "修改设备配置 " + d.getCode() + "（" + d.getName() + "），协议 " + d.getProtocol()
+                        + "，点表 " + (req.points() == null ? 0 : req.points().size()) + " 个");
         return ResponseEntity.ok(toView(d, rollup.todayByDevice(List.of(d))
                 .getOrDefault(d.getCode(), 0d)));
     }
@@ -156,6 +169,9 @@ public class DeviceController {
             // 产量痕迹一并清除：今日/本月/今年综合表 + 内存基准/内存桶。
             // 报警、能耗、ERP 数据按需求保留不动。
             rollup.purgeByCode(d.getCode());
+            audit.ok(AuditLog.CAT_DEVICE, AuditLog.ACT_DELETE, d.getCode(), d.getName(),
+                    "删除设备 " + d.getCode() + "（" + d.getName() + "），产量痕迹一并清除；"
+                            + "报警/能耗/ERP 数据保留");
         }
         return Map.of("ok", true);
     }
@@ -248,6 +264,13 @@ public class DeviceController {
         String who = operatorOf(req);
         log.info("远程写入：user={} device={} point={}({}) value={} → {}",
                 who, code, point.getName(), key, normalized, ok ? "成功" : "失败");
+        String wdetail = "远程写入 " + point.getName() + "(" + key + ") = " + normalized;
+        if (ok) {
+            audit.ok(AuditLog.CAT_DEVICE, AuditLog.ACT_WRITE, code, d.getName(), wdetail);
+        } else {
+            audit.fail(AuditLog.CAT_DEVICE, AuditLog.ACT_WRITE, code, d.getName(), wdetail,
+                    "设备未在线或写入无响应");
+        }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("ok", ok);
         out.put("pointKey", key);
@@ -294,6 +317,8 @@ public class DeviceController {
         String key = newKey(code);
         d.setApiKey(key);
         deviceService.save(d);
+        audit.ok(AuditLog.CAT_DEVICE, AuditLog.ACT_RESET, code, d.getName(),
+                "重置对外 API Key（旧 Key 立即失效，审计不记录 Key 本身）");
         return ResponseEntity.ok(Map.of("ok", true, "apiKey", key,
                 "message", "已重置，旧 Key 立即失效"));
     }
@@ -310,6 +335,8 @@ public class DeviceController {
         boolean enabled = Boolean.TRUE.equals(body.get("enabled"));
         d.setApiKeyEnabled(enabled);
         deviceService.save(d);
+        audit.ok(AuditLog.CAT_DEVICE, AuditLog.ACT_UPDATE, code, d.getName(),
+                "对外接口" + (enabled ? "启用" : "停用") + "（采集不受影响）");
         return ResponseEntity.ok(Map.of("ok", true, "apiKeyEnabled", enabled,
                 "message", enabled ? "对外接口已启用" : "对外接口已停用（采集不受影响）"));
     }

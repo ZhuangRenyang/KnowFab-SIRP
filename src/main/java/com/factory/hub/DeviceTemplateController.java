@@ -1,5 +1,7 @@
 package com.factory.hub;
 
+import com.factory.hub.audit.AuditLog;
+import com.factory.hub.audit.AuditService;
 import com.factory.hub.model.DeviceEntity;
 import com.factory.hub.model.DeviceTemplateEntity;
 import com.factory.hub.repo.DeviceTemplateRepository;
@@ -39,12 +41,14 @@ public class DeviceTemplateController {
     private final DeviceTemplateRepository repo;
     private final DeviceService deviceService;
     private final ObjectMapper mapper;
+    private final AuditService audit;
 
     public DeviceTemplateController(DeviceTemplateRepository repo, DeviceService deviceService,
-                                    ObjectMapper mapper) {
+                                    ObjectMapper mapper, AuditService audit) {
         this.repo = repo;
         this.deviceService = deviceService;
         this.mapper = mapper;
+        this.audit = audit;
     }
 
     /** 全部客户模板（新→旧）。内置模板在前端常量里，两者前端合并展示 */
@@ -81,6 +85,9 @@ public class DeviceTemplateController {
         t.setPointsJson(pointsJson);
         t.setNote(str(body.get("note")));
         repo.save(t);
+        audit.ok(AuditLog.CAT_DEVICE, AuditLog.ACT_CREATE, String.valueOf(t.getId()), t.getName(),
+                "新增设备模板「" + t.getName() + "」（" + t.getProtocol() + "，点表 "
+                        + pointCount(pointsJson) + " 个）");
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("ok", true);
         out.put("message", "模板已保存：" + name);
@@ -127,6 +134,9 @@ public class DeviceTemplateController {
         t.setPointsJson(d.getPointsJson());
         t.setNote(body == null ? "" : str(body.get("note")));
         repo.save(t);
+        audit.ok(AuditLog.CAT_DEVICE, AuditLog.ACT_CREATE, code, t.getName(),
+                "从设备 " + code + "（" + d.getName() + "）生成设备模板「" + t.getName() + "」，"
+                        + "协议 " + t.getProtocol() + "，点表 " + pointCount(d.getPointsJson()) + " 个");
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("ok", true);
         out.put("message", "已从设备 " + code + " 存为模板：" + name);
@@ -140,6 +150,7 @@ public class DeviceTemplateController {
         if (t == null) {
             return fail("模板不存在");
         }
+        String oldName = t.getName();
         String name = str(body.get("name"));
         if (!name.isBlank() && !name.equals(t.getName())) {
             if (repo.existsByName(name)) {
@@ -162,6 +173,10 @@ public class DeviceTemplateController {
         }
         t.setUpdatedAt(System.currentTimeMillis());
         repo.save(t);
+        audit.ok(AuditLog.CAT_DEVICE, AuditLog.ACT_UPDATE, String.valueOf(t.getId()), t.getName(),
+                "修改设备模板「" + oldName + "」"
+                        + (oldName.equals(t.getName()) ? "" : "（改名为「" + t.getName() + "」）")
+                        + "，协议 " + t.getProtocol() + "，点表 " + pointCount(t.getPointsJson()) + " 个");
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("ok", true);
         out.put("message", "模板已更新");
@@ -171,10 +186,15 @@ public class DeviceTemplateController {
 
     @DeleteMapping("/{id}")
     public Map<String, Object> delete(@PathVariable Long id) {
-        if (!repo.existsById(id)) {
+        // 先把模板名取出来：删完就查不到了，审计里得留个名字
+        DeviceTemplateEntity t = repo.findById(id).orElse(null);
+        if (t == null) {
             return fail("模板不存在");
         }
+        String name = t.getName();
         repo.deleteById(id);
+        audit.ok(AuditLog.CAT_DEVICE, AuditLog.ACT_DELETE, String.valueOf(id), name,
+                "删除设备模板「" + name + "」");
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("ok", true);
         out.put("message", "模板已删除");
@@ -222,6 +242,16 @@ public class DeviceTemplateController {
             return "点表 JSON 格式错误：" + e.getMessage();
         }
         return null;
+    }
+
+    /** 点表里的点位个数。审计里要写"几个点"，解析不出来就写未知 */
+    private int pointCount(String json) {
+        try {
+            var node = mapper.readTree(json);
+            return node.isArray() ? node.size() : 0;
+        } catch (Exception e) {
+            return 0;
+        }
     }
 
     private Map<String, Object> view(DeviceTemplateEntity t) {

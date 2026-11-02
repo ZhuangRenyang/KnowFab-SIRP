@@ -96,7 +96,7 @@ import { useRoute, useRouter } from 'vue-router'
 import {
   Monitor, Bell, Lightning, DataLine, Sunrise,
   OfficeBuilding, Box, Sell, ChatDotRound, Setting,
-  Expand, Fold, Sunny, Moon, ArrowDown, User, Goods, ShoppingCart, Search, Money, TrendCharts
+  Expand, Fold, Sunny, Moon, ArrowDown, User, Goods, ShoppingCart, Search, Money, TrendCharts, Tickets
 } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
@@ -180,7 +180,8 @@ const baseGroups = computed<{ title: string; items: NavItem[] }[]>(() => [
   ...(auth.isAdmin
     ? [{ title: t('nav.groupSystem'), items: [
         { path: '/system', label: t('nav.system'), icon: Setting, disabled: false, tip: '' },
-        { path: '/users', label: t('nav.users'), icon: User, disabled: false, tip: '' }
+        { path: '/users', label: t('nav.users'), icon: User, disabled: false, tip: '' },
+        { path: '/audit', label: t('nav.audit'), icon: Tickets, disabled: false, tip: '' }
       ] }]
     : [])
 ])

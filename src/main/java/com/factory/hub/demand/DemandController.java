@@ -1,5 +1,8 @@
 package com.factory.hub.demand;
 
+import com.factory.hub.audit.AuditLog;
+import com.factory.hub.audit.AuditService;
+
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -21,12 +24,14 @@ public class DemandController {
     private final DemandService service;
     private final DemandStore store;
     private final DemandWindowRepository repo;
+    private final AuditService audit;
 
     public DemandController(DemandService service, DemandStore store,
-                            DemandWindowRepository repo) {
+                            DemandWindowRepository repo, AuditService audit) {
         this.service = service;
         this.store = store;
         this.repo = repo;
+        this.audit = audit;
     }
 
     @GetMapping
@@ -56,6 +61,11 @@ public class DemandController {
             return bad;
         }
         store.save(cfg);
+        audit.ok(AuditLog.CAT_ENERGY, AuditLog.ACT_UPDATE, "demand", "基本电费配置",
+                "保存基本电费配置：计费模式=" + cfg.getBillingMode()
+                        + "，合同需量=" + cfg.getContractDemandKw() + " kW"
+                        + "，变压器容量=" + cfg.getTransformerKva() + " kVA"
+                        + "，需量单价=" + cfg.getDemandPrice() + "，容量单价=" + cfg.getCapacityPrice());
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("ok", true);
         out.put("message", "已保存，立即生效");
@@ -74,6 +84,8 @@ public class DemandController {
             return out;
         }
         int n = repo.purgeAll();
+        audit.ok(AuditLog.CAT_ENERGY, AuditLog.ACT_PURGE, "demand", "需量记录",
+                "清空需量记录 " + n + " 条（不可恢复）");
         out.put("ok", true);
         out.put("message", "已清空 " + n + " 条 15 分钟需量记录");
         return out;

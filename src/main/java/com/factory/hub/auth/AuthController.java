@@ -1,5 +1,7 @@
 package com.factory.hub.auth;
 
+import com.factory.hub.audit.AuditLog;
+import com.factory.hub.audit.AuditService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import org.slf4j.Logger;
@@ -37,14 +39,22 @@ public class AuthController {
     private final AuthenticationManager authManager;
     private final UserService users;
     private final LoginThrottle throttle;
+    private final AuditService audit;
 
     public AuthController(AuthenticationManager authManager, UserService users,
-                          LoginThrottle throttle) {
+                          LoginThrottle throttle, AuditService audit) {
         this.authManager = authManager;
         this.users = users;
         this.throttle = throttle;
+        this.audit = audit;
     }
 
+    /**
+     * 登录。
+     * <p>
+     * <b>只把登录失败记进审计</b>，成功的不记。成功登录一天能有几百次，
+     * 全记下来会把真正的异常淹掉；失败才是线索——有人在猜密码、有人在用离职账号试。
+     */
     @PostMapping("/login")
     public ResponseEntity<Map<String, Object>> login(@RequestBody Map<String, Object> body,
                                                      HttpServletRequest req) {
@@ -54,10 +64,12 @@ public class AuthController {
 
         long locked = throttle.lockedSeconds(ip);
         if (locked > 0) {
+            auditLoginFail(username, "密码错误次数太多，已被临时锁定 " + locked + " 秒");
             return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
                     .body(msg(false, "密码错误次数太多，请 " + locked + " 秒后再试"));
         }
         if (username.isBlank() || password.isBlank()) {
+            auditLoginFail(username, "用户名或密码为空");
             return ResponseEntity.badRequest().body(msg(false, "请输入用户名和密码"));
         }
 
@@ -89,9 +101,25 @@ public class AuthController {
             throttle.fail(ip);
             // 不区分"用户不存在"和"密码错"：区分了等于告诉对方哪些账号存在
             log.warn("登录失败：{} from {}（{}）", username, ip, e.getClass().getSimpleName());
+            auditLoginFail(username, "用户名或密码错误");
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(msg(false, "用户名或密码不对"));
         }
+    }
+
+    /**
+     * 记一条登录失败。
+     * <p>
+     * 操作人由 AuditService 自己从请求里取：未登录时没有 principal，
+     * 会记成 anonymous——这正是我们要的，登录失败时本来就还没有身份。
+     * <p>
+     * 失败原因不区分"用户不存在"和"密码错"，和接口返回给前端的口径保持一致，
+     * 免得审计日志成了枚举账号的工具。
+     */
+    private void auditLoginFail(String username, String reason) {
+        String who = username == null || username.isBlank() ? "（空用户名）" : username;
+        audit.fail(AuditLog.CAT_SYSTEM, AuditLog.ACT_LOGIN, who, who,
+                "登录失败：" + who, reason);
     }
 
     /** 前端每次打开页面先问这个：没登录返回 authenticated=false，不报错 */
