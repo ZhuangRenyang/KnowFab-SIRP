@@ -1,6 +1,7 @@
 package com.factory.hub.energy;
 
 import com.factory.hub.erp.ErpProdLine;
+import com.factory.hub.manual.ManualEntryService;
 import com.factory.hub.erp.ErpProdLineRepository;
 import com.factory.hub.model.DeviceEntity;
 import com.factory.hub.report.ProdHourly;
@@ -52,6 +53,7 @@ public class EnergyBenchmarkService {
     private final DeviceService deviceService;
     private final ErpProdLineRepository lineRepo;
     private final BenchmarkStore store;
+    private final ManualEntryService manualService;
 
     public EnergyBenchmarkService(EnergyRepository energyRepo,
                                   ProdHourlyRepository prodRepo,
@@ -59,7 +61,8 @@ public class EnergyBenchmarkService {
                                   ProdRollup prodRollup,
                                   DeviceService deviceService,
                                   ErpProdLineRepository lineRepo,
-                                  BenchmarkStore store) {
+                                  BenchmarkStore store,
+                                  ManualEntryService manualService) {
         this.energyRepo = energyRepo;
         this.prodRepo = prodRepo;
         this.energyRollup = energyRollup;
@@ -67,6 +70,7 @@ public class EnergyBenchmarkService {
         this.deviceService = deviceService;
         this.lineRepo = lineRepo;
         this.store = store;
+        this.manualService = manualService;
     }
 
     /**
@@ -117,6 +121,13 @@ public class EnergyBenchmarkService {
                     outByDevice.merge(dev.getCode(), live, Double::sum);
                 }
             }
+        }
+
+        // 补录（DH-13）并进分子/分母：月报和单耗要能和报表对上
+        LocalDate fromDate = Instant.ofEpochMilli(from).atZone(zone).toLocalDate();
+        for (Map.Entry<String, double[]> e : manualService.byDevice(fromDate, today).entrySet()) {
+            kwhByDevice.merge(e.getKey(), e.getValue()[0], Double::sum);
+            outByDevice.merge(e.getKey(), e.getValue()[2], Double::sum);
         }
 
         double totalKwh = 0d;

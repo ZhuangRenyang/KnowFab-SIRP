@@ -42,6 +42,7 @@ public final class ProdExcel {
             sheetShifts(wb, st, daily, date, planName);
             sheetDevices(wb, st, daily, date);
             sheetStops(wb, st, daily, date);
+            sheetManual(wb, st, daily, date);
 
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             wb.write(out);
@@ -86,6 +87,19 @@ public final class ProdExcel {
             cell(row, 4, hours(totals.get("idleSec")), st.boldNum);
             cell(row, 5, hours(totals.get("stopSec")), st.boldNum);
             cell(row, 6, pct(totals.get("availability")), st.boldNum);
+
+            // 补录没有真实班次，不能硬塞进某个班；单列一行让表能加得回来
+            double manualOut = num(totals.get("manualOutput"));
+            if (manualOut != 0d) {
+                Row mr = sh.createRow(r++);
+                cell(mr, 0, "其中补录（无班次）", st.bold);
+                cell(mr, 1, "人工补录", st.text);
+                cell(mr, 2, manualOut, st.boldNum);
+                cell(mr, 3, "", st.bold);
+                cell(mr, 4, "", st.bold);
+                cell(mr, 5, "", st.bold);
+                cell(mr, 6, "", st.bold);
+            }
         }
         widths(sh, 16, 16, 12, 11, 11, 11, 10);
         sh.createFreezePane(0, 3);
@@ -189,6 +203,38 @@ public final class ProdExcel {
             }
         }
         widths(sh, 34, 10, 18, 40);
+        sh.createFreezePane(0, 2);
+    }
+
+    /** 补录明细：补了什么、谁补的、为什么补，财务核对时要有据可查 */
+    @SuppressWarnings("unchecked")
+    private static void sheetManual(Workbook wb, Styles st, Map<String, Object> daily, String date) {
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) daily.get("manual");
+        if (rows == null || rows.isEmpty()) {
+            return;
+        }
+        Sheet sh = wb.createSheet("补录明细");
+        int r = 0;
+        r = title(sh, st, r, "补录明细 " + date, 8);
+
+        Row head = sh.createRow(r++);
+        String[] cols = {"日期", "设备编号", "设备名称", "电量(kWh)", "电费(元)", "产量(件)", "原因", "录入人"};
+        for (int i = 0; i < cols.length; i++) {
+            head.createCell(i).setCellValue(cols[i]);
+            head.getCell(i).setCellStyle(st.head);
+        }
+        for (Map<String, Object> m : rows) {
+            Row row = sh.createRow(r++);
+            cell(row, 0, str(m.get("day")), st.text);
+            cell(row, 1, str(m.get("deviceCode")), st.text);
+            cell(row, 2, str(m.get("deviceName")), st.text);
+            cell(row, 3, num(m.get("kwh")), st.num);
+            cell(row, 4, num(m.get("kwhCost")), st.num);
+            cell(row, 5, num(m.get("output")), st.num);
+            cell(row, 6, str(m.get("reason")), st.text);
+            cell(row, 7, str(m.get("operator")), st.text);
+        }
+        widths(sh, 14, 16, 22, 12, 11, 11, 34, 12);
         sh.createFreezePane(0, 2);
     }
 

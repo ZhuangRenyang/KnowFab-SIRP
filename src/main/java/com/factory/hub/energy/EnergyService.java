@@ -1,6 +1,7 @@
 package com.factory.hub.energy;
 
 import com.factory.hub.collect.SnapshotStore;
+import com.factory.hub.manual.ManualEntryService;
 import com.factory.hub.model.DeviceEntity;
 import com.factory.hub.model.PointValue;
 import com.factory.hub.service.DeviceService;
@@ -33,6 +34,7 @@ public class EnergyService {
     private final TariffStore tariffStore;
     private final SnapshotStore snapshot;
     private final DeviceService deviceService;
+    private final ManualEntryService manualService;
     /** 产线上的 workshop 字段是用能单元（车间）的唯一来源——不新表，避免"两处维护车间" */
     private final com.factory.hub.erp.ErpProdLineRepository lineRepo;
 
@@ -41,12 +43,14 @@ public class EnergyService {
                          TariffStore tariffStore,
                          SnapshotStore snapshot,
                          DeviceService deviceService,
+                         ManualEntryService manualService,
                          com.factory.hub.erp.ErpProdLineRepository lineRepo) {
         this.repo = repo;
         this.rollup = rollup;
         this.tariffStore = tariffStore;
         this.snapshot = snapshot;
         this.deviceService = deviceService;
+        this.manualService = manualService;
         this.lineRepo = lineRepo;
     }
 
@@ -86,6 +90,14 @@ public class EnergyService {
             m[0] += liveKwh;
             m[1] += liveCost;
         }
+
+        // ---- 补录（DH-13）：并进总量，不硬塞进分时构成（补录没有真实时段）----
+        double[] manualToday = manualService.totals(today, today);
+        double[] manualMonth = manualService.totals(today.withDayOfMonth(1), today);
+        t[0] += manualToday[0];
+        t[1] += manualToday[1];
+        m[0] += manualMonth[0];
+        m[1] += manualMonth[1];
 
         // ---- 峰谷分布 ----
         Map<String, double[]> segMap = new HashMap<>();
@@ -164,6 +176,8 @@ public class EnergyService {
         out.put("hasEnergyPoint", hasEnergyPoint());
         out.put("unpricedKwh", round(segMap.containsKey(EnergyRollup.SEG_UNPRICED)
                 ? segMap.get(EnergyRollup.SEG_UNPRICED)[0] : 0d, 2));
+        out.put("manualTodayKwh", round(manualToday[0], 2));
+        out.put("manualMonthKwh", round(manualMonth[0], 2));
         return out;
     }
 
@@ -215,6 +229,14 @@ public class EnergyService {
                 a[0] += e.getValue()[0];
                 a[1] += e.getValue()[1];
             }
+        }
+
+        // 补录并进设备电量，分项合计才和全厂/月报对得上
+        LocalDate fromDate = Instant.ofEpochMilli(from).atZone(zone).toLocalDate();
+        for (Map.Entry<String, double[]> e : manualService.byDevice(fromDate, today).entrySet()) {
+            double[] a = perDevice.computeIfAbsent(e.getKey(), k -> new double[3]);
+            a[0] += e.getValue()[0];
+            a[1] += e.getValue()[1];
         }
 
         // 2. 设备 → 产线 → 车间
@@ -403,6 +425,20 @@ public class EnergyService {
             totalCost += un[1];
         }
 
+        LocalDate monthEnd = current ? today : month.atEndOfMonth();
+        double[] manual = manualService.totals(month.atDay(1), monthEnd);
+        if (manual[0] > 0) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("type", "MANUAL");
+            m.put("name", "补录");
+            m.put("price", 0d);
+            m.put("kwh", round(manual[0], 2));
+            m.put("cost", round(manual[1], 2));
+            segments.add(m);
+            totalKwh += manual[0];
+            totalCost += manual[1];
+        }
+
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("month", month.toString());
         out.put("fromText", month.atDay(1).toString());
@@ -413,6 +449,8 @@ public class EnergyService {
         out.put("cost", round(totalCost, 2));
         out.put("segments", segments);
         out.put("unpricedKwh", un == null ? 0d : round(un[0], 2));
+        out.put("manualKwh", round(manual[0], 2));
+        out.put("manualCost", round(manual[1], 2));
         return out;
     }
 
@@ -440,6 +478,14 @@ public class EnergyService {
                 a[0] += e.getValue()[0];
                 a[1] += e.getValue()[1];
             }
+        }
+
+        // 补录（DH-13）：只补了电量、没有采集行的设备也要出现在排行里
+        LocalDate fromDate = Instant.ofEpochMilli(from).atZone(zone).toLocalDate();
+        for (Map.Entry<String, double[]> e : manualService.byDevice(fromDate, today).entrySet()) {
+            double[] a = map.computeIfAbsent(e.getKey(), k -> new double[3]);
+            a[0] += e.getValue()[0];
+            a[1] += e.getValue()[1];
         }
 
         Map<String, DeviceEntity> devices = new HashMap<>();
@@ -518,6 +564,10 @@ public class EnergyService {
             }
         }
 
+        double[] manual = manualService.totals(day, day);
+        total += manual[0];
+        cost += manual[1];
+
         DeviceEntity dev = deviceService.byCode(code);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("code", code);
@@ -527,6 +577,8 @@ public class EnergyService {
         out.put("cost", round(cost, 2));
         out.put("hourly", hourlyList(hourly, hourlySeg));
         out.put("segments", deviceSegments(code, from, cut, isToday));
+        out.put("manualKwh", round(manual[0], 2));
+        out.put("manualCost", round(manual[1], 2));
         return out;
     }
 

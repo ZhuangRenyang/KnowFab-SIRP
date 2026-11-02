@@ -3,6 +3,8 @@ package com.factory.hub.report;
 import com.factory.hub.alarm.AlarmEvent;
 import com.factory.hub.alarm.AlarmEventRepository;
 import com.factory.hub.alarm.AlarmRule;
+import com.factory.hub.manual.ManualEntry;
+import com.factory.hub.manual.ManualEntryService;
 import com.factory.hub.service.DeviceService;
 import org.springframework.stereotype.Service;
 
@@ -36,13 +38,16 @@ public class ReportService {
     private final ShiftStore shiftStore;
     private final AlarmEventRepository alarmRepo;
     private final DeviceService deviceService;
+    private final ManualEntryService manualService;
 
     public ReportService(ProdHourlyRepository repo, ShiftStore shiftStore,
-                         AlarmEventRepository alarmRepo, DeviceService deviceService) {
+                         AlarmEventRepository alarmRepo, DeviceService deviceService,
+                         ManualEntryService manualService) {
         this.repo = repo;
         this.shiftStore = shiftStore;
         this.alarmRepo = alarmRepo;
         this.deviceService = deviceService;
+        this.manualService = manualService;
     }
 
     /* ==================== 单日报表 ==================== */
@@ -105,6 +110,12 @@ public class ReportService {
         out.put("devices", byDevice(all, shifts, plan, date));
         out.put("hours", byHour(all, from, to));
         out.put("stopReasons", stopReasons(from, to));
+
+        // 补录（DH-13）：总量含补录，同时单列「其中补录」，不和采集混淆
+        List<ManualEntry> manual = manualService.activeOfDay(date);
+        applyManualToTotals((Map<String, Object>) out.get("totals"), manual);
+        applyManualToDevices((List<Map<String, Object>>) out.get("devices"), manual);
+        out.put("manual", manualRows(manual));
         out.put("warnings", plan.validate());
         return out;
     }
@@ -124,6 +135,16 @@ public class ReportService {
             m.put("date", d.toString());
             m.putAll(sum.toMap());
             rows.add(m);
+        }
+        // 补录按天并入，趋势图才和日报/月报对得上
+        Map<LocalDate, double[]> manualByDay = manualService.byDay(to.minusDays(n - 1), to);
+        for (Map<String, Object> row : rows) {
+            LocalDate d = LocalDate.parse(String.valueOf(row.get("date")));
+            double mo = manualByDay.getOrDefault(d, new double[3])[2];
+            if (mo != 0d) {
+                row.put("manualOutput", round1(mo));
+                row.put("output", round1(((Number) row.get("output")).doubleValue() + mo));
+            }
         }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("ok", true);
@@ -193,6 +214,24 @@ public class ReportService {
         devices.sort(Comparator.comparingDouble(
                 (Map<String, Object> m) -> -((Number) m.get("output")).doubleValue()));
 
+        // 补录：按天 / 按设备 / 总量三处都要并，否则 sheet 之间对不上
+        Map<LocalDate, double[]> manualByDay = manualService.byDay(start, endEx.minusDays(1));
+        for (Map<String, Object> row : daily) {
+            LocalDate d = LocalDate.parse(String.valueOf(row.get("date")));
+            double mo = manualByDay.getOrDefault(d, new double[3])[2];
+            if (mo != 0d) {
+                row.put("manualOutput", round1(mo));
+                row.put("output", round1(((Number) row.get("output")).doubleValue() + mo));
+            }
+        }
+        List<ManualEntry> manual = manualService
+                .findActive(start, endEx.minusDays(1));
+        applyManualToDevices(devices, manual);
+        Map<String, Object> monthTotals = totals(all);
+        applyManualToTotals(monthTotals, manual);
+        devices.sort(Comparator.comparingDouble(
+                (Map<String, Object> m) -> -((Number) m.get("output")).doubleValue()));
+
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("ok", true);
         out.put("month", month.toString());
@@ -201,7 +240,7 @@ public class ReportService {
         out.put("complete", !current);
         out.put("days", (int) java.time.temporal.ChronoUnit.DAYS.between(start, endEx));
         out.put("activeDays", activeDays);
-        out.put("totals", totals(all));
+        out.put("totals", monthTotals);
         out.put("daily", daily);
         out.put("devices", devices);
         return out;
@@ -243,6 +282,79 @@ public class ReportService {
             m.put("deviceCount", devices.size());
             return m;
         }
+    }
+
+    /** 总量加上补录，并把「其中补录」单列出来 */
+    private void applyManualToTotals(Map<String, Object> totals, List<ManualEntry> manual) {
+        if (totals == null) {
+            return;
+        }
+        double manualOut = 0d;
+        for (ManualEntry e : manual) {
+            manualOut += e.getOutput();
+        }
+        double base = totals.get("output") instanceof Number n ? n.doubleValue() : 0d;
+        totals.put("output", round1(base + manualOut));
+        totals.put("manualOutput", round1(manualOut));
+    }
+
+    /**
+     * 设备行并入补录：有采集行就加进去，只有补录的设备单独补一行。
+     * 这样「设备明细」的产量之和仍然等于总量（客户会一行行加）。
+     */
+    @SuppressWarnings("unchecked")
+    private void applyManualToDevices(List<Map<String, Object>> rows, List<ManualEntry> manual) {
+        if (rows == null) {
+            return;
+        }
+        Map<String, Map<String, Object>> byCode = new LinkedHashMap<>();
+        for (Map<String, Object> r : rows) {
+            r.put("manualOutput", 0d);
+            byCode.put(String.valueOf(r.get("code")), r);
+        }
+        for (ManualEntry e : manual) {
+            Map<String, Object> r = byCode.get(e.getDeviceCode());
+            if (r == null) {
+                r = new LinkedHashMap<>();
+                r.put("code", e.getDeviceCode());
+                r.put("name", e.getDeviceName() == null ? e.getDeviceCode() : e.getDeviceName());
+                r.put("location", locationOf(e.getDeviceCode()));
+                r.put("output", 0d);
+                r.put("runSec", 0d);
+                r.put("idleSec", 0d);
+                r.put("stopSec", 0d);
+                r.put("alarmSec", 0d);
+                r.put("unknownSec", 0d);
+                r.put("countedSec", 0d);
+                r.put("availability", -1d);
+                r.put("manualOutput", 0d);
+                rows.add(r);
+                byCode.put(e.getDeviceCode(), r);
+            }
+            double out = ((Number) r.get("output")).doubleValue() + e.getOutput();
+            double mo = ((Number) r.get("manualOutput")).doubleValue() + e.getOutput();
+            r.put("output", round1(out));
+            r.put("manualOutput", round1(mo));
+        }
+    }
+
+    /** 补录明细（日报/月报接口返回，前端展示"这一天补了什么"） */
+    private List<Map<String, Object>> manualRows(List<ManualEntry> manual) {
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (ManualEntry e : manual) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", e.getId());
+            m.put("deviceCode", e.getDeviceCode());
+            m.put("deviceName", e.getDeviceName());
+            m.put("day", e.getDay().toString());
+            m.put("kwh", round1(e.getKwh()));
+            m.put("kwhCost", round1(e.getKwhCost()));
+            m.put("output", round1(e.getOutput()));
+            m.put("reason", e.getReason());
+            m.put("operator", e.getOperator());
+            rows.add(m);
+        }
+        return rows;
     }
 
     private Map<String, Object> totals(List<ProdHourly> all) {

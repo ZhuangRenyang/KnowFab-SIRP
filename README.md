@@ -221,6 +221,8 @@ cable, zero PLC code changes:
 ## Feature map
 
 - **Device connectivity** — Modbus TCP / RTU / pass-through; subnet + slave-id double scan for
+- **Manual data entry** — network outages or missed meter readings can be filled in by hand
+  (split per day, revocable). Reports show a separate "manual" line, never mixed with collected data.
   discovery; point tables as JSON; relay + limit-switch counting (the old-press lifesaver); a
   built-in simulator so you can develop without hardware
 - **Production** — per-machine counters (today / this month / this year); **four output charts**

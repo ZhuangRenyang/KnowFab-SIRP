@@ -73,7 +73,9 @@ public final class MonthExcel {
 
         r++;
         r = head(sh, st, r, "指标", "数值", "说明");
-        r = kv(sh, st, r, "产量", output, st.intNum, "件");
+        r = kv(sh, st, r, "产量", output, st.intNum, "件（含补录）");
+        r = kv(sh, st, r, "其中补录产量", num(t.get("manualOutput")), st.intNum,
+                "人工补录，非设备采集");
         r = kv(sh, st, r, "生产天数", activeDays, st.intNum,
                 "共 " + (int) num(prod.get("days")) + " 天，有数据的天数");
         r = kv(sh, st, r, "日均产量", activeDays > 0 ? output / activeDays : 0d, st.num,
@@ -95,7 +97,11 @@ public final class MonthExcel {
         double totalCost = energyCost + basicCost;
 
         r = head(sh, st, r, "能耗 / 电费", "数值", "口径");
-        r = kv(sh, st, r, "用电量", kwh, st.num, "kWh，含当前小时实时值");
+        r = kv(sh, st, r, "用电量", kwh, st.num, "kWh，含实时值与补录");
+        r = kv(sh, st, r, "其中补录电量", num(energy.get("manualKwh")), st.num,
+                "人工补录，电费按当天分时电价摊算");
+        r = kv(sh, st, r, "其中补录电费", num(energy.get("manualCost")), st.money,
+                "补录电量对应的电费");
         r = kv(sh, st, r, "电度电费", energyCost, st.money,
                 "分时电价：" + str(energy.getOrDefault("tariffName", "")));
         r = kv(sh, st, r, "基本电费", basicCost, st.money,
@@ -122,7 +128,7 @@ public final class MonthExcel {
         r = title(sh, st, r, "每日产量 " + str(prod.get("month")), 7);
 
         Row head = sh.createRow(r++);
-        String[] cols = {"日期", "产量(件)", "运行(h)", "待机(h)", "停机(h)", "报警(h)", "稼动率"};
+        String[] cols = {"日期", "产量(件)", "其中补录(件)", "运行(h)", "待机(h)", "停机(h)", "报警(h)", "稼动率"};
         header(sh, st, head, cols);
 
         List<Map<String, Object>> rows = (List<Map<String, Object>>) prod.get("daily");
@@ -131,11 +137,12 @@ public final class MonthExcel {
                 Row row = sh.createRow(r++);
                 cell(row, 0, str(m.get("date")), st.text);
                 cell(row, 1, num(m.get("output")), st.intNum);
-                cell(row, 2, hours(m.get("runSec")), st.num);
-                cell(row, 3, hours(m.get("idleSec")), st.num);
-                cell(row, 4, hours(m.get("stopSec")), st.num);
-                cell(row, 5, hours(m.get("alarmSec")), st.num);
-                cell(row, 6, pct(m.get("availability")), st.text);
+                cell(row, 2, num(m.get("manualOutput")), st.intNum);
+                cell(row, 3, hours(m.get("runSec")), st.num);
+                cell(row, 4, hours(m.get("idleSec")), st.num);
+                cell(row, 5, hours(m.get("stopSec")), st.num);
+                cell(row, 6, hours(m.get("alarmSec")), st.num);
+                cell(row, 7, pct(m.get("availability")), st.text);
             }
         }
 
@@ -143,13 +150,14 @@ public final class MonthExcel {
         Row row = sh.createRow(r++);
         cell(row, 0, "合计", st.bold);
         cell(row, 1, num(t.get("output")), st.boldInt);
-        cell(row, 2, hours(t.get("runSec")), st.boldNum);
-        cell(row, 3, hours(t.get("idleSec")), st.boldNum);
-        cell(row, 4, hours(t.get("stopSec")), st.boldNum);
-        cell(row, 5, hours(t.get("alarmSec")), st.boldNum);
-        cell(row, 6, pct(t.get("availability")), st.bold);
+        cell(row, 2, num(t.get("manualOutput")), st.boldInt);
+        cell(row, 3, hours(t.get("runSec")), st.boldNum);
+        cell(row, 4, hours(t.get("idleSec")), st.boldNum);
+        cell(row, 5, hours(t.get("stopSec")), st.boldNum);
+        cell(row, 6, hours(t.get("alarmSec")), st.boldNum);
+        cell(row, 7, pct(t.get("availability")), st.bold);
 
-        widths(sh, 14, 12, 11, 11, 11, 11, 10);
+        widths(sh, 14, 12, 14, 11, 11, 11, 11, 10);
         sh.createFreezePane(0, 2);
     }
 
@@ -162,7 +170,7 @@ public final class MonthExcel {
         r = title(sh, st, r, "设备月产量 " + str(prod.get("month")), 8);
 
         Row head = sh.createRow(r++);
-        String[] cols = {"设备编号", "设备名称", "位置", "产量(件)",
+        String[] cols = {"设备编号", "设备名称", "位置", "产量(件)", "其中补录(件)",
                 "运行(h)", "停机(h)", "记录时长(h)", "稼动率"};
         header(sh, st, head, cols);
 
@@ -177,13 +185,14 @@ public final class MonthExcel {
                 cell(row, 1, str(m.get("name")), st.text);
                 cell(row, 2, str(m.get("location")), st.text);
                 cell(row, 3, num(m.get("output")), st.intNum);
-                cell(row, 4, hours(m.get("runSec")), st.num);
-                cell(row, 5, hours(m.get("stopSec")), st.num);
-                cell(row, 6, hours(m.get("countedSec")), st.num);
-                cell(row, 7, pct(m.get("availability")), st.text);
+                cell(row, 4, num(m.get("manualOutput")), st.intNum);
+                cell(row, 5, hours(m.get("runSec")), st.num);
+                cell(row, 6, hours(m.get("stopSec")), st.num);
+                cell(row, 7, hours(m.get("countedSec")), st.num);
+                cell(row, 8, pct(m.get("availability")), st.text);
             }
         }
-        widths(sh, 16, 22, 16, 12, 11, 11, 13, 10);
+        widths(sh, 16, 22, 16, 12, 14, 11, 11, 13, 10);
         sh.createFreezePane(0, 2);
     }
 
@@ -270,7 +279,10 @@ public final class MonthExcel {
         cell(total, 3, "", st.bold);
 
         r = blank(sh, r);
-        r = kvUnit(sh, st, r, "本月用电量", num(energy.get("kwh")), "kWh", "含当前小时实时值");
+        r = kvUnit(sh, st, r, "本月用电量", num(energy.get("kwh")), "kWh", "含实时值与补录");
+        r = kvUnit(sh, st, r, "其中补录电量", num(energy.get("manualKwh")), "kWh", "人工补录");
+        r = kvUnit(sh, st, r, "其中补录电费", num(energy.get("manualCost")), "元",
+                "按当天 24 小时分时电价摊算");
         r = kvUnit(sh, st, r, "本月产量", output, "件", "与「月度汇总」同一口径");
         r = kvUnit(sh, st, r, "单位产品电耗", unit(num(energy.get("kwh")), output),
                 "kWh/件", output > 0 ? "" : "无产量，算不出单耗");

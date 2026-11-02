@@ -5,6 +5,8 @@ import { http } from './http'
 export interface ShiftDef { id: string; name: string; start: string; end: string }
 
 export interface ReportTotals {
+  /** 其中人工补录的产量（含在 output 里） */
+  manualOutput?: number
   output: number
   availability: number
   runSec: number
@@ -23,6 +25,7 @@ export interface ShiftRow extends ShiftDef {
 }
 
 export interface DeviceRow {
+  manualOutput?: number
   name: string
   code: string
   location: string
@@ -36,6 +39,7 @@ export interface DeviceRow {
 export interface StopReason { reason: string; count: number; totalMin: number }
 
 export interface DailyReport {
+  manual?: { id: number; deviceCode: string; deviceName?: string; day: string; kwh: number; kwhCost: number; output: number; reason?: string; operator?: string }[]
   ok: boolean
   date: string
   planName: string

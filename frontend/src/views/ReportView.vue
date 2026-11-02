@@ -1,6 +1,8 @@
 <template>
   <div class="report">
     <el-alert v-if="warn" :title="warn" type="warning" show-icon :closable="false" class="warn" />
+    <el-alert v-if="(totals?.manualOutput || 0) > 0" :closable="false" type="info" show-icon class="warn"
+              :title="t('rpt.manualDayHint', { n: num(totals?.manualOutput, 0) })" />
 
     <div class="toolbar">
       <el-date-picker v-model="date" type="date" value-format="YYYY-MM-DD" style="width:150px" @change="load" />
@@ -11,6 +13,7 @@
       <el-date-picker v-model="month" type="month" value-format="YYYY-MM" style="width:130px" />
       <el-button :loading="monthExporting" @click="exportMonthXlsx">{{ t('rpt.exportMonth') }}</el-button>
       <el-button @click="shiftOpen = true">{{ t('rpt.shiftSettings') }}</el-button>
+      <el-button v-if="canCfg" @click="manualOpen = true">{{ t('rpt.manualBtn') }}</el-button>
       <span v-if="planName" class="plan">{{ t('rpt.planLabel', { name: planName }) }}</span>
     </div>
 
@@ -80,12 +83,14 @@
       <div v-if="!devices.length" class="empty">{{ t('rpt.devEmpty') }}</div>
       <table v-else class="etable">
         <thead><tr><th>{{ t('rpt.thDevice') }}</th><th class="r">{{ t('rpt.thOutput') }}</th>
+          <th class="r">{{ t('rpt.thManual') }}</th>
           <th v-for="s in shifts" :key="s.id" class="r">{{ s.name }}</th>
           <th class="r">{{ t('rpt.thRun') }}</th><th class="r">{{ t('rpt.thStop') }}</th><th class="r">{{ t('rpt.thAvail') }}</th></tr></thead>
         <tbody>
           <tr v-for="d in devices" :key="d.code">
             <td>{{ d.name }}<div class="dim">{{ d.code }} · {{ d.location || '' }}</div></td>
             <td class="r num">{{ num(d.output, 0) }}</td>
+            <td class="r num">{{ d.manualOutput ? num(d.manualOutput, 0) : '—' }}</td>
             <td v-for="s in shifts" :key="s.id" class="r num">{{ num(d.shiftOutput?.[s.id] || 0, 0) }}</td>
             <td class="r num">{{ num(d.runSec / 3600, 1) }}</td>
             <td class="r num">{{ num(d.stopSec / 3600, 1) }}</td>
@@ -96,6 +101,7 @@
     </div>
 
     <ShiftsDialog v-model="shiftOpen" @saved="load" />
+    <ManualDialog v-model="manualOpen" @changed="load" />
   </div>
 </template>
 
@@ -108,9 +114,13 @@ import {
   reportsApi, exportDaily, exportMonth, num, todayStr,
   type ShiftRow, type DeviceRow, type StopReason, type ReportTotals
 } from '@/api/reports'
+import { useAuthStore } from '@/stores/auth'
 import ShiftsDialog from '@/components/report/ShiftsDialog.vue'
+import ManualDialog from '@/components/report/ManualDialog.vue'
 
 const { t } = useI18n()
+const auth = useAuthStore()
+const canCfg = computed(() => ['ADMIN', 'MANAGER'].includes(auth.user?.role || ''))
 
 const { init, setOption } = useEcharts()
 
@@ -119,6 +129,7 @@ const data = ref<any>(null)
 const warn = ref('')
 const exporting = ref(false)
 const monthExporting = ref(false)
+const manualOpen = ref(false)
 const month = ref(todayStr(0).slice(0, 7))
 const shiftOpen = ref(false)
 const hoursEl = ref<HTMLElement>()
