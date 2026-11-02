@@ -62,7 +62,9 @@ if [ "$DO_BUILD" -eq 1 ]; then
   fi
 
   say "构建 jar（$MVN_BIN）"
-  ( cd "$ROOT" && "$MVN_BIN" -q -DskipTests package ) || die "构建失败，看上面的报错"
+  # 必须 clean：mvn 的资源拷贝是覆盖式，不清 target/classes 会把历史构建的
+  # 旧 hash chunk（旧 JS/CSS）一起打进 jar，包越滚越大还带着已删代码。
+  ( cd "$ROOT" && "$MVN_BIN" -q -DskipTests clean package ) || die "构建失败，看上面的报错"
   ok "构建完成"
 fi
 
