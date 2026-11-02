@@ -1,6 +1,6 @@
 {
-  "version": "1.0.16",
-  "notes": "新增操作审计：设备、电价、班次、告警规则、用户、系统设置、补录、应用升级等所有配置改动都留一条记录（谁、何时、改了什么），只增不改不删；失败操作也留痕并带真实原因；日志仅管理员可见，保留 180 天可配；系统菜单新增「操作审计」页，支持按日期、分类、关键词查询",
-  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.16/device-hub-1.0.16-update.zip",
-  "sha256": "a0ee835a0503a7b976fec684484cbbde156ad93aeb9c264bf5c9587c16d014e9"
+  "version": "1.0.17",
+  "notes": "补丁：补齐三处审计漏埋点（清空报表数据、重载采集配置、取消待应用升级包此前没留痕）；操作审计新增回归用例，纳入自测脚本长期守护",
+  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.17/device-hub-1.0.17-update.zip",
+  "sha256": "debfae55aebfc4befb646c0e29466ee578619c77735365a7d55392343c7aa271"
 }
