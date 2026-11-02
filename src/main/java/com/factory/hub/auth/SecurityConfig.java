@@ -140,6 +140,25 @@ public class SecurityConfig {
                         // 生成早报会花钱调外部接口，但不改配置，车间主任也放开
                         .requestMatchers(HttpMethod.POST, "/api/ai/digest/generate")
                         .hasAnyRole("ADMIN", "MANAGER")
+                        // ---- 危险动作收口（2026-11-03 补）----
+                        // 起因：安全审计实测发现「销售」账号能直接 curl 下面这些接口：
+                        // 清空告警/能耗/报表/需量历史、读写补录（改报表口径）、确认告警。
+                        // 前端把按钮藏了不算权限——本文件开头的注释就写着这句，
+                        // 这次是真的漏了规则，不是文档问题。
+                        // ① 补录：补录直接进产量/电量统计口径，能改全厂报表数字 → 管理员/车间主任
+                        .requestMatchers("/api/manual/**").hasAnyRole("ADMIN", "MANAGER")
+                        // ② 清历史四件套：删的是客户半年数据，误触或越界的代价都太大 → 只给管理员
+                        .requestMatchers(HttpMethod.POST, "/api/alarms/purge", "/api/energy/purge",
+                                "/api/reports/purge", "/api/energy/demand/purge")
+                        .hasRole("ADMIN")
+                        // ③ 确认告警：班组长本来就要能确认（下面「其余一律要登录」那条注释也写了），
+                        //    但销售不该能确认——否则设备负责人视图里会多出销售点的「已确认」，
+                        //    审计日志里也会留下销售确认告警的假线索
+                        .requestMatchers(HttpMethod.POST, "/api/alarms/*/ack", "/api/alarms/ack-all")
+                        .hasAnyRole("ADMIN", "MANAGER", "LEADER")
+                        // ④ 设备模板点表：含寄存器地址、协议、端口，等于现场设备拓扑，销售用不上
+                        .requestMatchers(HttpMethod.GET, "/api/device-templates/**")
+                        .hasAnyRole("ADMIN", "MANAGER", "LEADER")
                         // 操作审计的权限收口在上面「只有管理员」那条里（/api/audit/** → ADMIN）。
                         // 这里不再重复写一条"管理员 + 车间主任"的规则：两条都在的话，
                         // 以后谁调整顺序，车间主任就会被悄悄放开，和"只给管理员"的决定相反。

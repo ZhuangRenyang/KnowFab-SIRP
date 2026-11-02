@@ -538,6 +538,48 @@ def main():
     for r in mrows2:
         req("POST", f"/api/manual/{r.get('id')}/revoke", {}, cookie=admin_cookie)
 
+    # ============ M. 越权防线（2026-11-03 补）============
+    # 起因：安全审计实测，「销售」账号能直接 curl 下面这些接口：
+    # 清空告警/能耗/报表/需量历史、读写补录（改产量口径）、确认告警、读设备点表。
+    # 前端把按钮藏了不算权限——SecurityConfig 自己的注释就写着这句。
+    # 这组用例把「后端真的挡住了」钉死，以后谁改 SecurityConfig 忘了收口，这里会红。
+    code, body = req("POST", "/api/users", {"username": "selftest_sales", "displayName": "自测销售",
+                                            "password": "Sales#2026", "role": "SALES"}, cookie=admin_cookie)
+    check("M1 创建销售用户", code == 200, (code, body))
+    code, body, sales_cookie = login("selftest_sales", "Sales#2026")
+    check("M2 销售可登录", code == 200, code)
+    # ① 清历史四件套：越权等于删客户半年数据
+    for label, path in [("告警", "/api/alarms/purge"), ("能耗", "/api/energy/purge"),
+                        ("报表", "/api/reports/purge"), ("需量", "/api/energy/demand/purge")]:
+        code, body = req("POST", path, {"confirm": True}, cookie=sales_cookie)
+        check("M3 销售清%s历史被拒(403)" % label, code == 403, (code, body))
+    # ② 补录：能改产量/电量口径，等于改全厂报表数字；读出来还带电费成本
+    code, body = req("GET", "/api/manual", cookie=sales_cookie)
+    check("M4 销售读补录被拒(403)", code == 403, (code, body))
+    code, body = req("POST", "/api/manual", {"deviceCode": "CNC-01", "fromDay": date.today().isoformat(),
+                                             "toDay": date.today().isoformat(), "output": 9999,
+                                             "reason": "SELFTEST-越权"}, cookie=sales_cookie)
+    check("M5 销售写补录被拒(403)", code == 403, (code, body))
+    # ③ 确认告警：班组长本来就要能确认，销售不能（否则审计里留下销售的假线索）
+    code, body = req("POST", "/api/alarms/999999/ack", {}, cookie=sales_cookie)
+    check("M6 销售确认告警被拒(403)", code == 403, (code, body))
+    code, body = req("POST", "/api/alarms/ack-all", {}, cookie=sales_cookie)
+    check("M7 销售批量确认告警被拒(403)", code == 403, (code, body))
+    code, body = req("POST", "/api/alarms/999999/ack", {}, cookie=leader_cookie)
+    check("M8 班组长仍可确认告警（别收得过紧）", code != 403, (code, body))
+    # ④ 设备模板点表：含寄存器地址、协议与端口，等于现场设备拓扑
+    code, body = req("GET", "/api/device-templates", cookie=sales_cookie)
+    check("M9 销售读设备模板点表被拒(403)", code == 403, (code, body))
+    # 对照组：销售该有的能力不能被误伤
+    code, body = req("GET", "/api/erp/sales-query/stock?q=&page=1&size=1", cookie=sales_cookie)
+    check("M10 销售仍可读销售查询(200)", code == 200, (code, str(body)[:100]))
+    code, body = req("GET", "/api/erp/sales-query/stock?q=&page=1&size=1", cookie=leader_cookie)
+    check("M11 班组长仍可读销售查询(200)", code == 200, (code, str(body)[:100]))
+    # 管理员没被误收口：purge 不带 confirm 时是安全的空操作（只留一条审计）
+    code, body = req("POST", "/api/alarms/purge", {}, cookie=admin_cookie)
+    check("M12 管理员清历史没被误拦（未确认应返回 ok:false）",
+          code == 200 and body.get("ok") is False, (code, body))
+
     # ============ 清理 ============
     # H2 往 storm-threshold 写了个 50 做校验测试，用完必须还原——
     # 不还原的话，客户机上这个批量告警合并阈值就比 yml 默认的 8 宽松了 6 倍多，
@@ -568,7 +610,7 @@ def main():
     code, users = req("GET", "/api/users", cookie=admin_cookie)
     if isinstance(users, list):
         for u in users:
-            if u.get("username") == "selftest_leader":
+            if u.get("username") in ("selftest_leader", "selftest_sales"):
                 code, body = req("DELETE", f"/api/users/{u.get('id')}", cookie=admin_cookie)
                 check("Z2 删除测试用户", code == 200, code)
     code, body = req("POST", "/api/devices/reload", {}, cookie=admin_cookie)
