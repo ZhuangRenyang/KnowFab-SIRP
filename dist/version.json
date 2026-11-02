@@ -1,6 +1,6 @@
 {
-  "version": "1.0.19",
-  "notes": "修复需量超合同告警重启后自动消失：服务重启后未恢复的需量告警会保留下来（状态、发生时间都不变），不会再凭空多出一条；关掉需量预警或需量回落到合同范围内时，告警的解除理由现在说明真实原因，不再写成「规则已删除或停用」这种误导性的说法。历史记录中被误关的需量告警会在数据库升级时一并订正",
-  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.19/device-hub-1.0.19-update.zip",
-  "sha256": "0500b1dad82458cb8ce3bd99deb79314853bb553c823020c975a53a904506ee2"
+  "version": "1.0.20",
+  "notes": "新增 OEE 设备综合效率：报表页可��看「可用率 × 性能 × 良率」三项因子和 OEE 总值，设备明细里每台机器一行；给设备配一个「理想节拍（秒/件）」就能算性能率，机床有不良品计数器的点表配 role=reject 就能自动算良率，没有的可以用「产量补录」录不良数。数据不全时不会给你一个凑出来的数——缺哪一项会直接写明缺什么、怎么补",
+  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.20/device-hub-1.0.20-update.zip",
+  "sha256": "ebb0ab7062eb071dbff778e78e911bc7bd9f98c7bcc008b006502751dd1e4986"
 }
