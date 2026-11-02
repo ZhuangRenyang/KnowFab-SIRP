@@ -1,6 +1,6 @@
 {
-  "version": "1.0.13",
-  "notes": "新增国标能效对标（DH-12）：能耗页可按全厂/车间/产线/设备查看「实测单位产品能耗 vs 国标限额值」，支持先进值/准入值/限定值三档对照，自动判定优于先进值、达准入值、限值内、超限额；本期无产量时明确不下结论，不做假数据；对标签配可录入国标号与备注，随报表实时生效",
-  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.13/device-hub-1.0.13-update.zip",
-  "sha256": "f4fbd28c4b85b9e1418cdc8057a2446d6303b5b301bf3211d8f53904a20dba1f"
+  "version": "1.0.14",
+  "notes": "新增月报导出：报表页选月份一键导出「生产月报」，一个 xlsx 含月度汇总、每日明细、设备月产量、电费四个 sheet。电费拆电度（尖峰/高峰/平段/低谷分时）与基本（需量/容量自动取更省），力调电费不编数字、提示按供电局结算单核对；当月报截至今日，历史月份出整月；单位产品电耗/电费一并算出",
+  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.14/device-hub-1.0.14-update.zip",
+  "sha256": "23e7cc7ef4e38eb9f4a47fae9d0fadff67b1cb5104ea3c85772b4fab518d5bfb"
 }
