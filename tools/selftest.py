@@ -421,6 +421,57 @@ def main():
     if legacy_id:
         req("DELETE", f"/api/alarms/rules/{legacy_id}", cookie=admin_cookie)
 
+    # ============ K. 需量告警生命周期（DH-29） ============
+    # 需量告警是**系统告警**：规则不在 alarm.rules 里（配置在 energy.demand）。
+    # 以前它在重启时被当成「规则被删了」自动关掉，理由还写着「规则已删除或停用」——
+    # 规则根本没被删过，那是句假话，追溯时会把客户带偏。
+    # 这里锁住两件事：①它是系统告警 ②关掉它的理由必须说真话。
+    def demand_alarms():
+        code, b = req("GET", "/api/alarms?state=ALL&level=ALL&range=30d&page=1&size=200",
+                      cookie=admin_cookie)
+        return [e for e in (b.get("items") or []) if e.get("ruleId") == "r-demand-over"]
+
+    code, body = req("GET", "/api/energy/demand/config", cookie=admin_cookie)
+    dcfg = (body.get("config") or {}) if body.get("ok") else None
+    check("K1 能读到需量配置", isinstance(dcfg, dict) and dcfg.get("contractDemandKw"), body)
+    code, body = req("GET", "/api/alarms/rules", cookie=admin_cookie)
+    rule_ids = {(it.get("rule") or {}).get("id") for it in (body.get("items") or [])}
+    check("K2 需量告警不在规则表里（它是系统告警）", "r-demand-over" not in rule_ids,
+          sorted(x for x in rule_ids if x))
+    if isinstance(dcfg, dict) and dcfg.get("contractDemandKw"):
+        opens = [e for e in demand_alarms() if e.get("state") in ("ACTIVE", "ACKED")]
+        if not opens:
+            # 没有挂着的就造一条：合同需量调到 1 kW，工厂峰值必然超
+            low = dict(dcfg)
+            low["contractDemandKw"] = 1.0
+            low["enabled"] = True
+            req("POST", "/api/energy/demand/config", low, cookie=admin_cookie)
+            for _ in range(20):
+                _t.sleep(2)
+                opens = [e for e in demand_alarms() if e.get("state") in ("ACTIVE", "ACKED")]
+                if opens:
+                    break
+        check("K3 有一条未关闭的需量告警", len(opens) >= 1,
+              [(e.get("id"), e.get("state")) for e in demand_alarms()[:3]])
+        # 关掉需量监控 → 这条告警必须被收掉，而且理由得是真话
+        off = dict(dcfg)
+        off["enabled"] = False
+        req("POST", "/api/energy/demand/config", off, cookie=admin_cookie)
+        cleared = []
+        for _ in range(20):
+            _t.sleep(2)
+            cleared = [e for e in demand_alarms()
+                       if e.get("state") == "CLEARED" and e.get("clearReason") == "需量监控已关闭"]
+            if cleared:
+                break
+        check("K4 关掉需量监控后告警被收掉，理由是「需量监控已关闭」", len(cleared) >= 1,
+              [(e.get("id"), e.get("clearReason")) for e in demand_alarms()[:3]])
+        check("K5 需量告警没有再被写成「规则已删除或停用」（那是假话）",
+              not [e for e in demand_alarms() if e.get("clearReason") == "规则已删除或停用"],
+              [(e.get("id"), e.get("clearReason")) for e in demand_alarms()[:5]])
+        # 还原配置
+        req("POST", "/api/energy/demand/config", dcfg, cookie=admin_cookie)
+
     # ============ 清理 ============
     # H2 往 storm-threshold 写了个 50 做校验测试，用完必须还原——
     # 不还原的话，客户机上这个批量告警合并阈值就比 yml 默认的 8 宽松了 6 倍多，

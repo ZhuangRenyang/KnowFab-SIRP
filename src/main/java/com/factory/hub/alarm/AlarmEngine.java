@@ -163,6 +163,15 @@ public class AlarmEngine {
             int restored = 0, closed = 0;
             for (AlarmEvent e : list) {
                 AlarmRule r = ruleMap.get(e.getRuleId());
+                if (r == null && SystemAlarms.isSystem(e.getRuleId())) {
+                    // 系统告警的「规则」本来就不在规则表里，它由自己的模块管生命周期。
+                    // 以前这里一律关掉，等于每次重启都把「昨天超合同需量」抹了，
+                    // 关闭理由还写成「规则已删除或停用」——规则根本没被删过，那是句假话。
+                    // 保留下来继续跟踪：需量模块下一轮会判断它是该继续挂着还是该正常解除。
+                    open.put(key(e.getRuleId(), e.getDeviceCode()), e);
+                    restored++;
+                    continue;
+                }
                 if (r == null || !r.isEnabled()) {
                     e.setState(AlarmEvent.STATE_CLEARED);
                     e.setClearedAt(System.currentTimeMillis());
@@ -589,6 +598,11 @@ public class AlarmEngine {
         long now = System.currentTimeMillis();
         for (Map.Entry<String, AlarmEvent> en : new ArrayList<>(open.entrySet())) {
             AlarmEvent e = en.getValue();
+            // 系统告警（如需量超合同）既没有设备也没有规则，两个「孤儿」判断对它都不成立。
+            // 它的生命周期归产生它的模块管，在这儿收掉就是在跟那个模块抢活干。
+            if (SystemAlarms.isSystem(e.getRuleId())) {
+                continue;
+            }
             boolean deviceGone = !devices.containsKey(e.getDeviceCode());
             boolean ruleGone = !ruleIds.contains(e.getRuleId());
             if (deviceGone || ruleGone) {

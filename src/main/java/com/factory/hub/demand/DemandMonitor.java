@@ -4,6 +4,7 @@ import com.factory.hub.alarm.AlarmEvent;
 import com.factory.hub.alarm.AlarmEventRepository;
 import com.factory.hub.alarm.AlarmNotifier;
 import com.factory.hub.alarm.AlarmRule;
+import com.factory.hub.alarm.SystemAlarms;
 import com.factory.hub.web.WsHandler;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -36,8 +37,12 @@ public class DemandMonitor {
 
     private static final Logger log = LoggerFactory.getLogger(DemandMonitor.class);
 
-    /** 全厂算一条告警，不按设备拆 */
-    static final String RULE_ID = "r-demand-over";
+    /**
+     * 全厂算一条告警，不按设备拆。
+     * <p>这是系统告警：规则不在 alarm.rules 里，配置在 {@code AppSetting("energy.demand")}。
+     * 规则 ID 登记在 {@link SystemAlarms}，告警引擎靠它认出「这不是被删了的规则」。
+     */
+    static final String RULE_ID = SystemAlarms.DEMAND_OVER;
     private static final String PLANT = "PLANT";
 
     /** 恢复阈值：低于合同需量的这个比例才算真回落，防止在 90% 附近反复报 */
@@ -69,7 +74,16 @@ public class DemandMonitor {
         } catch (Exception e) {
             return;
         }
+
+        // 挂着的需量告警要先查出来：监控关掉时也得靠它收尾
+        List<AlarmEvent> open = alarmRepo.findByRuleIdAndDeviceCodeAndStateIn(
+                RULE_ID, PLANT, List.of(AlarmEvent.STATE_ACTIVE, AlarmEvent.STATE_ACKED));
+
         if (!cfg.isEnabled() || cfg.getContractDemandKw() <= 0) {
+            // 监控关了或合同需量清零 → 挂着的告警要收掉。
+            // 系统告警不在规则表里，告警引擎不会替它关，得这儿自己负责，
+            // 否则它会永远挂着——挂着没人能确认，也没人说得清为什么还挂着。
+            closeAll(open, "需量监控已关闭");
             return;
         }
 
@@ -82,24 +96,35 @@ public class DemandMonitor {
         }
         double ratio = peak / cfg.getContractDemandKw();
 
-        List<AlarmEvent> open = alarmRepo.findByRuleIdAndDeviceCodeAndStateIn(
-                RULE_ID, PLANT, List.of(AlarmEvent.STATE_ACTIVE, AlarmEvent.STATE_ACKED));
-
         if (ratio >= cfg.getWarnRatio()) {
             if (!open.isEmpty()) {
                 return;                            // 已经报过，别刷屏
             }
             fire(cfg, peak, ratio);
         } else if (ratio < RECOVER_RATIO && !open.isEmpty()) {
-            for (AlarmEvent e : open) {
-                e.setState(AlarmEvent.STATE_CLEARED);
-                e.setClearedAt(System.currentTimeMillis());
-                e.setClearReason("需量已回落到合同范围内");
-                alarmRepo.save(e);
-            }
+            closeAll(open, "需量已回落到合同范围内");
             log.info("需量已回落到 {} kW（合同 {} kW），告警自动解除", Math.round(peak),
                     Math.round(cfg.getContractDemandKw()));
         }
+    }
+
+    /**
+     * 把挂着的需量告警收掉。
+     * <p>关闭理由必须说真话：以前这些告警在重启时被 {@code AlarmEngine.restore()} 关掉，
+     * 理由写的是「规则已删除或停用」——规则根本没被删过。追溯的时候客户看到这句会以为
+     * 当时确实回落了，或者有人动过规则，都是假的。
+     */
+    private void closeAll(List<AlarmEvent> open, String reason) {
+        if (open.isEmpty()) {
+            return;
+        }
+        for (AlarmEvent e : open) {
+            e.setState(AlarmEvent.STATE_CLEARED);
+            e.setClearedAt(System.currentTimeMillis());
+            e.setClearReason(reason);
+            alarmRepo.save(e);
+        }
+        log.info("需量告警已解除 {} 条：{}", open.size(), reason);
     }
 
     private void fire(DemandConfig cfg, double peak, double ratio) {
