@@ -11,6 +11,8 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class DeviceService {
@@ -74,10 +76,81 @@ public class DeviceService {
     }
 
     public DeviceEntity save(DeviceEntity d) {
-        return repo.save(d);
+        DeviceEntity saved = repo.save(d);
+        // 配置改了，缓存里那份就过期了。不清的话，客户刚填的「理想节拍」
+        // 在报表里要等到重启才生效——看着像没保存成功，最容易招来「你们这系统是不是有 bug」
+        invalidateOeeCache(saved == null ? null : saved.getCode());
+        return saved;
     }
 
     public void delete(Long id) {
         repo.deleteById(id);
     }
+
+    /* ==================== OEE 用的设备配置（DH-15） ==================== */
+
+    /**
+     * 理想节拍（秒/件）。没配返回 null。
+     * <p>
+     * 缓存跟着设备走：配置一改就失效（{@link #save} 里清掉），
+     * 不用等 TTL，也不用等重启。
+     */
+    public Double idealCycleSecOf(String code) {
+        if (code == null) {
+            return null;
+        }
+        Double v = cycleCache.computeIfAbsent(code, c -> {
+            DeviceEntity d = byCode(c);
+            if (d == null || d.getIdealCycleSec() == null || d.getIdealCycleSec() <= 0) {
+                return Double.NaN;          // NaN = 查过了，没配
+            }
+            return d.getIdealCycleSec();
+        });
+        return Double.isNaN(v) ? null : v;
+    }
+
+    /**
+     * 点表里配了 role=reject 的不良品计数点位吗（DH-15）。
+     * <p>
+     * 「没配」和「配了但本期是 0 件」是两回事：前者是数据缺失（良率算不出来），
+     * 后者是已知的零不良。报表靠这个区分。
+     */
+    public boolean hasRejectPoint(String code) {
+        if (code == null) {
+            return false;
+        }
+        return rejectCache.computeIfAbsent(code, c -> {
+            try {
+                DeviceEntity d = byCode(c);
+                if (d == null) {
+                    return false;
+                }
+                for (PointDef p : pointsOf(d)) {
+                    if ("reject".equals(p.getRole())) {
+                        return true;
+                    }
+                }
+                return false;
+            } catch (Exception e) {
+                return false;
+            }
+        });
+    }
+
+    /** 设备配置变了，缓存里那份就过期了 */
+    public void invalidateOeeCache(String code) {
+        if (code == null) {
+            cycleCache.clear();
+            rejectCache.clear();
+            return;
+        }
+        cycleCache.remove(code);
+        rejectCache.remove(code);
+    }
+
+    /** 理想节拍缓存。NaN = 查过了但没配 */
+    private final Map<String, Double> cycleCache = new ConcurrentHashMap<>();
+
+    /** 有没有 reject 点位的缓存 */
+    private final Map<String, Boolean> rejectCache = new ConcurrentHashMap<>();
 }

@@ -4,6 +4,30 @@ import { http } from './http'
 
 export interface ShiftDef { id: string; name: string; start: string; end: string }
 
+/**
+ * OEE（DH-15）。四个比率都是 null 表示「算不出来」，notes 说明缺什么、怎么补。
+ * 「算不出来」和「0」是两回事，界面上必须分开显示。
+ */
+export interface OeeInfo {
+  availability: number | null
+  performance: number | null
+  quality: number | null
+  oee: number | null
+  plannedSec: number
+  countedSec?: number
+  runSec: number
+  output: number
+  defect: number
+  /** 有没有不良数数据（不是「不良数是不是 0」） */
+  hasDefectData: boolean
+  theoreticalOutput: number | null
+  idealCycleSec: number | null
+  notes: string[]
+  deviceCount?: number
+  noCycleDevices?: number
+  noDefectDevices?: number
+}
+
 export interface ReportTotals {
   /** 其中人工补录的产量（含在 output 里） */
   manualOutput?: number
@@ -14,6 +38,7 @@ export interface ReportTotals {
   stopSec: number
   countedSec: number
   deviceCount: number
+  oee?: OeeInfo
 }
 
 export interface ShiftRow extends ShiftDef {
@@ -34,16 +59,20 @@ export interface DeviceRow {
   stopSec: number
   availability: number
   shiftOutput: Record<string, number>
+  /** DH-15：这一台设备的 OEE */
+  oee?: OeeInfo
 }
 
 export interface StopReason { reason: string; count: number; totalMin: number }
 
 export interface DailyReport {
-  manual?: { id: number; deviceCode: string; deviceName?: string; day: string; kwh: number; kwhCost: number; output: number; reason?: string; operator?: string }[]
+  manual?: { id: number; deviceCode: string; deviceName?: string; day: string; kwh: number; kwhCost: number; output: number; defect?: number; reason?: string; operator?: string }[]
   ok: boolean
   date: string
   planName: string
   totals: ReportTotals
+  /** DH-15：合计 OEE */
+  oee?: OeeInfo
   shifts: ShiftRow[]
   devices: DeviceRow[]
   stopReasons: StopReason[]

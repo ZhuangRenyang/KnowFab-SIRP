@@ -34,6 +34,8 @@ public record DeviceView(
         String lineName,
         int lineSeq,
         Integer dailyTarget,
+        /* DH-15：理想节拍（秒/件） */
+        Double idealCycleSec,
         Double todayOutput,
         List<PointValue> points
 ) {

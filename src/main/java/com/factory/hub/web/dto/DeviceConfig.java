@@ -31,6 +31,8 @@ public record DeviceConfig(
         Long prodWarehouseId,
         Integer prodResetHour,
         Boolean prodAutoStockin,
-        Integer dailyTarget
+        Integer dailyTarget,
+        /* DH-15：理想节拍（秒/件），OEE 性能因子用 */
+        Double idealCycleSec
 ) {
 }

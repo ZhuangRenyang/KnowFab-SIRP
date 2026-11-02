@@ -114,8 +114,13 @@ public class ReportService {
         // 补录（DH-13）：总量含补录，同时单列「其中补录」，不和采集混淆
         List<ManualEntry> manual = manualService.activeOfDay(date);
         applyManualToTotals((Map<String, Object>) out.get("totals"), manual);
-        applyManualToDevices((List<Map<String, Object>>) out.get("devices"), manual);
+        List<Map<String, Object>> dayDevices = (List<Map<String, Object>>) out.get("devices");
+        applyManualToDevices(dayDevices, manual);
         out.put("manual", manualRows(manual));
+        // DH-15 OEE：计划生产时间 = 当天的班次总时长
+        double planned = plan.plannedSecOf(date);
+        attachOee(dayDevices, manual, planned);
+        out.put("oee", oeeTotals(dayDevices, manual, planned));
         out.put("warnings", plan.validate());
         return out;
     }
@@ -232,6 +237,14 @@ public class ReportService {
         devices.sort(Comparator.comparingDouble(
                 (Map<String, Object> m) -> -((Number) m.get("output")).doubleValue()));
 
+        // DH-15 OEE：计划生产时间 = 本月每天的班次总时长之和
+        double planned = 0;
+        for (LocalDate d = start; d.isBefore(endEx); d = d.plusDays(1)) {
+            planned += shiftStore.current().plannedSecOf(d);
+        }
+        attachOee(devices, manual, planned);
+        Map<String, Object> monthOee = oeeTotals(devices, manual, planned);
+
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("ok", true);
         out.put("month", month.toString());
@@ -241,6 +254,7 @@ public class ReportService {
         out.put("days", (int) java.time.temporal.ChronoUnit.DAYS.between(start, endEx));
         out.put("activeDays", activeDays);
         out.put("totals", monthTotals);
+        out.put("oee", monthOee);
         out.put("daily", daily);
         out.put("devices", devices);
         return out;
@@ -251,6 +265,8 @@ public class ReportService {
     /** 一台设备（或全厂）在某段时间内的合计 */
     private static final class Sum {
         double run, idle, stop, alarm, unknown, output, backfill;
+        /** DH-15：自动采集的不良数（人工补录的那部分在别处加） */
+        double defect;
         Set<String> devices = new LinkedHashSet<>();
 
         void add(ProdHourly p) {
@@ -261,6 +277,7 @@ public class ReportService {
             unknown += p.getUnknownSec();
             output += p.getOutput();
             backfill += p.getBackfill();
+            defect += p.getDefect();
             if (p.getDeviceCode() != null) {
                 devices.add(p.getDeviceCode());
             }
@@ -279,6 +296,7 @@ public class ReportService {
             // 数据不足一分钟不给稼动率，否则刚接上的设备会显示 0%，看着像坏了
             m.put("availability", counted < 60 ? -1 : round1(run / counted * 100));
             m.put("backfill", round1(backfill));
+            m.put("defect", round1(defect));
             m.put("deviceCount", devices.size());
             return m;
         }
@@ -338,6 +356,124 @@ public class ReportService {
         }
     }
 
+    /* ==================== DH-15 OEE ==================== */
+
+    private final OeeCalculator oeeCalc = new OeeCalculator();
+
+    /**
+     * 理想节拍和 reject 点位都问 {@link DeviceService}——缓存在那边，跟着设备配置走，
+     * 客户改完「理想节拍」报表立刻就变（这边自己缓存的话，得等重启才生效，
+     * 看着像没保存成功）。
+     */
+
+    /**
+     * 给设备明细行补上 OEE（DH-15）。
+     * <p>
+     * 不良数 = 自动采集的（prod_hourly.defect）+ 人工补录的。
+     * 「有没有不良数数据」看的是：设备配了 reject 点位，**或者**本期有人补录过不良数——
+     * 不是看不良数是不是 0。没采到和真的是零不良，两回事。
+     */
+    private void attachOee(List<Map<String, Object>> rows, List<ManualEntry> manual, double plannedSec) {
+        Map<String, Double> manualDefect = new HashMap<>();
+        for (ManualEntry e : manual) {
+            if (e.getDefect() != null) {
+                manualDefect.merge(e.getDeviceCode(), e.getDefect(), Double::sum);
+            }
+        }
+        for (Map<String, Object> row : rows) {
+            String code = String.valueOf(row.get("code"));
+            double defect = d(row.get("defect")) + manualDefect.getOrDefault(code, 0d);
+            boolean hasDefectData = deviceService.hasRejectPoint(code) || manualDefect.containsKey(code);
+            Double cycle = deviceService.idealCycleSecOf(code);
+            OeeCalculator.Result r = oeeCalc.compute(OeeCalculator.forDevice(
+                    d(row.get("runSec")), d(row.get("output")), defect, hasDefectData,
+                    cycle, plannedSec, d(row.get("countedSec"))));
+            row.put("oee", oeeMap(r, cycle));
+        }
+    }
+
+    /**
+     * 合计 OEE（DH-15）。
+     * <p>
+     * <b>合计的性能率不能拿一个节拍算全厂</b>——每台设备节拍不一样，
+     * 理论产量得一台一台算完再加起来。同样，良率要求<b>每台设备都有不良数数据</b>，
+     * 少一台就不给合计良率和合计 OEE（并说清楚缺哪几台）。
+     * 单台设备的 OEE 不受影响，照常给。
+     */
+    private Map<String, Object> oeeTotals(List<Map<String, Object>> deviceRows,
+                                          List<ManualEntry> manual, double plannedSec) {
+        int n = deviceRows.size();
+        double run = 0, output = 0, defect = 0, counted = 0, theoretical = 0;
+        int noCycle = 0, noDefect = 0;
+        for (Map<String, Object> row : deviceRows) {
+            run += d(row.get("runSec"));
+            output += d(row.get("output"));
+            defect += d(row.get("defect"));
+            counted += d(row.get("countedSec"));
+            Object o = row.get("oee");
+            if (!(o instanceof Map<?, ?> m)) {
+                noCycle++;
+                noDefect++;
+                continue;
+            }
+            Object th = m.get("theoreticalOutput");
+            if (th instanceof Number num) {
+                theoretical += num.doubleValue();
+            } else {
+                noCycle++;
+            }
+            if (!Boolean.TRUE.equals(m.get("hasDefectData"))) {
+                noDefect++;
+            }
+        }
+        // 人工补录的不良数也要进合计（逐台那步加的是各台的，这里加总）
+        for (ManualEntry e : manual) {
+            if (e.getDefect() != null) {
+                defect += e.getDefect();
+            }
+        }
+        Double theoreticalAll = noCycle > 0 ? null : theoretical;
+        boolean hasDefectData = noDefect == 0 && n > 0;
+        String note = noCycle > 0
+                ? "有 " + noCycle + " 台设备没配「理想节拍（秒/件）」，合计性能率算不出来"
+                : null;
+        OeeCalculator.Result r = oeeCalc.compute(OeeCalculator.forAggregate(
+                run, output, defect, hasDefectData, theoreticalAll,
+                plannedSec * n, counted, note));
+        Map<String, Object> m = oeeMap(r, null);
+        m.put("deviceCount", n);
+        m.put("noCycleDevices", noCycle);
+        m.put("noDefectDevices", noDefect);
+        if (noDefect > 0 && n > 0) {
+            List<String> notes = new ArrayList<>(r.notes());
+            notes.add("有 " + noDefect + " 台设备没有不良数数据，合计良率算不出来（单台设备的 OEE 不受影响）");
+            m.put("notes", notes);
+        }
+        return m;
+    }
+
+    private Map<String, Object> oeeMap(OeeCalculator.Result r, Double cycle) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("availability", r.availability());
+        m.put("performance", r.performance());
+        m.put("quality", r.quality());
+        m.put("oee", r.oee());
+        m.put("plannedSec", round1(r.plannedSec()));
+        m.put("countedSec", round1(r.countedSec()));
+        m.put("runSec", round1(r.runSec()));
+        m.put("output", round1(r.output()));
+        m.put("defect", round1(r.defect()));
+        m.put("hasDefectData", r.hasDefectData());
+        m.put("theoreticalOutput", r.theoreticalOutput());
+        m.put("idealCycleSec", cycle);
+        m.put("notes", r.notes());
+        return m;
+    }
+
+    private static double d(Object o) {
+        return o instanceof Number n ? n.doubleValue() : 0d;
+    }
+
     /** 补录明细（日报/月报接口返回，前端展示"这一天补了什么"） */
     private List<Map<String, Object>> manualRows(List<ManualEntry> manual) {
         List<Map<String, Object>> rows = new ArrayList<>();
@@ -350,6 +486,8 @@ public class ReportService {
             m.put("kwh", round1(e.getKwh()));
             m.put("kwhCost", round1(e.getKwhCost()));
             m.put("output", round1(e.getOutput()));
+            // DH-15：不良数。null = 没录（数据缺失），前端显示「--」
+            m.put("defect", e.getDefect());
             m.put("reason", e.getReason());
             m.put("operator", e.getOperator());
             rows.add(m);

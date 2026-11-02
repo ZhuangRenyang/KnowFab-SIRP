@@ -73,6 +73,19 @@ public class ProdHourly {
     @Column(name = "backfill")
     private double backfill;
 
+    /**
+     * 这一小时的不良品数量（DH-15）。
+     * <p>
+     * 来自点表里 role=reject 的「不良品计数」点位（机床的不良计数器）。
+     * 没配这个点位的设备这里是 0——**但 0 不代表「没有不良」**，
+     * 只代表「没采到」。报表判断「有没有不良数数据」看的是设备配没配 reject 点位，
+     * 不是看这个数是不是 0。
+     * <p>
+     * 人工补录的不良数存在 {@code manual_entry}（按天×设备），报表时两边汇总。
+     */
+    @Column(name = "defect", nullable = false)
+    private double defect;
+
     public ProdHourly() {
     }
 
@@ -192,5 +205,17 @@ public class ProdHourly {
 
     public void setBackfill(double backfill) {
         this.backfill = backfill;
+    }
+
+    public double getDefect() {
+        return defect;
+    }
+
+    public void setDefect(double defect) {
+        this.defect = defect;
+    }
+
+    public void addDefect(double delta) {
+        this.defect += delta;
     }
 }

@@ -128,6 +128,19 @@ public class DeviceEntity {
     @Column(name = "daily_target")
     private Integer dailyTarget;
 
+    /**
+     * 理想节拍（秒/件，DH-15）。null = 未配置。
+     * <p>
+     * 「设备状态最好的时候，加工一件要多少秒」——纯工艺参数，跟班次长短无关。
+     * OEE 的性能因子用它：理论产量 = 运行时间 ÷ 节拍，实际产量 ÷ 理论产量 = 性能率。
+     * <p>
+     * <b>跟 {@link #dailyTarget}（日目标产量）不是一回事</b>：日目标是「今天要干多少件」，
+     * 按全天算、用来显示完成率红绿灯；理想节拍是「一件最快多少秒」，用来算效率。
+     * 拿日目标倒推节拍会出错（设备只跑半天时倒推出的节拍偏大，性能率会算出超过 100%）。
+     */
+    @Column(name = "ideal_cycle_sec")
+    private Double idealCycleSec;
+
     /** 所属产线（DH-40）；null = 未分配 */
     @Column(name = "prod_line_id")
     private Long prodLineId;
@@ -316,6 +329,8 @@ public class DeviceEntity {
     public void setLineSeq(int lineSeq) { this.lineSeq = lineSeq; }
     public Integer getDailyTarget() { return dailyTarget; }
     public void setDailyTarget(Integer dailyTarget) { this.dailyTarget = dailyTarget; }
+    public Double getIdealCycleSec() { return idealCycleSec; }
+    public void setIdealCycleSec(Double idealCycleSec) { this.idealCycleSec = idealCycleSec; }
 
     public boolean isProdAutoStockin() { return prodAutoStockin; }
     public void setProdAutoStockin(boolean prodAutoStockin) { this.prodAutoStockin = prodAutoStockin; }

@@ -17,6 +17,7 @@ import sys
 import urllib.request
 import urllib.error
 import urllib.parse
+from datetime import date
 
 BASE = "http://127.0.0.1:8080"
 ADMIN_USER = "admin"
@@ -471,6 +472,63 @@ def main():
               [(e.get("id"), e.get("clearReason")) for e in demand_alarms()[:5]])
         # 还原配置
         req("POST", "/api/energy/demand/config", dcfg, cookie=admin_cookie)
+
+    # ============ L. OEE 完整版（DH-15） ============
+    # 核心原则：**算不出来就说算不出来**。缺理想节拍、缺不良数数据 →
+    # 对应因子给 null，OEE 也给 null，并说明缺什么。
+    # 绝不能按 0 或按 100% 处理——那等于编一个 OEE 给客户，拿去做改善决策比没有更糟。
+    code, body = req("GET", "/api/reports/daily", cookie=admin_cookie)
+    oee = body.get("oee") or {}
+    check("L1 日报带 OEE 区块（三因子 + 缺失说明）", code == 200
+          and "availability" in oee and "performance" in oee
+          and "quality" in oee and "notes" in oee, list(oee.keys()))
+    devs = body.get("devices") or []
+    rows = [d for d in devs if d.get("oee")]
+    check("L2 设备明细每一行都带 OEE", len(rows) == len(devs) and len(devs) >= 1,
+          "%d 台设备 / %d 台带 OEE" % (len(devs), len(rows)))
+    no_cycle = [d for d in rows if (d.get("oee") or {}).get("idealCycleSec") is None]
+    if no_cycle:
+        o = no_cycle[0].get("oee") or {}
+        check("L3 没配理想节拍 → 性能是 null 且说清缺什么",
+              o.get("performance") is None
+              and any("理想节拍" in n for n in (o.get("notes") or [])),
+              (o.get("performance"), o.get("notes")))
+    no_defect = [d for d in rows if not (d.get("oee") or {}).get("hasDefectData")]
+    if no_defect:
+        o = no_defect[0].get("oee") or {}
+        check("L4 没有不良数数据 → 良率是 null（不能当成零不良）",
+              o.get("quality") is None
+              and any("不良数" in n for n in (o.get("notes") or [])),
+              (o.get("quality"), o.get("notes")))
+    # 补录不良数：录了 → 读回来是这个数；留空 → 存的是 null（跟「录了 0」必须分得开）
+    l_dev = (rows[0].get("code") if rows else "CNC-01")
+    l_today = date.today().isoformat()
+    code, body = req("POST", "/api/manual", {
+        "deviceCode": l_dev, "fromDay": l_today, "toDay": l_today,
+        "output": 1, "defect": 0, "reason": "SELFTEST-OEE"
+    }, cookie=admin_cookie)
+    check("L5 补录能录不良数", code == 200 and body.get("ok") is True, body)
+    code, body = req("GET", f"/api/manual?from={l_today}&to={l_today}", cookie=admin_cookie)
+    mrows = [r for r in (body.get("rows") or [])
+             if r.get("deviceCode") == l_dev and r.get("reason") == "SELFTEST-OEE"]
+    check("L6 录了 0 件不良，读回来是 0（是「确实是零不良」）",
+          len(mrows) >= 1 and mrows[0].get("defect") == 0,
+          [r.get("defect") for r in mrows])
+    l_id = mrows[0].get("id") if mrows else None
+    if l_id:
+        req("POST", f"/api/manual/{l_id}/revoke", {}, cookie=admin_cookie)
+    code, body = req("POST", "/api/manual", {
+        "deviceCode": l_dev, "fromDay": l_today, "toDay": l_today,
+        "output": 1, "reason": "SELFTEST-OEE-空"
+    }, cookie=admin_cookie)
+    code, body = req("GET", f"/api/manual?from={l_today}&to={l_today}", cookie=admin_cookie)
+    mrows2 = [r for r in (body.get("rows") or [])
+              if r.get("deviceCode") == l_dev and r.get("reason") == "SELFTEST-OEE-空"]
+    check("L7 不良数留空 → 存的是 null（数据缺失，不是零不良）",
+          len(mrows2) >= 1 and mrows2[0].get("defect") is None,
+          [r.get("defect") for r in mrows2])
+    for r in mrows2:
+        req("POST", f"/api/manual/{r.get('id')}/revoke", {}, cookie=admin_cookie)
 
     # ============ 清理 ============
     # H2 往 storm-threshold 写了个 50 做校验测试，用完必须还原——

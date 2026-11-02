@@ -88,6 +88,25 @@ public final class MonthExcel {
         r = kv(sh, st, r, "报警时长", hours(t.get("alarmSec")), st.num, "报警状态");
         r = kv(sh, st, r, "已记录时长", hours(t.get("countedSec")), st.num, "五项之和");
         r = kvText(sh, st, r, "稼动率", pct(t.get("availability")), "运行 ÷ 已记录时长");
+
+        // DH-15 OEE：算不出来就写「--」，不能写 0（0 是「确实一台没做」，含义完全不同）
+        Map<String, Object> oee = map(prod.get("oee"));
+        if (!oee.isEmpty()) {
+            r = blank(sh, r);
+            r = head(sh, st, r, "OEE（可用率 × 性能 × 良率）", "数值", "口径");
+            r = kvText(sh, st, r, "OEE", pctDash(oee.get("oee")), "三个因子相乘");
+            r = kvText(sh, st, r, "可用率", pctDash(oee.get("availability")), "运行 ÷ 计划生产时间");
+            r = kvText(sh, st, r, "性能", pctDash(oee.get("performance")),
+                    "实际产量 ÷ 理论产量（理想节拍 × 运行时间）");
+            r = kvText(sh, st, r, "良率", pctDash(oee.get("quality")), "良品数 ÷ 总产出");
+            r = kv(sh, st, r, "计划生产时间", hours(oee.get("plannedSec")), st.num, "班次排出来的时长");
+            List<String> notes = (List<String>) oee.get("notes");
+            if (notes != null && !notes.isEmpty()) {
+                for (String n : notes) {
+                    r = kvText(sh, st, r, "说明", "", n);
+                }
+            }
+        }
         r = blank(sh, r);
 
         double kwh = num(energy.get("kwh"));
@@ -425,6 +444,20 @@ public final class MonthExcel {
 
     private static String pct(Object o) {
         double v = num(o);
+        return v < 0 ? "--" : String.format("%.1f%%", v);
+    }
+
+    /**
+     * 算不出来（null）显示「--」。
+     * <p>
+     * 不能用 {@link #pct(Object)}：那个把 null 当 0 处理，
+     * 「OEE 算不出来」和「OEE 是 0」在报表上长得一模一样，客户会以为设备一天没干活。
+     */
+    private static String pctDash(Object o) {
+        if (!(o instanceof Number n)) {
+            return "--";
+        }
+        double v = n.doubleValue();
         return v < 0 ? "--" : String.format("%.1f%%", v);
     }
 

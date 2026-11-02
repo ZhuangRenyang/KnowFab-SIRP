@@ -11,6 +11,8 @@ export interface ManualEntryRow {
   kwh: number
   kwhCost: number
   output: number
+  /** DH-15：补录的不良品数。null = 没录（数据缺失），0 = 录了「零不良」 */
+  defect?: number | null
   reason?: string
   operator?: string
   createdAt: number
@@ -25,6 +27,8 @@ export interface ManualCreateBody {
   toDay?: string
   kwh?: number
   output?: number
+  /** DH-15：不良数。null/不传 = 没录，0 = 确实是零不良 */
+  defect?: number | null
   reason: string
 }
 

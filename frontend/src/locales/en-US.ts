@@ -412,7 +412,24 @@ export default {
   },
 
   /* Time-of-use tariff dialog */
+  /* OEE (DH-15): Availability x Performance x Quality */
+  oee: {
+    title: 'OEE — Overall Equipment Effectiveness',
+    panelHint: 'Availability x Performance x Quality',
+    formula: 'Availability x Performance x Quality',
+    availability: 'Availability',
+    performance: 'Performance',
+    quality: 'Quality',
+    availabilityHint: 'Run time / planned production time (scheduled shift hours)',
+    performanceHint: 'Actual output / theoretical output (ideal cycle time x run time)',
+    qualityHint: 'Good pieces / total output',
+    colTitle: 'OEE',
+    base: 'Planned {planned} h · actually running {run} h · data captured for {counted} h'
+  },
   manual: {
+    defect: 'Defect count (pcs)',
+    defectPh: 'Empty = not recorded',
+    defectHint: 'Leave empty when the data is missing (quality rate cannot be computed); enter 0 when there really were no defects. If the machine has a reject counter, add a point with role=reject instead of typing it in',
     title: 'Manual data entry',
     lead: 'For network outages, missed meter readings, or days before a device was connected. Manual entries are stored separately and shown as a separate \'manual\' line in reports; they never mix with collected data. Revoking removes them from statistics but keeps the record for audit.',
     monthLabel: 'Month',
@@ -425,6 +442,7 @@ export default {
     colKwh: 'Energy (kWh)',
     colCost: 'Cost',
     colOutput: 'Output',
+    colDefect: 'Defects',
     colReason: 'Reason',
     colOperator: 'Entered by',
     colStatus: 'Status',
@@ -678,6 +696,8 @@ export default {
     dailyTarget: 'Daily target',
     optional: 'Optional',
     dailyTargetHint: 'Optional (pieces). Device cards and the shop-floor screen show a completion indicator based on output ÷ target.',
+    idealCycle: 'Ideal cycle time (s/pc)',
+    idealCycleHint: 'Optional. Seconds per piece when the machine is running at its best — this drives the OEE performance factor. Not the same as the daily output target: that is “how many to make today”, this is “fastest seconds per piece”.',
     brand: 'Servo / PLC brand',
     protocol: 'Protocol',
     host: 'IP address',
@@ -1195,7 +1215,7 @@ export default {
     title3: 'Step 3 · Point table JSON (paste into the point table of Add device)',
     sub3Embed: 'Click Add as device after generating',
     sub3Copy: 'Copy → Devices → Add device → paste',
-    tip3: 'Rename name to plain words and set role to what it really is: status points role=status, output counters role=count, alarm words role=alarm, plain values role=value. Try u16 first; if the value exceeds 65535 or does not match, check the manual (it may be u32 or float).',
+    tip3: 'Rename name to plain words and set role to what it really is: status points role=status, output counters role=count, reject counters role=reject, alarm words role=alarm, plain values role=value. Try u16 first; if the value exceeds 65535 or does not match, check the manual (it may be u32 or float).',
     tplLabel: 'Known model? Apply a template:',
     tplPh: 'Brand · model',
     verified: 'verified',

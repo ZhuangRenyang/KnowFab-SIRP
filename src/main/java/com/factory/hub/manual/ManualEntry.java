@@ -64,6 +64,20 @@ public class ManualEntry {
     @Column(name = "output")
     private double output;
 
+    /**
+     * 补录不良品数（件，DH-15）。
+     * <p>
+     * 机床没有不良品计数器时，班组长把纸质不良品单录进来。
+     * 跟产量补录同一条链路：按天 × 按设备，报表时和自动采集的（{@code prod_hourly.defect}）汇总。
+     * <p>
+     * <b>null = 没录，0 = 录了「零不良」</b>——这两件事必须分得开：
+     * 没录说明这块数据缺失（良率算不出来），录了 0 说明确实是零不良。
+     * 要是把「没录」当成「零不良」，良率会假成 100%，OEE 跟着虚高，
+     * 客户拿这个数去做改善决策就完了。
+     */
+    @Column(name = "defect")
+    private Double defect;
+
     /** 补录原因，审计要求必填 */
     @Column(name = "reason", length = 255)
     private String reason;
@@ -91,6 +105,12 @@ public class ManualEntry {
     public ManualEntry(String batchId, String deviceCode, String deviceName, LocalDate day,
                        double kwh, double kwhCost, double output, String reason,
                        String operator, long createdAt) {
+        this(batchId, deviceCode, deviceName, day, kwh, kwhCost, output, null, reason, operator, createdAt);
+    }
+
+    public ManualEntry(String batchId, String deviceCode, String deviceName, LocalDate day,
+                       double kwh, double kwhCost, double output, Double defect, String reason,
+                       String operator, long createdAt) {
         this.batchId = batchId;
         this.deviceCode = deviceCode;
         this.deviceName = deviceName;
@@ -98,6 +118,7 @@ public class ManualEntry {
         this.kwh = kwh;
         this.kwhCost = kwhCost;
         this.output = output;
+        this.defect = defect;
         this.reason = reason;
         this.operator = operator;
         this.createdAt = createdAt;
@@ -165,6 +186,14 @@ public class ManualEntry {
 
     public void setOutput(double output) {
         this.output = output;
+    }
+
+    public Double getDefect() {
+        return defect;
+    }
+
+    public void setDefect(Double defect) {
+        this.defect = defect;
     }
 
     public String getReason() {

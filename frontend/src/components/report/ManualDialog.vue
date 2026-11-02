@@ -22,6 +22,7 @@
             <th class="r" style="width:92px">{{ t('manual.colKwh') }}</th>
             <th class="r" style="width:84px">{{ t('manual.colCost') }}</th>
             <th class="r" style="width:82px">{{ t('manual.colOutput') }}</th>
+            <th class="r" style="width:78px">{{ t('manual.colDefect') }}</th>
             <th>{{ t('manual.colReason') }}</th>
             <th style="width:82px">{{ t('manual.colOperator') }}</th>
             <th style="width:74px">{{ t('manual.colStatus') }}</th>
@@ -38,6 +39,7 @@
             <td class="r num">{{ r.kwh ? num(r.kwh, 2) : '—' }}</td>
             <td class="r num">{{ r.kwhCost ? '¥' + num(r.kwhCost, 2) : '—' }}</td>
             <td class="r num">{{ r.output ? num(r.output, 0) : '—' }}</td>
+            <td class="r num">{{ r.defect === null || r.defect === undefined ? '—' : num(r.defect, 0) }}</td>
             <td class="reason">{{ r.reason || '—' }}</td>
             <td>{{ r.operator || '—' }}</td>
             <td>
@@ -80,6 +82,11 @@
         <div class="field">
           <label>{{ t('manual.output') }}</label>
           <el-input v-model.number="form.output" type="number" step="1" :placeholder="t('manual.optional')" />
+        </div>
+        <div class="field">
+          <label>{{ t('manual.defect') }}</label>
+          <el-input v-model.number="form.defect" type="number" step="1" :placeholder="t('manual.defectPh')" />
+          <div class="hint">{{ t('manual.defectHint') }}</div>
         </div>
       </div>
 
@@ -124,7 +131,7 @@ const devices = ref<any[]>([])
 const saving = ref(false)
 
 const form = reactive<any>({
-  deviceCode: '', range: [] as string[], kwh: '', output: '', reason: ''
+  deviceCode: '', range: [] as string[], kwh: '', output: '', defect: '', reason: ''
 })
 
 function pad(n: number) {
@@ -163,7 +170,7 @@ async function loadList() {
 }
 
 function create() {
-  Object.assign(form, { deviceCode: '', range: [], kwh: '', output: '', reason: '' })
+  Object.assign(form, { deviceCode: '', range: [], kwh: '', output: '', defect: '', reason: '' })
   mode.value = 'edit'
 }
 
@@ -200,6 +207,10 @@ async function save() {
       toDay: form.range[1],
       kwh: kwh ?? 0,
       output: output ?? 0,
+      // DH-15：不良数留空 = 没录（数据缺失，良率算不出来）；
+      // 填 0 = 确实是零不良。这两者要分得开，后端才能判
+      defect: form.defect === '' || form.defect === null || form.defect === undefined
+        ? null : Number(form.defect),
       reason: String(form.reason).trim()
     })
     if (!r.ok) {

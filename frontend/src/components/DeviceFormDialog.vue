@@ -21,6 +21,10 @@
           <el-input-number v-model="f.dailyTarget" :min="1" :max="10000000" :placeholder="t('devForm.optional')" style="width:100%" />
           <div class="hint">{{ t('devForm.dailyTargetHint') }}</div>
         </el-form-item>
+        <el-form-item :label="t('devForm.idealCycle')">
+          <el-input-number v-model="f.idealCycleSec" :min="0.1" :step="0.5" :precision="2" :placeholder="t('devForm.optional')" style="width:100%" />
+          <div class="hint">{{ t('devForm.idealCycleHint') }}</div>
+        </el-form-item>
       </div>
       <div class="frow">
         <el-form-item :label="t('devForm.brand')">
@@ -202,7 +206,8 @@ const f = reactive({
   pointsText: JSON.stringify(TPL.machine, null, 2),
   prodSkuId: undefined as number | undefined, prodWarehouseId: undefined as number | undefined,
   prodResetHour: 0, prodAutoStockin: false,
-  dailyTarget: undefined as number | undefined
+  dailyTarget: undefined as number | undefined,
+  idealCycleSec: undefined as number | undefined
 })
 
 /* 切协议时给行业默认端口：TCP 族 502；RTU 走串口不动端口（模板里 @change 引用，
@@ -336,7 +341,7 @@ function resetDefaults() {
     unitId: 1, unitId2: 1, timeoutMs: 800, apiKey: '', apiKeyEnabled: true, servoBrand: '',
     pointsText: JSON.stringify(TPL.machine, null, 2),
     prodSkuId: undefined, prodWarehouseId: undefined, prodResetHour: 0, prodAutoStockin: false,
-    dailyTarget: undefined
+    dailyTarget: undefined, idealCycleSec: undefined
   })
   tplId.value = ''
   tplNote.value = ''
@@ -380,7 +385,8 @@ watch(visible, async (v) => {
   Object.assign(f, {
     prodSkuId: c.prodSkuId ?? undefined, prodWarehouseId: c.prodWarehouseId ?? undefined,
     prodResetHour: c.prodResetHour ?? 0, prodAutoStockin: !!c.prodAutoStockin,
-    dailyTarget: c.dailyTarget ?? undefined
+    dailyTarget: c.dailyTarget ?? undefined,
+    idealCycleSec: c.idealCycleSec ?? undefined
   })
   try {
     f.pointsText = JSON.stringify(JSON.parse(c.pointsJson || '[]'), null, 2)
@@ -428,7 +434,9 @@ async function save() {
     prodWarehouseId: f.prodWarehouseId ?? null,
     prodResetHour: Number(f.prodResetHour) || 0,
     prodAutoStockin: f.prodAutoStockin,
-    dailyTarget: f.dailyTarget ? Number(f.dailyTarget) : null
+    dailyTarget: f.dailyTarget ? Number(f.dailyTarget) : null,
+    // DH-15 理想节拍：0 和不填一样（没配就是没配，性能率算不出来）
+    idealCycleSec: f.idealCycleSec ? Number(f.idealCycleSec) : null
   }
   busy.value = true
   try {

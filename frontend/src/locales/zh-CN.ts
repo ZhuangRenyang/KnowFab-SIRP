@@ -416,7 +416,24 @@ export default {
   },
 
   /* 分时电价弹窗 */
+  /* OEE（DH-15）：可用率 × 性能 × 良率 */
+  oee: {
+    title: 'OEE 设备综合效率',
+    panelHint: '可用率 × 性能 × 良率',
+    formula: '可用率 × 性能 × 良率',
+    availability: '可用率',
+    performance: '性能',
+    quality: '良率',
+    availabilityHint: '运行时间 ÷ 计划生产时间（班次排出来的时长）',
+    performanceHint: '实际产量 ÷ 理论产量（理想节拍 × 运行时间）',
+    qualityHint: '良品数 ÷ 总产出',
+    colTitle: 'OEE',
+    base: '计划 {planned} 小时 · 实际运行 {run} 小时 · 采到数据 {counted} 小时'
+  },
   manual: {
+    defect: '不良品数（件）',
+    defectPh: '留空 = 没录',
+    defectHint: '留空表示这块数据缺失（良率算不出来）；填 0 表示确实是零不良。机床有不良品计数器的话，在点表里配一个 role=reject 的点就不用录了',
     title: '数据补录',
     lead: '断网、抄表漏了、设备接入前那几天，在这里手工补。补录单独存表，报表里单列「其中补录」，不会和设备采集混在一起；撤销后立即从统计中移除，记录仍保留可查。',
     monthLabel: '查看月份',
@@ -429,6 +446,7 @@ export default {
     colKwh: '电量(kWh)',
     colCost: '电费(元)',
     colOutput: '产量(件)',
+    colDefect: '不良(件)',
     colReason: '原因',
     colOperator: '录入人',
     colStatus: '状态',
@@ -682,6 +700,8 @@ export default {
     dailyTarget: '日目标产量',
     optional: '选填',
     dailyTargetHint: '选填（件）。设备卡片与车间大屏按「今日产量 ÷ 目标」显示完成率红绿灯',
+    idealCycle: '理想节拍（秒/件）',
+    idealCycleHint: '选填。设备状态最好的时候，加工一件要多少秒——OEE 的性能因子用它。跟「日产量目标」不是一回事：那个是「今天要干多少件」，这个是「一件最快多少秒」',
     brand: '伺服 / PLC 品牌',
     protocol: '协议',
     host: 'IP 地址',
@@ -1199,7 +1219,7 @@ export default {
     title3: '第三步 · 点表 JSON（贴到「新增设备」的点表框）',
     sub3Embed: '生成后点「直接添加为设备」',
     sub3Copy: '生成后复制 → 设备监控 → 新增设备 → 粘贴',
-    tip3: '把 name 改成人话、role 改成实际角色：状态点 role=status、产量计数 role=count、报警字 role=alarm、普通数值 role=value。dataType 先按 u16 试，值超过 65535 或对不上再查手册（可能是 u32/浮点）。',
+    tip3: '把 name 改成人话、role 改成实际角色：状态点 role=status、产量计数 role=count、不良品计数 role=reject、报警字 role=alarm、普通数值 role=value。dataType 先按 u16 试，值超过 65535 或对不上再查手册（可能是 u32/浮点）。',
     tplLabel: '已知型号可直接套模板：',
     tplPh: '选品牌 · 型号',
     verified: '已实测',

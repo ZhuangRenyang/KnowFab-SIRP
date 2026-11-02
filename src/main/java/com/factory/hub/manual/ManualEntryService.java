@@ -93,6 +93,16 @@ public class ManualEntryService {
         if (kwh > MAX_VALUE || output > MAX_VALUE) {
             return fail(out, "数值过大，请检查是否多输了几个 0");
         }
+        // DH-15 不良数：null = 没录（数据缺失），0 = 录了「零不良」。两者不能混
+        Double defect = req.defect();
+        if (defect != null) {
+            if (defect < 0) {
+                return fail(out, "不良数不能是负数");
+            }
+            if (defect > MAX_VALUE) {
+                return fail(out, "不良数过大，请检查是否多输了几个 0");
+            }
+        }
         String reason = req.reason() == null ? "" : req.reason().trim();
         if (reason.isEmpty()) {
             return fail(out, "请填写补录原因（审计要查）");
@@ -113,7 +123,7 @@ public class ManualEntryService {
             double dop = last ? round2(output - perOut * (days - 1)) : perOut;
             double cost = kwhCost(day, dk);
             rows.add(new ManualEntry(batchId, code, dev.getName(), day,
-                    dk, cost, dop, reason, operator, now));
+                    dk, cost, dop, defect, reason, operator, now));
         }
         repo.saveAll(rows);
 
@@ -176,6 +186,8 @@ public class ManualEntryService {
             m.put("kwh", round2(e.getKwh()));
             m.put("kwhCost", round2(e.getKwhCost()));
             m.put("output", round2(e.getOutput()));
+            // DH-15：不良数。null = 没录（数据缺失），前端要显示「--」而不是 0
+            m.put("defect", e.getDefect());
             m.put("reason", e.getReason());
             m.put("operator", e.getOperator());
             m.put("createdAt", e.getCreatedAt());

@@ -76,6 +76,10 @@ public class ProdRollup {
         long countTs = 0;
         double count = -1;
         long resets = 0;
+        /** DH-15：不良品计数器的上一笔读数 */
+        long rejectTs = 0;
+        double rejectCount = -1;
+        long rejectResets = 0;
     }
 
     public ProdRollup(SnapshotStore store, DeviceService deviceService, ProdHourlyRepository repo,
@@ -144,6 +148,29 @@ public class ProdRollup {
                 }
                 st.count = cur;
                 st.countTs = ts;
+            }
+
+            // DH-15 不良品计数（role=reject）。机床的不良计数器，很多设备有独立的一个。
+            // 没配这个点位的设备这里整段跳过——「没采到」和「采到 0」是两回事，
+            // 报表那边靠设备配没配这个点位来区分，不能拿 0 冒充「没有不良」
+            PointValue rejectPv = pick(points, "reject");
+            Double rv = rejectPv == null ? null : rejectPv.asDouble();
+            if (rejectPv != null && rv != null) {
+                long ts = rejectPv.ts();
+                double cur = rv;
+                if (st.rejectCount >= 0 && ts > st.rejectTs) {
+                    double delta = cur - st.rejectCount;
+                    if (delta < 0) {
+                        // 计数器清零 / 换表。记 0，不能记负数
+                        st.rejectResets++;
+                        delta = 0;
+                    }
+                    if (delta > 0) {
+                        bucket(code, ts).addDefect(delta);
+                    }
+                }
+                st.rejectCount = cur;
+                st.rejectTs = ts;
             }
         }
 

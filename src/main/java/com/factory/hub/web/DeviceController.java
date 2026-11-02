@@ -106,7 +106,7 @@ public class DeviceController {
                 d.isApiKeyEnabled(),
                 d.getEnabled(), d.getApiKey(), d.getPointsJson(),
                 d.getProdSkuId(), d.getProdWhId(), d.getProdResetHour(), d.isProdAutoStockin(),
-                d.getDailyTarget()));
+                d.getDailyTarget(), d.getIdealCycleSec()));
     }
 
     /** 新增或按 code 覆盖 */
@@ -360,7 +360,10 @@ public class DeviceController {
 
     private static final java.util.Set<Integer> VALID_FC = java.util.Set.of(1, 2, 3, 4);
     private static final java.util.Set<String> VALID_DT = java.util.Set.of("u16", "s16", "u32", "s32", "f32", "bool");
-    private static final java.util.Set<String> VALID_ROLE = java.util.Set.of("status", "value", "count", "alarm", "power", "energy", "cost");
+    private static final java.util.Set<String> VALID_ROLE = java.util.Set.of(
+            "status", "value", "count", "alarm", "power", "energy", "cost",
+            // DH-15 不良品计数：机床的不良品计数器。配了这个点位，OEE 的良率就能自动算
+            "reject");
 
     /**
      * 点表校验。之前完全没有——负地址、非法功能码都能入库，
@@ -423,6 +426,8 @@ public class DeviceController {
         d.setProdAutoStockin(req.prodAutoStockin() != null && req.prodAutoStockin());
         // 日目标：空/0 = 不设完成率；负数按 0 处理
         d.setDailyTarget(req.dailyTarget() == null || req.dailyTarget() <= 0 ? null : req.dailyTarget());
+        // DH-15 理想节拍：<=0 当作没配（0 秒/件会让理论产量除零）
+        d.setIdealCycleSec(req.idealCycleSec() == null || req.idealCycleSec() <= 0 ? null : req.idealCycleSec());
         if (req.points() != null) {
             d.setPointsJson(mapper.writeValueAsString(req.points()));
         }
@@ -453,6 +458,7 @@ public class DeviceController {
                 rt.online, rt.lastOkTs == 0 ? null : rt.lastOkTs, rt.lastError,
                 rt.successCount, rt.failCount, rt.lastCostMs,
                 d.getProdLineId(), lineName, d.getLineSeq(),
-                d.getDailyTarget(), Math.round(todayOutput * 100d) / 100d, points);
+                d.getDailyTarget(), d.getIdealCycleSec(),
+                Math.round(todayOutput * 100d) / 100d, points);
     }
 }

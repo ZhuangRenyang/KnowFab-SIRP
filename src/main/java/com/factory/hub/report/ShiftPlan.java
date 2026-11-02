@@ -117,6 +117,30 @@ public class ShiftPlan {
         };
     }
 
+    /**
+     * 某一天的**计划生产时间**（秒）——所有班次的时长之和。
+     * <p>
+     * OEE 的可用率用它做分母（DH-15）：该干的活 = 班次排出来的时间。
+     * 跟「已记录时长」不是一回事：设备没接上、或者班次之外的时段，都不在已记录时长里，
+     * 但确实该算在计划时间的账上。
+     * <p>
+     * 跨零点的夜班（20:00-08:00）按 12 小时算，不会算成负数或 0。
+     */
+    public double plannedSecOf(LocalDate date) {
+        double sec = 0;
+        if (shifts == null) {
+            return 0;
+        }
+        for (Shift s : shifts) {
+            long[] w = windowOf(s, date);
+            long d = w[1] - w[0];
+            if (d > 0) {
+                sec += d / 1000d;
+            }
+        }
+        return sec;
+    }
+
     /** 体检。返回人话，前端直接显示 */
     public List<String> validate() {
         List<String> out = new ArrayList<>();

@@ -29,6 +29,11 @@
         <em>{{ stopCount ? t('rpt.stopAccum', { n: num(stopMin, 0) }) : t('rpt.noStopAlarm') }}</em></div>
     </div>
 
+    <div class="panel">
+      <div class="p-head"><h3>{{ t('oee.title') }}</h3><span>{{ t('oee.panelHint') }}</span></div>
+      <OeePanel :oee="oee" />
+    </div>
+
     <div class="panels">
       <div class="panel">
         <div class="p-head"><h3>{{ t('rpt.hourly') }}</h3><span>{{ t('rpt.hourlySub', { peak }) }}</span></div>
@@ -85,7 +90,8 @@
         <thead><tr><th>{{ t('rpt.thDevice') }}</th><th class="r">{{ t('rpt.thOutput') }}</th>
           <th class="r">{{ t('rpt.thManual') }}</th>
           <th v-for="s in shifts" :key="s.id" class="r">{{ s.name }}</th>
-          <th class="r">{{ t('rpt.thRun') }}</th><th class="r">{{ t('rpt.thStop') }}</th><th class="r">{{ t('rpt.thAvail') }}</th></tr></thead>
+          <th class="r">{{ t('rpt.thRun') }}</th><th class="r">{{ t('rpt.thStop') }}</th><th class="r">{{ t('rpt.thAvail') }}</th>
+          <th class="r">{{ t('oee.colTitle') }}</th></tr></thead>
         <tbody>
           <tr v-for="d in devices" :key="d.code">
             <td>{{ d.name }}<div class="dim">{{ d.code }} · {{ d.location || '' }}</div></td>
@@ -95,6 +101,7 @@
             <td class="r num">{{ num(d.runSec / 3600, 1) }}</td>
             <td class="r num">{{ num(d.stopSec / 3600, 1) }}</td>
             <td class="r num">{{ d.availability < 0 ? '--' : num(d.availability, 1) + '%' }}</td>
+            <td class="r num">{{ d.oee ? (d.oee.oee === null ? '--' : num(d.oee.oee, 1) + '%') : '--' }}</td>
           </tr>
         </tbody>
       </table>
@@ -117,6 +124,7 @@ import {
 import { useAuthStore } from '@/stores/auth'
 import ShiftsDialog from '@/components/report/ShiftsDialog.vue'
 import ManualDialog from '@/components/report/ManualDialog.vue'
+import OeePanel from '@/components/report/OeePanel.vue'
 
 const { t } = useI18n()
 const auth = useAuthStore()
@@ -138,6 +146,8 @@ let reportInited = false
 const totals = computed<ReportTotals | null>(() => data.value?.totals || null)
 const shifts = computed<ShiftRow[]>(() => data.value?.shifts || [])
 const devices = computed<DeviceRow[]>(() => data.value?.devices || [])
+/** DH-15：合计 OEE（算不出来的时候是 null，界面上显示 --） */
+const oee = computed(() => data.value?.oee)
 const stopReasons = computed<StopReason[]>(() => data.value?.stopReasons || [])
 const planName = computed(() => data.value?.planName || '')
 const availText = computed(() => {
