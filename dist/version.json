@@ -1,6 +1,6 @@
 {
-  "version": "1.0.21",
-  "notes": "报表页新增 OEE 历史趋势图：厂级和单设备两级，可看 7/30/90 天的效率走势，单设备还能切换看「可用率/性能/良率」三因子。图上带移动平均线（单日数字抖动大，看均线才是趋势）、数据没采全的日子会标出来（那几天的数别当真），算不出来的那天是断线不是 0。另外修了报表的一个老问题：以前日报和趋势里有一天的边界小时被相邻两天各算了一次（产量和时长会偏多约 4%），AI 早报的数字也跟着不对，这次一并修正",
-  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.21/device-hub-1.0.21-update.zip",
-  "sha256": "e3ca44764d031b5c54a5585e54c64c95672b034ce59edcb659667c7d8cf8a185"
+  "version": "1.0.22",
+  "notes": "修复：系统页显示的「数据库结构版本」不对——新装的机器会显示 0、升级完会停在旧版本，要等人工打开「数据库迁移」页面才纠正。现在服务一启动就自动写对了。另外修了一个会偶尔自己失败的例行检查（产量是实时变化的，两次取数不是同一时刻）",
+  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.22/device-hub-1.0.22-update.zip",
+  "sha256": "c6184e6be599855b19a8939f9332becc1d399ae6dbfdfff9c5552d4bbe419db7"
 }
