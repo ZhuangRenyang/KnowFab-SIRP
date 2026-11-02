@@ -1,6 +1,6 @@
 {
-  "version": "1.0.12",
-  "notes": "新增用能单元分项计量（DH-11）：能耗页可按车间/产线查看用电与电费，占比一目了然，合计自动与全厂对账（车间合计 + 未分配 = 全厂）；未挂产线的设备单独列示，不做假账。数据直接取自产线管理的车间字段，改产线归属即同步生效",
-  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.12/device-hub-1.0.12-update.zip",
-  "sha256": "37f29dc0842889c52b1742422c1adfe98da274f7d856643815b14087f6a90658"
+  "version": "1.0.13",
+  "notes": "新增国标能效对标（DH-12）：能耗页可按全厂/车间/产线/设备查看「实测单位产品能耗 vs 国标限额值」，支持先进值/准入值/限定值三档对照，自动判定优于先进值、达准入值、限值内、超限额；本期无产量时明确不下结论，不做假数据；对标签配可录入国标号与备注，随报表实时生效",
+  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.13/device-hub-1.0.13-update.zip",
+  "sha256": "f4fbd28c4b85b9e1418cdc8057a2446d6303b5b301bf3211d8f53904a20dba1f"
 }
