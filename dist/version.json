@@ -1,6 +1,6 @@
 {
-  "version": "1.0.15",
-  "notes": "新增数据补录：断网、抄表漏了、设备接入前那几天，可在报表页「数据补录」手工补电量与产量（选设备+日期范围，多天自动按天分摊）；补录单独存表，报表和导出单列「其中补录」，不与设备采集混淆；支持撤销，撤销后立即从统计移除、记录仍可查；补录电费按当天分时电价摊算并留快照",
-  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.15/device-hub-1.0.15-update.zip",
-  "sha256": "dbe5e8b63c264d578b6131e08d285b56e380952c9e34e4b721622ceed1ab082d"
+  "version": "1.0.16",
+  "notes": "新增操作审计：设备、电价、班次、告警规则、用户、系统设置、补录、应用升级等所有配置改动都留一条记录（谁、何时、改了什么），只增不改不删；失败操作也留痕并带真实原因；日志仅管理员可见，保留 180 天可配；系统菜单新增「操作审计」页，支持按日期、分类、关键词查询",
+  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.16/device-hub-1.0.16-update.zip",
+  "sha256": "a0ee835a0503a7b976fec684484cbbde156ad93aeb9c264bf5c9587c16d014e9"
 }
