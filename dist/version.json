@@ -1,6 +1,6 @@
 {
-  "version": "1.0.10",
-  "notes": "便携版升级体验：网页点「应用升级」后服务自动重启并生效（进程守护，崩溃自愈）；彻底停止请用 stop.bat；修复装了 Git Bash 的机器上数据库解压报 Cannot connect to D: 的问题；Linux 安装脚本默认开启网页一键重启",
-  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.10/device-hub-1.0.10-update.zip",
-  "sha256": "ffc47028135f25dd2111663e666f654b10a44d419c4be641d459c96fec8db0a5"
+  "version": "1.0.11",
+  "notes": "新增 OPC UA 采集协议：西门子 S7-1500、汇川、欧姆龙 NX 等自带 OPC UA 的新 PLC 可直接接入（匿名连接，点表填 nodeId 即可，如 ns=2;s=Machine1.Output）；支持批量读取与远程写入（自动按点位类型转换）；设备表单新增 OPC UA 协议与示例点表",
+  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.11/device-hub-1.0.11-update.zip",
+  "sha256": "cfe0a30730b9bbe5dfe3bd7d81d86cc213736dd212227cfe49bfa9690259988a"
 }
