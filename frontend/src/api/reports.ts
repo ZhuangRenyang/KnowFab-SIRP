@@ -74,6 +74,23 @@ export async function exportDaily(date: string): Promise<void> {
   window.setTimeout(() => { URL.revokeObjectURL(a.href); a.remove() }, 1000)
 }
 
+/* 月报导出（DH-16）：生产 + 电费一个文件 */
+export async function exportMonth(month: string): Promise<void> {
+  const r = await fetch(`/api/reports/export-month?month=${encodeURIComponent(month)}`)
+  if (!r.ok) {
+    let msg = `导出失败（${r.status}）`
+    try { const j = await r.json(); msg = j.message || msg } catch { /* 非 JSON */ }
+    throw new Error(msg)
+  }
+  const blob = await r.blob()
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = `生产月报-${month}.xlsx`
+  document.body.appendChild(a)
+  a.click()
+  window.setTimeout(() => { URL.revokeObjectURL(a.href); a.remove() }, 1000)
+}
+
 /* ---------- 工具 ---------- */
 export function todayStr(offset = 0): string {
   const d = new Date()

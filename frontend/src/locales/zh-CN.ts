@@ -1234,6 +1234,7 @@ export default {
 rpt: {
     prevDay: '前一天',
     nextDay: '后一天',
+    exportMonth: '导出月报（含电费）',
     exportXlsx: '导出 Excel',
     shiftSettings: '班次设置',
     planLabel: '班次：{name}',

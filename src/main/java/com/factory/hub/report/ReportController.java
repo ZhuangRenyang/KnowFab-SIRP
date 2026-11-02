@@ -1,5 +1,9 @@
 package com.factory.hub.report;
 
+import com.factory.hub.demand.DemandService;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.factory.hub.energy.EnergyService;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -13,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -30,12 +35,20 @@ public class ReportController {
     private final ReportService service;
     private final ShiftStore shiftStore;
     private final ProdHourlyRepository repo;
+    private final EnergyService energyService;
+    private final DemandService demandService;
+    private final ObjectMapper mapper;
 
     public ReportController(ReportService service, ShiftStore shiftStore,
-                            ProdHourlyRepository repo) {
+                            ProdHourlyRepository repo,
+                            EnergyService energyService, DemandService demandService,
+                            ObjectMapper mapper) {
         this.service = service;
         this.shiftStore = shiftStore;
         this.repo = repo;
+        this.energyService = energyService;
+        this.demandService = demandService;
+        this.mapper = mapper;
     }
 
     @GetMapping("/daily")
@@ -103,6 +116,45 @@ public class ReportController {
         }
     }
 
+    /**
+     * 月报导出（DH-16）：生产 + 电费合成一个 xlsx。
+     * <p>
+     * 电费拆成电度（本系统按时段算）、基本（需量/容量，取更省的算法）、
+     * 力调（系统没有功率因数，只给说明不编数字）。
+     */
+    @GetMapping("/export-month")
+    public ResponseEntity<byte[]> exportMonth(@RequestParam(required = false) String month) {
+        YearMonth ym = parseMonth(month);
+        try {
+            Map<String, Object> prod = service.monthly(ym);
+            Map<String, Object> energy = energyService.monthBill(ym);
+            // MonthExcel 只认 Map：DemandService 的 config 是 DemandConfig 对象，
+            // 不转一层会读不到变压器容量/单价（导出成 0，公式却对得上，最难查的那种）。
+            Map<String, Object> demand = mapper.convertValue(
+                    demandService.overview(ym.toString(), DemandService.ALL),
+                    new TypeReference<Map<String, Object>>() { });
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("production", prod);
+            data.put("energy", energy);
+            data.put("demand", demand);
+
+            byte[] body = MonthExcel.build(data);
+            String name = "生产月报-" + ym + ".xlsx";
+            String encoded = URLEncoder.encode(name, StandardCharsets.UTF_8).replace("+", "%20");
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION,
+                            "attachment; filename=\"report-month-" + ym + ".xlsx\"; filename*=UTF-8''" + encoded)
+                    .contentType(MediaType.parseMediaType(
+                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                    .body(body);
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError()
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(("{\"ok\":false,\"message\":\"月报导出失败：" + safe(e.getMessage()) + "\"}")
+                            .getBytes(StandardCharsets.UTF_8));
+        }
+    }
+
     /** 清演示数据。交付前必须执行，否则客户会看到假产量 */
     @PostMapping("/purge")
     public Map<String, Object> purge(@RequestBody(required = false) Map<String, Object> body) {
@@ -117,6 +169,16 @@ public class ReportController {
         out.put("ok", true);
         out.put("message", "已清空 " + n + " 行小时生产数据");
         return out;
+    }
+
+    private YearMonth parseMonth(String month) {
+        try {
+            if (month != null && !month.isBlank()) {
+                return YearMonth.parse(month.trim());
+            }
+        } catch (Exception ignored) {
+        }
+        return YearMonth.now();
     }
 
     private LocalDate parse(String date) {

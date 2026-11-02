@@ -1230,6 +1230,7 @@ export default {
 rpt: {
     prevDay: 'Previous day',
     nextDay: 'Next day',
+    exportMonth: 'Monthly report (with power bill)',
     exportXlsx: 'Export Excel',
     shiftSettings: 'Shift settings',
     planLabel: 'Shift plan: {name}',

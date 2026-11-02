@@ -7,6 +7,9 @@
       <el-button @click="shiftDay(-1)">{{ t('rpt.prevDay') }}</el-button>
       <el-button @click="shiftDay(1)">{{ t('rpt.nextDay') }}</el-button>
       <el-button type="primary" :loading="exporting" @click="exportXlsx">{{ t('rpt.exportXlsx') }}</el-button>
+      <span class="msep"></span>
+      <el-date-picker v-model="month" type="month" value-format="YYYY-MM" style="width:130px" />
+      <el-button :loading="monthExporting" @click="exportMonthXlsx">{{ t('rpt.exportMonth') }}</el-button>
       <el-button @click="shiftOpen = true">{{ t('rpt.shiftSettings') }}</el-button>
       <span v-if="planName" class="plan">{{ t('rpt.planLabel', { name: planName }) }}</span>
     </div>
@@ -102,7 +105,7 @@ import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { useEcharts } from '@/composables/useEcharts'
 import {
-  reportsApi, exportDaily, num, todayStr,
+  reportsApi, exportDaily, exportMonth, num, todayStr,
   type ShiftRow, type DeviceRow, type StopReason, type ReportTotals
 } from '@/api/reports'
 import ShiftsDialog from '@/components/report/ShiftsDialog.vue'
@@ -115,6 +118,8 @@ const date = ref(todayStr(0))
 const data = ref<any>(null)
 const warn = ref('')
 const exporting = ref(false)
+const monthExporting = ref(false)
+const month = ref(todayStr(0).slice(0, 7))
 const shiftOpen = ref(false)
 const hoursEl = ref<HTMLElement>()
 let reportInited = false
@@ -220,6 +225,14 @@ async function exportXlsx() {
   finally { exporting.value = false }
 }
 
+async function exportMonthXlsx() {
+  monthExporting.value = true
+  try {
+    await exportMonth(month.value || todayStr(0).slice(0, 7))
+  } catch (e: any) { ElMessage.error(e?.message || t('rpt.exportFailed')) }
+  finally { monthExporting.value = false }
+}
+
 load()
 </script>
 
@@ -227,6 +240,10 @@ load()
 .warn { margin-bottom: var(--space-4); border-radius: var(--radius-md); }
 .toolbar { display: flex; gap: var(--space-2); align-items: center; margin-bottom: var(--space-4); flex-wrap: wrap; }
 .plan { font-size: var(--text-xs); color: var(--muted); }
+/* 日导出 / 月导出之间的竖线，避免两排按钮糊成一片 */
+.msep { width: 1px; height: 20px; background: var(--border); margin: 0 4px; }
+/* 日导出 / 月导出之间的竖线，避免两排按钮糊成一片 */
+.msep { width: 1px; height: 20px; background: var(--border); margin: 0 4px; }
 .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-3); margin-bottom: var(--space-4); }
 .ebox { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
   box-shadow: var(--elev-raised); padding: var(--space-4); display: flex; flex-direction: column; gap: 2px; }

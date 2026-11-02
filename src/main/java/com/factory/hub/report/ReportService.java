@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -127,6 +128,82 @@ public class ReportService {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("ok", true);
         out.put("rows", rows);
+        return out;
+    }
+
+    /* ==================== 月度报表（DH-16 月报导出用） ==================== */
+
+    /**
+     * 整月生产汇总：总计 + 逐日 + 按设备。
+     * <p>
+     * 和日报一样从 {@link ProdHourly} 现算，不另存月表。
+     * 当月只统计到今天（含今日），历史月份统计整月；返回 {@code complete}
+     * 让导出时能标注「截至 X 日」还是「全月」。
+     */
+    public Map<String, Object> monthly(YearMonth month) {
+        ZoneId zone = ZoneId.systemDefault();
+        LocalDate start = month.atDay(1);
+        LocalDate today = LocalDate.now(zone);
+        LocalDate next = month.plusMonths(1).atDay(1);
+        boolean current = !next.isBefore(today);          // 本月或未来月
+        LocalDate endEx = current ? today.plusDays(1) : next;
+        long from = start.atStartOfDay(zone).toInstant().toEpochMilli();
+        long to = endEx.atStartOfDay(zone).toInstant().toEpochMilli();
+
+        List<ProdHourly> all = repo.findByHourStartBetween(from, to);
+
+        // 逐日：一次遍历分桶，避免「31 天 × 全部行」的嵌套循环
+        Map<LocalDate, Sum> perDay = new LinkedHashMap<>();
+        for (ProdHourly p : all) {
+            LocalDate d = Instant.ofEpochMilli(p.getHourStart()).atZone(zone).toLocalDate();
+            perDay.computeIfAbsent(d, k -> new Sum()).add(p);
+        }
+        List<Map<String, Object>> daily = new ArrayList<>();
+        int activeDays = 0;
+        for (LocalDate d = start; d.isBefore(endEx); d = d.plusDays(1)) {
+            Sum s = perDay.get(d);
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("date", d.toString());
+            m.putAll(s == null ? new Sum().toMap() : s.toMap());
+            daily.add(m);
+            Object counted = m.get("countedSec");
+            if (counted instanceof Number n && n.doubleValue() > 0) {
+                activeDays++;
+            }
+        }
+
+        // 按设备：月报里的「设备月产量」sheet
+        Map<String, Sum> sums = new LinkedHashMap<>();
+        Map<String, String> names = new HashMap<>();
+        for (ProdHourly p : all) {
+            sums.computeIfAbsent(p.getDeviceCode(), k -> new Sum()).add(p);
+            if (p.getDeviceName() != null) {
+                names.putIfAbsent(p.getDeviceCode(), p.getDeviceName());
+            }
+        }
+        List<Map<String, Object>> devices = new ArrayList<>();
+        for (Map.Entry<String, Sum> e : sums.entrySet()) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("code", e.getKey());
+            m.put("name", names.getOrDefault(e.getKey(), e.getKey()));
+            m.put("location", locationOf(e.getKey()));
+            m.putAll(e.getValue().toMap());
+            devices.add(m);
+        }
+        devices.sort(Comparator.comparingDouble(
+                (Map<String, Object> m) -> -((Number) m.get("output")).doubleValue()));
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("ok", true);
+        out.put("month", month.toString());
+        out.put("fromText", start.toString());
+        out.put("toText", endEx.minusDays(1).toString());
+        out.put("complete", !current);
+        out.put("days", (int) java.time.temporal.ChronoUnit.DAYS.between(start, endEx));
+        out.put("activeDays", activeDays);
+        out.put("totals", totals(all));
+        out.put("daily", daily);
+        out.put("devices", devices);
         return out;
     }
 

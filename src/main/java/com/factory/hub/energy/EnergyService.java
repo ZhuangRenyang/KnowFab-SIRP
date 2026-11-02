@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -334,6 +335,84 @@ public class EnergyService {
                 "workshopSum", round(wsSum, 2),
                 "matchesTotal", Math.abs(gap) < 0.01,
                 "gap", gap));
+        return out;
+    }
+
+    /**
+     * 月度电费（DH-16）：整月电量 + 分时电度电费 + 电价方案。
+     * <p>
+     * 基本电费在 {@code DemandService} 里（需量/容量两种算法），导出时合并，
+     * 这里只负责「电度电费」这一半，避免两个服务各算一套、对不上账。
+     * <p>
+     * 当月统计到当前小时（含实时值），历史月份统计整月。
+     */
+    public Map<String, Object> monthBill(YearMonth month) {
+        ZoneId zone = ZoneId.systemDefault();
+        LocalDate today = LocalDate.now(zone);
+        long from = month.atDay(1).atStartOfDay(zone).toInstant().toEpochMilli();
+        boolean current = YearMonth.from(today).equals(month);
+        long to = current
+                ? upperBound()
+                : month.plusMonths(1).atDay(1).atStartOfDay(zone).toInstant().toEpochMilli();
+
+        Map<String, double[]> segMap = new LinkedHashMap<>();
+        for (Object[] r : repo.sumBySegment(from, to)) {
+            segMap.put(String.valueOf(r[0]), new double[]{d(r[1]), d(r[2])});
+        }
+        // 当前小时还没结算进库，补进来才对得上「到今天为止」的账单
+        long liveHour = rollup.currentHourStart();
+        if (current && liveHour >= from) {
+            for (Map.Entry<String, double[]> e : rollup.liveBySegment().entrySet()) {
+                double[] a = segMap.computeIfAbsent(e.getKey(), k -> new double[2]);
+                a[0] += e.getValue()[0];
+                a[1] += e.getValue()[1];
+            }
+        }
+
+        TariffPlan plan = tariffStore.current();
+        Map<String, Double> priceOf = new HashMap<>();
+        for (TariffSegment s : plan.getSegments()) {
+            priceOf.putIfAbsent(s.getType(), s.getPrice());
+        }
+
+        List<Map<String, Object>> segments = new ArrayList<>();
+        double totalKwh = 0d;
+        double totalCost = 0d;
+        for (String type : TariffPlan.TYPES) {
+            double[] a = segMap.getOrDefault(type, new double[2]);
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("type", type);
+            m.put("name", TariffPlan.typeName(type));
+            m.put("price", priceOf.getOrDefault(type, 0d));
+            m.put("kwh", round(a[0], 2));
+            m.put("cost", round(a[1], 2));
+            segments.add(m);
+            totalKwh += a[0];
+            totalCost += a[1];
+        }
+        double[] un = segMap.get(EnergyRollup.SEG_UNPRICED);
+        if (un != null && un[0] > 0) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("type", EnergyRollup.SEG_UNPRICED);
+            m.put("name", "未计价");
+            m.put("price", 0d);
+            m.put("kwh", round(un[0], 2));
+            m.put("cost", round(un[1], 2));
+            segments.add(m);
+            totalKwh += un[0];
+            totalCost += un[1];
+        }
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("month", month.toString());
+        out.put("fromText", month.atDay(1).toString());
+        out.put("toText", (current ? today : month.atEndOfMonth()).toString());
+        out.put("complete", !current);
+        out.put("tariffName", plan.getName());
+        out.put("kwh", round(totalKwh, 2));
+        out.put("cost", round(totalCost, 2));
+        out.put("segments", segments);
+        out.put("unpricedKwh", un == null ? 0d : round(un[0], 2));
         return out;
     }
 
