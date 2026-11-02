@@ -128,6 +128,30 @@ public class AlarmNotifier {
     }
 
     /**
+     * 升档通知（DH-14）。
+     * <p>
+     * 等级变严重是新的、必须让人知道的信息——同一条告警从预警变成停机，
+     * 光看通知标题里原来的「预警」字样会以为还是老情况。
+     * <p>
+     * 降档不通知：情况在好转，不是紧急信息。
+     *
+     * @return 是否真的投递出去了
+     */
+    public boolean escalate(AlarmEvent e, AlarmRule rule) {
+        NotifyConfig cfg = notifyStore.current();
+        if (!cfg.isEnabled() || (rule != null && !rule.isNotify())) {
+            return false;
+        }
+        if (suppressByQuietHours(cfg, e.getLevel())) {
+            log.info("免打扰时段，{} 级告警「{}」的升级通知不发", e.getLevel(), e.getMessage());
+            return false;
+        }
+        String title = "[升级为" + levelText(e.getLevel()) + "] " + e.getRuleName();
+        String content = markdown(e, false, "升级为" + levelText(e.getLevel()));
+        return enqueue(cfg, title, content, e.getLevel(), e);
+    }
+
+    /**
      * 合并通知。用于告警风暴：交换机一挂全厂离线，
      * 三百条通知发出去会把群淹没，也没人看得出问题在哪。
      * 这时候发一条「12 台设备同时离线，可能是网络问题」，比 300 条有用得多。
@@ -387,6 +411,16 @@ public class AlarmNotifier {
     }
 
     private String markdown(AlarmEvent e, boolean recover) {
+        return markdown(e, recover, null);
+    }
+
+    /**
+     * 通知正文。
+     *
+     * @param headline 标题里的等级词。null = 用等级本身（普通告警 / 恢复）；
+     *                 升档通知传「升级为停机」，一眼看出是同一件事变严重了
+     */
+    private String markdown(AlarmEvent e, boolean recover, String headline) {
         StringBuilder sb = new StringBuilder();
         String color = switch (e.getLevel()) {
             case "CRITICAL" -> "warning";
@@ -394,7 +428,7 @@ public class AlarmNotifier {
             default -> "comment";
         };
         sb.append("### <font color=\"").append(color).append("\">")
-                .append(recover ? "已恢复" : levelText(e.getLevel()))
+                .append(headline != null ? headline : (recover ? "已恢复" : levelText(e.getLevel())))
                 .append("</font> ")
                 .append(escape(e.getRuleName())).append("\n");
 
@@ -430,21 +464,17 @@ public class AlarmNotifier {
     }
 
     public static int levelRank(String level) {
-        return switch (level == null ? "" : level) {
-            case "CRITICAL" -> 3;
-            case "MAJOR" -> 2;
-            case "MINOR" -> 1;
-            default -> 0;
-        };
+        return AlarmTierResolver.rank(level);
     }
 
+    /**
+     * 等级中文名。全应用统一用这一份：预警 / 告警 / 停机。
+     * <p>
+     * 以前这里写的是「提示 / 重要 / 严重」，和页面上的叫法对不上，
+     * 同一个等级在不同地方三种叫法，值班的人以为是三件事。
+     */
     public static String levelText(String level) {
-        return switch (level == null ? "" : level) {
-            case "CRITICAL" -> "严重";
-            case "MAJOR" -> "重要";
-            case "MINOR" -> "提示";
-            default -> "告警";
-        };
+        return AlarmTierResolver.levelText(level);
     }
 
     /** 中文时长，「12 分 30 秒」比「750000 毫秒」好读得多 */

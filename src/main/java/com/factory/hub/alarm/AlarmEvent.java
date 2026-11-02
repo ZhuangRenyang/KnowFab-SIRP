@@ -142,8 +142,14 @@ public class AlarmEvent {
             case AlarmRule.TYPE_STOP -> "状态值 = " + (r.getThreshold() == null ? "0" : r.getThreshold())
                     + " 持续 " + r.getForSeconds() + " 秒";
             case AlarmRule.TYPE_FLAG -> (r.getPointKey().isBlank() ? "任一报警位" : r.getPointKey() + " = 1");
-            case AlarmRule.TYPE_THRESHOLD -> r.getPointKey() + " " + r.getOp() + " " + r.getThreshold()
-                    + " 持续 " + r.getForSeconds() + " 秒";
+            // 分级规则存整张档位表：事后光看一条告警就知道当时分了哪几级
+            case AlarmRule.TYPE_THRESHOLD -> {
+                String tiers = AlarmTierResolver.describeTiers(r);
+                yield tiers != null
+                        ? r.getPointKey() + " 档位 " + tiers + " 持续 " + r.getForSeconds() + " 秒"
+                        : r.getPointKey() + " " + r.getOp() + " " + r.getThreshold()
+                        + " 持续 " + r.getForSeconds() + " 秒";
+            }
             default -> r.getType();
         };
     }

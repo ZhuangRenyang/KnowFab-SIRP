@@ -43,13 +43,38 @@ public class AlarmDescribe {
      * 在压力点是 MPa，写错了客户会照着错单位去判断。
      */
     public String describeCondition(AlarmRule r) {
+        return describeCondition(r, null);
+    }
+
+    /**
+     * 规则的关键条件，写成人话。
+     *
+     * @param tierChange 档位变化描述（{@code 档位由 A 改为 B}）。非空时，
+     *                   档位部分用它代替「档位：…」——改档位要让人一眼看出改了什么，
+     *                   只写「档位：预警>80 / 告警>85 / 停机>90」看不出是新增还是修改
+     */
+    public String describeCondition(AlarmRule r, String tierChange) {
         String unit = unitOf(r);
         StringBuilder sb = new StringBuilder();
         if (AlarmRule.TYPE_THRESHOLD.equals(r.getType())) {
-            sb.append("点位 ").append(r.getPointKey()).append(" ")
-                    .append(r.getOp()).append(" ").append(r.getThreshold());
-            if (!unit.isEmpty()) {
-                sb.append(" ").append(unit);
+            sb.append("点位 ").append(r.getPointKey());
+            String tiers = AlarmTierResolver.describeTiers(r);
+            if (tierChange != null && !tierChange.isBlank()) {
+                sb.append("，").append(tierChange);
+                if (!unit.isEmpty()) {
+                    sb.append("（").append(unit).append("）");
+                }
+            } else if (tiers != null) {
+                sb.append("，档位：").append(tiers);
+                if (!unit.isEmpty()) {
+                    sb.append("（").append(unit).append("）");
+                }
+            } else {
+                // 老规则（单值）：文案保持原样，不动存量审计记录的样子
+                sb.append(" ").append(r.getOp()).append(" ").append(r.getThreshold());
+                if (!unit.isEmpty()) {
+                    sb.append(" ").append(unit);
+                }
             }
         } else if (r.getThreshold() != null) {
             sb.append("阈值 ").append(r.getThreshold());
@@ -69,6 +94,32 @@ public class AlarmDescribe {
             sb.append("，适用设备 ").append(r.getDeviceCodes());
         }
         return sb.toString();
+    }
+
+    /**
+     * 档位变化描述：{@code 档位由 预警>80 / 告警>85 改为 预警>80 / 告警>88 / 停机>90}。
+     * <p>
+     * 没改档位返回 null——审计日志里不要出现「档位由 X 改为 X」这种废话。
+     */
+    public String describeTierChange(AlarmRule old, AlarmRule neu) {
+        if (old == null || neu == null) {
+            return null;
+        }
+        String before = AlarmTierResolver.describeTiers(old);
+        if (before == null) {
+            before = AlarmTierResolver.describeSingle(old);
+        }
+        String after = AlarmTierResolver.describeTiers(neu);
+        if (after == null) {
+            after = AlarmTierResolver.describeSingle(neu);
+        }
+        if (before == null && after == null) {
+            return null;
+        }
+        if (java.util.Objects.equals(before, after)) {
+            return null;
+        }
+        return "档位由 " + (before == null ? "无" : before) + " 改为 " + (after == null ? "无" : after);
     }
 
     /** 阈值单位：在这条规则管的设备的点表里找同名点位 */

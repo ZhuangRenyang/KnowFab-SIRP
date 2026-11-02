@@ -245,6 +245,15 @@ function esc(s){
   return String(s == null ? '' : s).replace(/[&<>"']/g,
     m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 }
+/* 等级配色按枚举判，不看中文文案。
+   以前比的是 '严重'/'重要' 这种中文字符串，只要后台改一次文案，整个大屏配色就全错了。
+   数据源同时给了 level（枚举）和 levelText（文案），判枚举、显文案。 */
+function lvCls(level){
+  const s = String(level == null ? '' : level).toUpperCase();
+  if (s === 'CRITICAL') return 'critical';
+  if (s === 'MAJOR') return 'major';
+  return 'minor';
+}
 
 /* ---------- 时钟 ---------- */
 function tickClock(){
@@ -286,7 +295,7 @@ function renderKpi(d){
   $('k-alarm').textContent = num(al.open);
   $('k-fault').textContent = num(faults.length);
   $('k-fault-sub').textContent = faults.length
-    ? ('严重 ' + num(al.critical) + ' · 重要 ' + num(al.major) + ' · 其余一般')
+    ? ('停机 ' + num(al.critical) + ' · 告警 ' + num(al.major) + ' · 其余预警')
     : '全部设备无报警';
   const offline = (dev.offline || 0) + (dev.stop || 0) - faults.length;
   $('k-offline').textContent = num(Math.max(0, offline));
@@ -316,7 +325,7 @@ function renderCards(list){
 function cardHtml(f){
   const comm = f.comm || {};
   const lines = (f.alarms || []).slice(0, 4).map(a =>
-    `<div class="f-al"><span class="lv ${(a.levelText==='严重'?'critical':a.levelText==='重要'?'major':'minor')}">${a.levelText}</span>` +
+    `<div class="f-al"><span class="lv ${lvCls(a.level)}">${a.levelText}</span>` +
     `<span class="fr">${esc(a.rule)}</span>` +
     `<span class="fm" title="${esc(a.message || '')}">${esc(a.message || '')}</span>` +
     `<span class="a-min">${a.minutes < 1 ? '刚刚' : a.minutes + ' 分'}</span></div>`).join('');

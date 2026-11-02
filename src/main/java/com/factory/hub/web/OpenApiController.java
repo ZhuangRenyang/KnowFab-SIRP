@@ -2,6 +2,7 @@ package com.factory.hub.web;
 
 import com.factory.hub.alarm.AlarmEvent;
 import com.factory.hub.alarm.AlarmEventRepository;
+import com.factory.hub.alarm.AlarmTierResolver;
 import com.factory.hub.collect.SnapshotStore;
 import com.factory.hub.screen.AlarmCodeDict;
 import com.factory.hub.model.DeviceEntity;
@@ -143,9 +144,10 @@ public class OpenApiController {
     }
 
     private static String levelText(String level) {
-        if ("CRITICAL".equals(level)) return "严重";
-        if ("MAJOR".equals(level)) return "重要";
-        return "一般";
+        // 等级文案全应用只有一份（AlarmTierResolver），这里原来自己抄了一份「严重/重要/一般」，
+        // 和界面上的「停机/告警/预警」对不上，客户接 MES 时两套说法更难对齐。
+        // 对外契约不变：level 字段仍是稳定的枚举，逻辑用 level，展示用 levelText。
+        return AlarmTierResolver.levelText(level);
     }
 
     /** 只要状态和关键指标，最常用的一个接口 */

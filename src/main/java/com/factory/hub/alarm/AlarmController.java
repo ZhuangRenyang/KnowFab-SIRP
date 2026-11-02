@@ -120,13 +120,34 @@ public class AlarmController {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("rule", r);
             m.put("typeName", r.typeName());
+            // 这条规则自己的等级文案。页面上直接显示，省得前端再翻一遍字典
+            m.put("levelText", AlarmTierResolver.levelText(r.getLevel()));
+            // 阈值单位（℃ / kW / MPa…）。规则本身不存单位，从点位定义反查。
+            // 同一个数值在温度点是 ℃、在压力点是 MPa，写错了客户会照着错单位去判断
+            m.put("unit", describe.unitOf(r));
             m.put("error", r.validate());
             items.add(m);
         }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("ok", true);
         out.put("items", items);
+        // 等级下拉的文案由后端给：预警 / 告警 / 停机 只有这一份定义，
+        // 前端只负责渲染，别在两边各写一份然后越改越不一样
+        out.put("levelOptions", levelOptions());
         return out;
+    }
+
+    /** 等级枚举 + 中文文案，给规则表单的等级下拉用 */
+    private static List<Map<String, Object>> levelOptions() {
+        List<Map<String, Object>> list = new ArrayList<>(3);
+        for (String lv : List.of(AlarmTierResolver.CRITICAL, AlarmTierResolver.MAJOR,
+                AlarmTierResolver.MINOR)) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("value", lv);
+            m.put("label", AlarmTierResolver.levelText(lv));
+            list.add(m);
+        }
+        return list;
     }
 
     /**
@@ -163,8 +184,11 @@ public class AlarmController {
         if (wasEnabled && !saved.isEnabled()) {
             engine.closeByRule(saved.getId(), "规则已停用");
         }
+        // 改了档位要让人一眼看出来。只写「档位：预警>80 / 告警>85 / 停机>90」，
+        // 事后翻审计根本不知道是改了哪一档。
+        String tierChange = created ? null : describe.describeTierChange(old, saved);
         String detail = (created ? "新增告警规则 " : "修改告警规则 ") + saved.getName()
-                + "（" + saved.typeName() + "，" + describe.describeCondition(saved)
+                + "（" + saved.typeName() + "，" + describe.describeCondition(saved, tierChange)
                 + "，" + (saved.isEnabled() ? "已启用" : "已停用") + "）";
         audit.ok(AuditLog.CAT_ALARM, created ? AuditLog.ACT_CREATE : AuditLog.ACT_UPDATE,
                 saved.getId(), saved.getName(), detail);

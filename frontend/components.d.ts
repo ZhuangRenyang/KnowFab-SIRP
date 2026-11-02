@@ -73,6 +73,8 @@ declare module 'vue' {
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     RuleDialog: typeof import('./src/components/alarm/RuleDialog.vue')['default']
+    RuleForm: typeof import('./src/components/alarm/RuleForm.vue')['default']
+    RuleList: typeof import('./src/components/alarm/RuleList.vue')['default']
     SalesOrderDialog: typeof import('./src/components/erp/SalesOrderDialog.vue')['default']
     SalesShipDialog: typeof import('./src/components/erp/SalesShipDialog.vue')['default']
     SettingsPanel: typeof import('./src/components/system/SettingsPanel.vue')['default']
@@ -84,6 +86,7 @@ declare module 'vue' {
     StockBillTab: typeof import('./src/components/erp/StockBillTab.vue')['default']
     StocktakeDialog: typeof import('./src/components/erp/StocktakeDialog.vue')['default']
     TariffDialog: typeof import('./src/components/energy/TariffDialog.vue')['default']
+    TierEditor: typeof import('./src/components/alarm/TierEditor.vue')['default']
     UpdatePanel: typeof import('./src/components/system/UpdatePanel.vue')['default']
   }
   export interface GlobalDirectives {

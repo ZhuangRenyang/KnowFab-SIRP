@@ -5,6 +5,8 @@ import java.time.Instant;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * 一条告警规则 = 「什么条件下、持续多久、算几级报警、要不要发通知」。
@@ -64,6 +66,57 @@ public class AlarmRule {
 
     /** CRITICAL / MAJOR / MINOR */
     private String level = "MAJOR";
+
+    /**
+     * 多级限值（DH-14）：同一个测点的预警 / 告警 / 停机三档。
+     * <p>
+     * 空 = 老规则，仍然用规则级的 {@code level + threshold} 单值判定，行为和现在完全一样，
+     * 存量机器上的规则 JSON 不需要迁移。
+     * <p>
+     * 为什么是「一条规则带多档」而不是「建三条规则让引擎自己分组」：
+     * 分组是引擎猜出来的，用户看不见也改不对——点位名打错一位，三条规则就全冒出来了。
+     * 分级是规则自己的属性，用户看得见、改得对，而且一条规则天然只产生一条告警。
+     */
+    private List<Tier> tiers = new ArrayList<>();
+
+    /**
+     * 一档限值。等级 + 阈值。
+     * <p>
+     * 比较符不在档位上：同一个测点的越限方向是同一个，
+     * 由规则级的 {@code op} 统一决定，档位只管「到什么数算哪一级」。
+     */
+    public static class Tier {
+
+        /** MINOR 预警 / MAJOR 告警 / CRITICAL 停机 */
+        private String level = "MINOR";
+
+        /** 这一档的阈值 */
+        private Double threshold;
+
+        public Tier() {
+        }
+
+        public Tier(String level, Double threshold) {
+            this.level = level;
+            this.threshold = threshold;
+        }
+
+        public String getLevel() {
+            return level;
+        }
+
+        public void setLevel(String level) {
+            this.level = level;
+        }
+
+        public Double getThreshold() {
+            return threshold;
+        }
+
+        public void setThreshold(Double threshold) {
+            this.threshold = threshold;
+        }
+    }
 
     private boolean enabled = false;
 
@@ -183,8 +236,18 @@ public class AlarmRule {
         if (TYPE_THRESHOLD.equals(type) && (pointKey == null || pointKey.isBlank())) {
             return "数值越限规则必须指定点位";
         }
-        if (TYPE_THRESHOLD.equals(type) && threshold == null) {
+        // 分级规则的老规则分支：tiers 为空 = 单值判定，阈值仍然必填。
+        // 有 tiers 时阈值由各档自己带，规则级的 threshold 可以是空的。
+        if (TYPE_THRESHOLD.equals(type) && !isTiered() && threshold == null) {
             return "数值越限规则必须填阈值";
+        }
+        // 档位本身的体检：缺阈值 / 等级非法 / 同档重复 / 阈值不单调。
+        // 配反了不是「不报警」，是「报错的级别」——比不报更危险，必须当场拒掉。
+        if (isTiered()) {
+            String bad = AlarmTierResolver.validateTiers(this);
+            if (bad != null) {
+                return bad;
+            }
         }
         if (schedule != null && !schedule.isBlank()
                 && (parseTime(schedule.split("-")[0].trim()) == null
@@ -196,6 +259,17 @@ public class AlarmRule {
             return "建议持续时间不少于 30 秒，否则网络抖动就会报警";
         }
         return null;
+    }
+
+    /**
+     * 是不是分级规则（配了档位）。老规则没有档位，判定行为和现在一模一样。
+     * <p>
+     * 加 {@code @JsonIgnore}：这是个内部判断方法，不该变成规则 JSON 里的一个字段——
+     * 存量规则读回来时凭空多一个字段，前端和运维看着都莫名其妙。
+     */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public boolean isTiered() {
+        return tiers != null && !tiers.isEmpty();
     }
 
     public String typeName() {
@@ -296,6 +370,15 @@ public class AlarmRule {
 
     public void setLevel(String level) {
         this.level = level;
+    }
+
+    /** 多级限值。永远不返回 null，老规则读到的是空列表 */
+    public List<Tier> getTiers() {
+        return tiers == null ? List.of() : tiers;
+    }
+
+    public void setTiers(List<Tier> tiers) {
+        this.tiers = tiers;
     }
 
     public boolean isEnabled() {

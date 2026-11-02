@@ -95,21 +95,33 @@ public class AlarmEngine {
         long okSince;
         /** 上次触发时刻，用于冷却 */
         long lastFireAt;
+        /** 上次「升档」通知的时刻，用于给升档通知做节流 */
+        long lastUpgradeNotifyAt;
 
         void reset() {
             badSince = 0;
             okSince = 0;
+            lastUpgradeNotifyAt = 0;
         }
     }
 
-    /** 一次判断的结果 */
-    private record Sample(boolean bad, Double value, String detail) {
+    /**
+     * 一次判断的结果。
+     *
+     * @param level     命中档的等级（分级规则才有，老规则为 null）
+     * @param threshold 命中档的阈值（分级规则才有，老规则为 null）
+     */
+    private record Sample(boolean bad, Double value, String detail, String level, Double threshold) {
         static Sample ok() {
-            return new Sample(false, null, null);
+            return new Sample(false, null, null, null, null);
         }
 
         static Sample bad(double value, String detail) {
-            return new Sample(true, value, detail);
+            return new Sample(true, value, detail, null, null);
+        }
+
+        static Sample bad(double value, String detail, String level, Double threshold) {
+            return new Sample(true, value, detail, level, threshold);
         }
     }
 
@@ -229,6 +241,9 @@ public class AlarmEngine {
                             w.lastFireAt = now;
                             fires.add(new Pending(k, ev, rule));
                         }
+                    } else if (s.level() != null && !s.level().equals(cur.getLevel())) {
+                        // 分级规则档位变了：就地换档，不新增事件
+                        switchTier(cur, rule, d, s, w, now);
                     } else if (repeatReached(cur, now) && notifier.fire(cur, rule)) {
                         // 只有真发出去才记账。免打扰 / 规则关了通知 / 没有可用渠道 都不算
                         markNotified(cur, now);
@@ -315,13 +330,23 @@ public class AlarmEngine {
                     return null;
                 }
                 Double v = pv.asDouble();
-                if (v == null || rule.getThreshold() == null) {
+                if (v == null) {
                     return null;
                 }
-                boolean bad = compare(v, rule.getOp(), rule.getThreshold());
-                return bad
-                        ? Sample.bad(v, pv.name() + " = " + fmtNum(v) + pv.unit())
-                        : Sample.ok();
+                // 老规则没填阈值：这一轮没法判断（和升级前一样，绝不误报）
+                if (!rule.isTiered() && rule.getThreshold() == null) {
+                    return null;
+                }
+                // 分级规则逐档比较，取命中的最高档；一档都没中就是正常
+                AlarmTierResolver.TierHit hit = AlarmTierResolver.resolve(rule, v);
+                if (hit == null) {
+                    return Sample.ok();
+                }
+                String detail = pv.name() + " = " + fmtNum(v) + pv.unit();
+                // 老规则的等级和阈值仍走规则级默认值，行为一个字都不改
+                return rule.isTiered()
+                        ? Sample.bad(v, detail, hit.level(), hit.threshold())
+                        : Sample.bad(v, detail);
             }
             default -> {
                 if (warned.add("type:" + rule.getId())) {
@@ -330,18 +355,6 @@ public class AlarmEngine {
                 return null;
             }
         }
-    }
-
-    private boolean compare(double v, String op, double t) {
-        return switch (op == null ? ">" : op) {
-            case ">" -> v > t;
-            case ">=" -> v >= t;
-            case "<" -> v < t;
-            case "<=" -> v <= t;
-            case "==" -> Math.abs(v - t) < 1e-9;
-            case "!=" -> Math.abs(v - t) >= 1e-9;
-            default -> false;
-        };
     }
 
     private PointValue statusPoint(Map<String, PointValue> vals) {
@@ -359,8 +372,48 @@ public class AlarmEngine {
         String msg = message(rule, d, s);
         AlarmEvent e = new AlarmEvent(rule, d.getCode(), d.getName(), d.getLocation(),
                 s.value() == null ? 0d : s.value(), msg);
+        // 分级规则：等级和阈值取「命中的那一档」，不是规则级的默认值。
+        // 老规则不进来，构造器里的 rule.getLevel()/getThreshold() 就是对的。
+        if (s.level() != null) {
+            e.setLevel(s.level());
+            e.setThreshold(s.threshold());
+        }
         e.setStartedAt(now - rule.getForSeconds() * 1000L);   // 从条件开始成立那一刻算起
         return e;
+    }
+
+    /**
+     * 就地换档（DH-14 2.4）。
+     * <p>
+     * <b>铁律：换档绝不产生第二条告警事件。</b>事件只有一条，改的是这一条的
+     * 等级 / 阈值 / 文案。同一台设备同一测点从预警升到停机，用户看到的还是一条告警，
+     * 只是它变严重了——如果每次升档都新开一条，一台温度慢慢爬升的机器能刷出三条告警，
+     * 那就回到了「配三次报三次」的老问题。
+     * <p>
+     * 升档要通知（情况变严重了，人得知道），降档不通知（降级不是紧急信息）。
+     * 升档通知按冷却节流：温度在档位边界来回抖时不会连着发一堆「升级为停机」。
+     */
+    private void switchTier(AlarmEvent cur, AlarmRule rule, DeviceEntity d,
+                            Sample s, Watch w, long now) {
+        boolean up = AlarmTierResolver.applyTier(cur,
+                new AlarmTierResolver.TierHit(s.level(), s.threshold()),
+                s.value(), message(rule, d, s));
+        try {
+            repo.save(cur);
+        } catch (Exception ex) {
+            log.debug("更新告警档位失败: {}", ex.getMessage());
+        }
+        if (!up) {
+            return;                     // 降档只改不发通知
+        }
+        long cooldown = rule.getCooldownSeconds() * 1000L;
+        if (w.lastUpgradeNotifyAt > 0 && now - w.lastUpgradeNotifyAt < cooldown) {
+            return;                     // 冷却期内不重复报升级
+        }
+        if (notifier.escalate(cur, rule)) {
+            w.lastUpgradeNotifyAt = now;
+            markNotified(cur, now);
+        }
     }
 
     private AlarmEvent clear(AlarmEvent e, String reason, Watch w, long now) {
@@ -406,11 +459,13 @@ public class AlarmEngine {
     private String message(AlarmRule rule, DeviceEntity d, Sample s) {
         String dur = AlarmNotifier.fmtDuration(rule.getForSeconds() * 1000L);
         String tpl = rule.getMessage();
+        // 分级规则用命中档的阈值，老规则用规则级的阈值——文案和以前一致
+        Double th = s.threshold() != null ? s.threshold() : rule.getThreshold();
         if (tpl != null && !tpl.isBlank()) {
             return tpl.replace("{device}", d.getName())
                     .replace("{code}", d.getCode())
                     .replace("{value}", s.value() == null ? "--" : fmtNum(s.value()))
-                    .replace("{threshold}", rule.getThreshold() == null ? "--" : fmtNum(rule.getThreshold()))
+                    .replace("{threshold}", th == null ? "--" : fmtNum(th))
                     .replace("{duration}", dur)
                     .replace("{point}", rule.getPointKey());
         }
@@ -419,7 +474,8 @@ public class AlarmEngine {
             case AlarmRule.TYPE_STOP -> d.getName() + " 处于停机状态，已超过 " + dur;
             case AlarmRule.TYPE_FLAG -> d.getName() + " 发出报警信号（" + s.detail() + "）";
             case AlarmRule.TYPE_THRESHOLD -> d.getName() + " " + s.detail()
-                    + "，达到 " + rule.getOp() + " " + fmtNum(rule.getThreshold());
+                    + "，达到 " + rule.getOp() + " " + fmtNum(th == null ? 0d : th)
+                    + (s.level() == null ? "" : "（" + AlarmTierResolver.levelText(s.level()) + "档）");
             default -> d.getName() + " 触发告警";
         };
     }

@@ -2,6 +2,7 @@ package com.factory.hub.screen;
 
 import com.factory.hub.alarm.AlarmEvent;
 import com.factory.hub.alarm.AlarmEventRepository;
+import com.factory.hub.alarm.AlarmTierResolver;
 import com.factory.hub.collect.SnapshotStore;
 import com.factory.hub.model.DeviceEntity;
 import com.factory.hub.model.PointDef;
@@ -334,13 +335,14 @@ public class ScreenService {
                 default -> minor++;
             }
         }
-        // 严重的排前面，同级按开始时间倒序
+        // 严重的排前面，同级按开始时间倒序。
+        // 等级权重是「越大越严重」，所以这里反过来比。
         List<AlarmEvent> sorted = new ArrayList<>(open);
         sorted.sort((a, b) -> {
             int la = levelRank(a.getLevel());
             int lb = levelRank(b.getLevel());
             if (la != lb) {
-                return Integer.compare(la, lb);
+                return Integer.compare(lb, la);
             }
             return Long.compare(b.getStartedAt(), a.getStartedAt());
         });
@@ -441,6 +443,9 @@ public class ScreenService {
                 }
                 Map<String, Object> row = new LinkedHashMap<>();
                 row.put("rule", e.getRuleName());
+                // 等级枚举和文案都给：页面按枚举判颜色，按文案显示文字。
+                // 以前只给文案，页面只好拿中文字符串判等级，改一次文案颜色就全乱。
+                row.put("level", e.getLevel());
                 row.put("levelText", levelText(e.getLevel()));
                 row.put("message", e.getMessage());
                 row.put("value", e.getValue());
@@ -451,8 +456,9 @@ public class ScreenService {
                         ? Instant.ofEpochMilli(e.getStartedAt()).atZone(ZONE).format(HHMM) : "");
                 items.add(row);
             }
+            // 按等级排，最严重的在前。以前拿中文字符串去比英文枚举名，永远相等，等于没排
             items.sort(Comparator.comparingInt(
-                    (Map<String, Object> m) -> levelRank(String.valueOf(m.get("levelText")))));
+                    (Map<String, Object> m) -> levelRank(String.valueOf(m.get("level")))).reversed());
 
             // 签名 = 报警集合 + 通讯状态 + 报警字。
             // 千万别把 values 放进来：温度每秒都在跳，签名就永远在变，
@@ -514,23 +520,15 @@ public class ScreenService {
     }
 
     private int levelRank(String level) {
-        if ("CRITICAL".equals(level)) {
-            return 0;
-        }
-        if ("MAJOR".equals(level)) {
-            return 1;
-        }
-        return 2;
+        return AlarmTierResolver.rank(level);
     }
 
+    /**
+     * 等级中文名。和告警页、通知用的是同一份（预警 / 告警 / 停机），
+     * 不然同一个等级在大屏上叫「严重」、在告警列表里叫「停机」，值班的人以为是两件事。
+     */
     private String levelText(String level) {
-        if ("CRITICAL".equals(level)) {
-            return "严重";
-        }
-        if ("MAJOR".equals(level)) {
-            return "重要";
-        }
-        return "一般";
+        return AlarmTierResolver.levelText(level);
     }
 
     private Number num(Object o) {

@@ -351,7 +351,7 @@
   <div class="kpi warn" id="kpi-alarm">
     <div class="k" data-i="kAlarm">未处理报警</div>
     <div class="v"><span id="k-alarm">0</span><i data-i="unitAlarms">条</i></div>
-    <div class="s" id="k-alarm-sub">严重 0 · 重要 0</div>
+    <div class="s" id="k-alarm-sub">停机 0 · 告警 0</div>
   </div>
 </section>
 
@@ -460,7 +460,7 @@ const SCR = {
   kStop: '停机时长', unitMinute: '分钟', kStopSub: '今日累计 · 按运行状态统计',
   kStopCnt: '停机次数', unitTimes: '次', kStopCntSub: '来自停机/离线告警',
   kOnline: '在线设备', rateLine: '在线率 {rate}%',
-  kAlarm: '未处理报警', unitAlarms: '条', kAlarmSub: '严重 {c} · 重要 {m}',
+  kAlarm: '未处理报警', unitAlarms: '条', kAlarmSub: '停机 {c} · 告警 {m}',
   lineTitle: '产线产量', lineToday: '件 今日', lineTip: '{on}/{tot} 台在线',
   pDonut: '设备状态分布', donutTotal: '共 {n} 台', noDevices: '未接入设备', donutCenter: '台设备',
   pChart: '今日产量趋势', pChartNote: '每小时合计', peak: '峰值 {n} 件/时', emptyChart: '今日暂无产量数据',
@@ -478,7 +478,7 @@ const SCR = {
   maskRetry0: '与服务器断开，正在重试…',
   maskRetry: '与服务器断开（已重试 {n} 次），', maskOld: '当前显示的是 {s} 秒前的数据', maskConn: '正在连接…',
   stRun: '运行', stIdle: '待机', stStop: '停机', stAlarm: '报警', stOffline: '离线',
-  lvCritical: '严重', lvMajor: '重要', lvMinor: '一般',
+  lvCritical: '停机', lvMajor: '告警', lvMinor: '预警',
   week: '周日|周一|周二|周三|周四|周五|周六',
   offlineReason: '设备离线',
   noAlarmPoint: '该设备未配置报警字点位（点表里加 role=alarm）',
@@ -500,7 +500,7 @@ const SCR_EN = {
   kStop: 'Stop time', unitMinute: 'min', kStopSub: 'Today · by run status',
   kStopCnt: 'Stop count', unitTimes: 'x', kStopCntSub: 'From stop/offline alarms',
   kOnline: 'Devices online', rateLine: 'Online {rate}%',
-  kAlarm: 'Open alarms', unitAlarms: '', kAlarmSub: 'Critical {c} · Major {m}',
+  kAlarm: 'Open alarms', unitAlarms: '', kAlarmSub: 'Critical {c} · Alarm {m}',
   lineTitle: 'Line output', lineToday: 'pcs today', lineTip: '{on}/{tot} online',
   pDonut: 'Device status', donutTotal: '{n} devices', noDevices: 'No devices', donutCenter: 'devices',
   pChart: 'Output today', pChartNote: 'Hourly total', peak: 'Peak {n}/h', emptyChart: 'No output data today',
@@ -518,7 +518,7 @@ const SCR_EN = {
   maskRetry0: 'Disconnected from server, retrying…',
   maskRetry: 'Disconnected (retried {n} times), ', maskOld: 'showing data from {s}s ago', maskConn: 'connecting…',
   stRun: 'Run', stIdle: 'Idle', stStop: 'Stop', stAlarm: 'Alarm', stOffline: 'Offline',
-  lvCritical: 'Critical', lvMajor: 'Major', lvMinor: 'Minor',
+  lvCritical: 'Critical', lvMajor: 'Alarm', lvMinor: 'Warning',
   week: 'Sun|Mon|Tue|Wed|Thu|Fri|Sat',
   offlineReason: 'Device offline',
   noAlarmPoint: 'No alarm-word point configured (add role=alarm in the point table)',
@@ -535,8 +535,18 @@ function T(key, p){
   return s;
 }
 /* 后端下发的中文级别/状态词 → 当前语言（数据原文不改动，只翻译显示） */
-const LV_EN = { '严重': 'Critical', '重要': 'Major', '一般': 'Minor', '提示': 'Minor' };
+const LV_EN = { '停机': 'Critical', '告警': 'Alarm', '预警': 'Warning',
+  '严重': 'Critical', '重要': 'Major', '一般': 'Minor', '提示': 'Minor' };
 function lvText(lv){ const s = String(lv || ''); return IS_EN ? (LV_EN[s] || s) : s; }
+/* 配色按等级枚举判，不看中文文案。
+   以前比的是 '严重'/'重要'，后台改一次文案整个大屏配色就全错了。
+   数据源同时给了 level（枚举）和 levelText（文案）：判枚举、显文案。 */
+function lvClass(level){
+  const s = String(level == null ? '' : level).toUpperCase();
+  if (s === 'CRITICAL') return 'critical';
+  if (s === 'MAJOR') return 'major';
+  return 'minor';
+}
 function stText(s){
   const map = { '运行': 'stRun', '待机': 'stIdle', '停机': 'stStop', '报警': 'stAlarm', '离线': 'stOffline',
     run: 'stRun', idle: 'stIdle', stop: 'stStop', alarm: 'stAlarm', offline: 'stOffline' };
@@ -744,7 +754,16 @@ let blView = 0, blTimer = null;
 
 /* 故障原因横幅：把最严重的一条「为什么坏」提到大屏最上方。
    取源优先级：PLC 报警字典原因 → 报警规则 → 通讯/离线原因。 */
-function lvlRank(lv){ const s = String(lv || ''); return (s === '严重' || s === 'Critical') ? 3 : (s === '重要' || s === 'Major') ? 2 : 1; }
+/* 等级权重：越大越严重。优先按枚举判，枚举缺失时退回文案判断 */
+function lvlRank(lv){
+  const u = String(lv || '').toUpperCase();
+  if (u === 'CRITICAL') return 3;
+  if (u === 'MAJOR') return 2;
+  if (u === 'MINOR') return 1;
+  const s = String(lv || '');
+  return (s === '停机' || s === '严重' || s === 'Critical') ? 3
+       : (s === '告警' || s === '重要' || s === 'Alarm' || s === 'Major') ? 2 : 1;
+}
 
 function renderFaultBar(faults){
   const bar = $('faultbar');
@@ -755,7 +774,7 @@ function renderFaultBar(faults){
     const words = facts.plcWords || [];
     const known = words.find(w => w.known && w.cause);
     const al = (facts.alarms && facts.alarms.items) || [];
-    const worst = al.slice().sort((a, b) => lvlRank(b.levelText) - lvlRank(a.levelText))[0];
+    const worst = al.slice().sort((a, b) => lvlRank(b.level) - lvlRank(a.level))[0];
     let reason = '', level = T('lvMinor');
     if (known){
       reason = known.name + '：' + known.cause + (known.remedy ? ' → ' + known.remedy : '');
@@ -854,7 +873,7 @@ function renderFaultBody(){
   const comm = f.comm || {};
   const lines = (f.alarms || []).map(a => {
     const lv = lvText(a.levelText);
-    const lvCls = a.levelText === '严重' ? 'critical' : a.levelText === '重要' ? 'major' : 'minor';
+    const lvCls = lvClass(a.level);
     return `<div class="f-al"><span class="lv ${lvCls}">${esc(lv)}</span>` +
     `<span class="fr">${esc(a.rule)}</span>` +
     `<span class="fm">${esc(a.message || '')}</span>` +
