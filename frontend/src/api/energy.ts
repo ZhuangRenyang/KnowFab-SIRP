@@ -113,11 +113,69 @@ export interface EnergyByNode {
   check: { workshopSum: number; matchesTotal: boolean; gap: number }
 }
 
+/* 能效对标（DH-12）：单位产品能耗 vs 国标限额值 */
+export type BenchmarkScope = 'PLANT' | 'WORKSHOP' | 'LINE' | 'DEVICE'
+export type BenchmarkStatus = 'ADVANCED' | 'ACCESS' | 'LIMIT' | 'EXCEED' | 'NO_OUTPUT' | 'SCOPE_EMPTY'
+
+export interface EnergyBenchmark {
+  id: string
+  name: string
+  standardNo: string
+  scopeType: BenchmarkScope
+  scopeValue: string
+  unit: string
+  advancedValue?: number | null
+  accessValue?: number | null
+  limitValue?: number | null
+  enabled: boolean
+  note: string
+}
+
+export interface BenchmarkRow extends EnergyBenchmark {
+  scopeLabel: string
+  kwh: number
+  output: number
+  unitKwh: number | null
+  vsAdvanced: number | null
+  vsAccess: number | null
+  vsLimit: number | null
+  status: BenchmarkStatus
+}
+
+export interface BenchmarkReport {
+  range: string
+  fromText: string
+  toText: string
+  plant: { kwh: number; output: number; unitKwh: number | null; unit: string }
+  rows: BenchmarkRow[]
+  summary: {
+    total: number
+    advanced: number
+    access: number
+    limit: number
+    exceed: number
+    noOutput: number
+    scopeEmpty: number
+    verdict: 'OK' | 'EXCEED' | 'INCOMPLETE'
+  }
+  warnings: string[]
+  hasBenchmark: boolean
+}
+
 export const energyApi = {
   overview: () => http.get<EnergyOverview>('/api/energy/overview?days=7'),
   rank: (range: string) => http.get<EnergyRankItem[]>(`/api/energy/devices?range=${range}`),
   demand: () => http.get<DemandData>('/api/energy/demand'),
   byNode: (range: string) => http.get<EnergyByNode>(`/api/energy/by-node?range=${range}`),
+  benchmarkReport: (range: string) =>
+    http.get<BenchmarkReport>(`/api/energy/benchmark-report?range=${range}`),
+  benchmarks: () =>
+    http.get<{ ok: boolean; rows: EnergyBenchmark[]; warnings: string[] }>('/api/energy/benchmarks'),
+  saveBenchmark: (b: Partial<EnergyBenchmark>) =>
+    http.post<{ ok: boolean; message?: string; row?: EnergyBenchmark; warnings: string[] }>(
+      '/api/energy/benchmarks', b),
+  deleteBenchmark: (id: string) =>
+    http.del<{ ok: boolean; message?: string }>(`/api/energy/benchmarks/${encodeURIComponent(id)}`),
   device: (code: string) =>
     http.get<DeviceEnergyDetail>(`/api/energy/device/${encodeURIComponent(code)}`),
   tariff: () => http.get<{ plan: TariffPlan }>('/api/energy/tariff'),

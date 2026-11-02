@@ -2,7 +2,7 @@
   <div class="energy">
     <div class="toolbar">
       <span class="lbl">{{ t('energy.rangeLabel') }}</span>
-      <el-select v-model="range" style="width:104px" @change="loadRank">
+      <el-select v-model="range" style="width:104px" @change="onRange">
         <el-option value="today" :label="t('energy.today')" />
         <el-option value="7d" :label="t('energy.last7d')" />
         <el-option value="month" :label="t('energy.thisMonth')" />
@@ -12,6 +12,7 @@
       <span class="plan">{{ ov?.tariffName || '' }}</span>
       <el-button v-if="canCfg" @click="tariffOpen = true">{{ t('energy.tariff') }}</el-button>
       <el-button v-if="canCfg" @click="demandOpen = true">{{ t('energy.demand') }}</el-button>
+      <el-button v-if="canCfg" @click="bmOpen = true">{{ t('energy.bmManage') }}</el-button>
     </div>
 
     <el-alert v-if="warn" :title="warn" type="warning" show-icon :closable="false" class="warn" />
@@ -132,6 +133,64 @@
       </table>
     </div>
 
+    <!-- 能效对标（DH-12）：实测单位产品能耗 vs 国标限额值 -->
+    <div class="panel bm">
+      <div class="p-head">
+        <h3>{{ t('energy.bmTitle') }}</h3>
+        <span>
+          {{ t('energy.bmHint', { range: rangeLabel }) }}
+          <template v-if="bm && bm.hasBenchmark"> · {{ bmSummary }}</template>
+        </span>
+      </div>
+
+      <div v-if="!bm || !bm.hasBenchmark" class="empty">{{ t('energy.bmEmpty') }}</div>
+      <template v-else>
+        <div class="bm-plant">
+          <span>{{ t('energy.bmPlant') }}</span>
+          <b class="num">{{ bm.plant.unitKwh == null ? '--' : num(bm.plant.unitKwh, 3) }} {{ bm.plant.unit }}</b>
+          <em>{{ t('energy.bmPlantSub', { kwh: num(bm.plant.kwh, 1), out: num(bm.plant.output, 0) }) }}</em>
+        </div>
+
+        <table class="etable bm-table">
+          <thead>
+            <tr>
+              <th>{{ t('energy.bmColObject') }}</th>
+              <th class="r">{{ t('energy.bmColActual') }}</th>
+              <th>{{ t('energy.bmColBench') }}</th>
+              <th class="r">{{ t('energy.bmColDelta') }}</th>
+              <th>{{ t('energy.bmColStatus') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="r in bm.rows" :key="r.id">
+              <td>
+                <b>{{ r.name }}</b>
+                <div class="dev-code">{{ r.standardNo || '—' }} · {{ r.scopeLabel || t('energy.bmScopePlant') }}</div>
+              </td>
+              <td class="r num">
+                <template v-if="r.unitKwh != null">
+                  <b>{{ num(r.unitKwh, 3) }}</b> {{ r.unit }}
+                  <div class="dev-code">{{ num(r.kwh, 1) }} kWh ÷ {{ num(r.output, 0) }}</div>
+                </template>
+                <span v-else class="muted">--</span>
+              </td>
+              <td>
+                <div class="bm-vals">
+                  <span v-if="r.advancedValue != null" class="bv adv">{{ t('energy.bmAdvanced') }} {{ r.advancedValue }}</span>
+                  <span v-if="r.accessValue != null" class="bv acc">{{ t('energy.bmAccess') }} {{ r.accessValue }}</span>
+                  <span v-if="r.limitValue != null" class="bv lim">{{ t('energy.bmLimit') }} {{ r.limitValue }}</span>
+                </div>
+              </td>
+              <td class="r num" :class="bmDeltaClass(r)">{{ bmDelta(r) }}</td>
+              <td><span class="bm-badge" :class="BM_CLASS[r.status]">{{ t(BM_KEY[r.status]) }}</span></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div v-if="bm.warnings.length" class="bm-warn">{{ t('energy.bmWarn', { n: bm.warnings.length }) }}</div>
+      </template>
+    </div>
+
     <div class="panel rank">
       <div class="p-head"><h3>{{ t('energy.rankTitle', { range: rangeLabel }) }}</h3><span>{{ t('energy.rankHint') }}</span></div>
       <div v-if="!rank.length" class="empty" v-html="rankEmpty"></div>
@@ -156,6 +215,7 @@
 
     <TariffDialog v-model="tariffOpen" @saved="load" />
     <DemandDialog v-model="demandOpen" @saved="load" />
+    <BenchmarkDialog v-model="bmOpen" @saved="loadBenchmark" />
   </div>
 </template>
 
@@ -163,13 +223,15 @@
 const { t } = useI18n()
 import { computed, ref, watch, reactive} from 'vue'
 import { useI18n } from 'vue-i18n'
-import { energyApi, SEG_COLOR, type EnergyOverview, type EnergyRankItem, type EnergyByNode, type DemandData, type TariffSegment } from '@/api/energy'
+import { energyApi, SEG_COLOR, type EnergyOverview, type EnergyRankItem, type EnergyByNode, type DemandData, type TariffSegment,
+  type BenchmarkReport, type BenchmarkRow, type BenchmarkStatus } from '@/api/energy'
 import { num } from '@/api/reports'
 import { useAuthStore } from '@/stores/auth'
 import { useEcharts } from '@/composables/useEcharts'
 import { usePolling } from '@/composables/usePolling'
 import TariffDialog from '@/components/energy/TariffDialog.vue'
 import DemandDialog from '@/components/energy/DemandDialog.vue'
+import BenchmarkDialog from '@/components/energy/BenchmarkDialog.vue'
 
 const auth = useAuthStore()
 const { init: initDemand, setOption: setDemand } = useEcharts()
@@ -187,7 +249,8 @@ const node = ref<EnergyByNode | null>(null)
 const dm = ref<DemandData | null>(null)
 const picked = ref('')
 const detail = ref<any>(null)
-const tariffOpen = ref(false), demandOpen = ref(false)
+const tariffOpen = ref(false), demandOpen = ref(false), bmOpen = ref(false)
+const bm = ref<BenchmarkReport | null>(null)
 const demandEl = ref<HTMLElement>(), trendEl = ref<HTMLElement>(), hourlyEl = ref<HTMLElement>()
 
 const canCfg = computed(() => ['ADMIN', 'MANAGER'].includes(auth.user?.role || ''))
@@ -340,6 +403,7 @@ async function load() {
       energyApi.demand().catch(() => null)
     ])
     loadNode()
+    loadBenchmark()
     ov.value = o
     if (d && d.ok) dm.value = d
     if (picked.value) loadDetail(picked.value)
@@ -357,6 +421,45 @@ async function loadNode() {
   try {
     node.value = await energyApi.byNode(range.value)
   } catch (e: any) { console.error('分项计量加载失败', e) }
+}
+
+async function loadBenchmark() {
+  try {
+    bm.value = await energyApi.benchmarkReport(range.value)
+  } catch (e: any) { console.error('能效对标加载失败', e) }
+}
+
+/** 范围切换：排行、分项、对标一起刷，别只刷一半让人看到两个口径 */
+function onRange() {
+  loadRank()
+  loadNode()
+  loadBenchmark()
+}
+
+const BM_CLASS: Record<BenchmarkStatus, string> = {
+  ADVANCED: 'bm-adv', ACCESS: 'bm-acc', LIMIT: 'bm-lim', EXCEED: 'bm-exc',
+  NO_OUTPUT: 'bm-na', SCOPE_EMPTY: 'bm-na'
+}
+const BM_KEY: Record<BenchmarkStatus, string> = {
+  ADVANCED: 'energy.bmStAdvanced', ACCESS: 'energy.bmStAccess', LIMIT: 'energy.bmStLimit',
+  EXCEED: 'energy.bmStExceed', NO_OUTPUT: 'energy.bmNoOutput', SCOPE_EMPTY: 'energy.bmScopeEmpty'
+}
+
+const bmSummary = computed(() => {
+  const s = (bm.value as BenchmarkReport).summary
+  return s.exceed > 0
+    ? t('energy.bmSummaryBad', { exceed: s.exceed, total: s.total })
+    : t('energy.bmSummaryOk', { total: s.total })
+})
+
+function bmDelta(r: BenchmarkRow) {
+  const v = r.vsLimit ?? r.vsAccess ?? r.vsAdvanced
+  if (v == null) return '--'
+  return (v > 0 ? '+' : '') + num(v, 1) + '%'
+}
+function bmDeltaClass(r: BenchmarkRow) {
+  const v = r.vsLimit ?? r.vsAccess ?? r.vsAdvanced
+  return v == null ? '' : v > 0 ? 'over' : 'under'
 }
 
 /** 占比条宽度：0 也给 1px，否则看不出"有 0.0x%" */
@@ -428,6 +531,34 @@ usePolling(load, 15000, { immediate: true })
 .minibar { height: 5px; background: var(--accent); border-radius: 3px; }
 .detail { margin-top: var(--space-3); border-top: 1px solid var(--border); padding-top: var(--space-3); }
 @media (max-width: 1200px) { .kpis { grid-template-columns: repeat(3, 1fr); } .panels { grid-template-columns: 1fr; } }
+
+/* 能效对标 */
+.bm-plant { display: flex; align-items: baseline; gap: 10px; padding: 8px 0 12px; color: var(--muted); font-size: var(--fs-2); }
+.bm-plant b { font-size: var(--text-lg); color: var(--fg); }
+.bm-plant em { font-style: normal; }
+.bm-table td { vertical-align: top; }
+/* 固定布局 + 列宽：auto 布局下 th 的 width 只是建议值，「对象」和「实测」之间会被拉开一大段空白 */
+.bm-table { table-layout: fixed; width: 100%; }
+.bm-table th:nth-child(1) { width: 29%; }
+.bm-table th:nth-child(2) { width: 19%; }
+.bm-table th:nth-child(3) { width: 26%; }
+.bm-table th:nth-child(4) { width: 12%; }
+.bm-table th:nth-child(5) { width: 14%; }
+.bm-vals { display: flex; gap: 6px; flex-wrap: wrap; }
+.bv { font-size: var(--fs-2); padding: 1px 7px; border-radius: 10px; border: 1px solid var(--border); white-space: nowrap; }
+.bv.adv { color: #2e8b57; border-color: #2e8b5755; }
+.bv.acc { color: #236de9; border-color: #236de955; }
+.bv.lim { color: #c77700; border-color: #c7770055; }
+.bm-badge { font-size: var(--fs-2); padding: 2px 9px; border-radius: 10px; white-space: normal; text-align: center; }
+.bm-adv { color: #2e8b57; background: #2e8b5718; }
+.bm-acc { color: #236de9; background: #236de918; }
+.bm-lim { color: #c77700; background: #c7770018; }
+.bm-exc { color: #fff; background: var(--alarm); }
+.bm-na { color: var(--muted); background: var(--border); }
+.num.over { color: var(--alarm); }
+.num.under { color: #2e8b57; }
+.bm-warn { margin-top: 10px; color: var(--idle); font-size: var(--fs-2); }
+.muted { color: var(--muted); }
 
 .ws-row td { padding-top: 10px; }
 .ws-row.bottom, .ws-row { border-top: none; }

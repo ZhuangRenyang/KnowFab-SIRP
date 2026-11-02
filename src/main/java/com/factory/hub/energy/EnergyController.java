@@ -1,6 +1,7 @@
 package com.factory.hub.energy;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -27,11 +28,16 @@ public class EnergyController {
     private final EnergyService energyService;
     private final TariffStore tariffStore;
     private final EnergyRepository repo;
+    private final BenchmarkStore benchmarkStore;
+    private final EnergyBenchmarkService benchmarkService;
 
-    public EnergyController(EnergyService energyService, TariffStore tariffStore, EnergyRepository repo) {
+    public EnergyController(EnergyService energyService, TariffStore tariffStore, EnergyRepository repo,
+                            BenchmarkStore benchmarkStore, EnergyBenchmarkService benchmarkService) {
         this.energyService = energyService;
         this.tariffStore = tariffStore;
         this.repo = repo;
+        this.benchmarkStore = benchmarkStore;
+        this.benchmarkService = benchmarkService;
     }
 
     /** 首页大数字 + 峰谷分布 + 日趋势 */
@@ -97,6 +103,73 @@ public class EnergyController {
         out.put("plan", tariffStore.current());
         out.put("warnings", tariffStore.current().validate());
         return out;
+    }
+
+    /* ==================== 能效对标（DH-12） ==================== */
+
+    /** 对标值列表（含停用），附带每条配置的体检结果 */
+    @GetMapping("/benchmarks")
+    public Map<String, Object> benchmarks() {
+        Map<String, Object> out = new LinkedHashMap<>();
+        List<EnergyBenchmark> rows = benchmarkStore.list();
+        List<String> warnings = new java.util.ArrayList<>();
+        for (EnergyBenchmark b : rows) {
+            for (String w : b.validate()) {
+                warnings.add(b.displayName() + "：" + w);
+            }
+        }
+        out.put("ok", true);
+        out.put("rows", rows);
+        out.put("warnings", warnings);
+        return out;
+    }
+
+    /**
+     * 保存一条对标值（id 为空是新增）。
+     * <p>
+     * 名称空、或三个限额值一个都没填，直接拒绝——这种记录进了库也永远算不出结论，
+     * 不如当场让客户补全。其他问题（数值大小关系不对）允许保存但把 warnings 带回去，
+     * 客户可能是按企业内部标准填的，软件不该硬拦。
+     */
+    @PostMapping("/benchmarks")
+    public Map<String, Object> saveBenchmark(@RequestBody EnergyBenchmark bm) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        if (bm == null) {
+            out.put("ok", false);
+            out.put("message", "没有收到对标值内容");
+            return out;
+        }
+        List<String> warnings = bm.validate();
+        boolean hard = warnings.stream().anyMatch(w ->
+                w.startsWith("对标名称") || w.startsWith("先进值 / 准入值 / 限定值至少"));
+        if (hard) {
+            out.put("ok", false);
+            out.put("message", String.join("；", warnings));
+            out.put("warnings", warnings);
+            return out;
+        }
+        EnergyBenchmark saved = benchmarkStore.save(bm);
+        out.put("ok", true);
+        out.put("message", "已保存，报表立即按新标杆计算");
+        out.put("row", saved);
+        out.put("warnings", warnings);
+        return out;
+    }
+
+    /** 删除一条对标值 */
+    @DeleteMapping("/benchmarks/{id}")
+    public Map<String, Object> removeBenchmark(@PathVariable String id) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        boolean removed = benchmarkStore.remove(id);
+        out.put("ok", removed);
+        out.put("message", removed ? "已删除" : "没有找到这条对标值");
+        return out;
+    }
+
+    /** 对标报表：实测单位产品能耗 vs 先进值/准入值/限定值 */
+    @GetMapping("/benchmark-report")
+    public Map<String, Object> benchmarkReport(@RequestParam(defaultValue = "month") String range) {
+        return benchmarkService.report(range);
     }
 
     /**

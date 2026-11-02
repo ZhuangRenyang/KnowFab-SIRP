@@ -13,6 +13,7 @@ declare module 'vue' {
   export interface GlobalComponents {
     AccountDialog: typeof import('./src/components/AccountDialog.vue')['default']
     AiConfigDialog: typeof import('./src/components/ai/AiConfigDialog.vue')['default']
+    BenchmarkDialog: typeof import('./src/components/energy/BenchmarkDialog.vue')['default']
     DbPasswordPanel: typeof import('./src/components/system/DbPasswordPanel.vue')['default']
     DemandDialog: typeof import('./src/components/energy/DemandDialog.vue')['default']
     DeviceDetail: typeof import('./src/components/DeviceDetail.vue')['default']
