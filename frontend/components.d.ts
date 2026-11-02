@@ -66,6 +66,8 @@ declare module 'vue' {
     MigrationsPanel: typeof import('./src/components/system/MigrationsPanel.vue')['default']
     NotifyDialog: typeof import('./src/components/alarm/NotifyDialog.vue')['default']
     OeePanel: typeof import('./src/components/report/OeePanel.vue')['default']
+    OeeTrendChart: typeof import('./src/components/report/OeeTrendChart.vue')['default']
+    OeeTrendPanel: typeof import('./src/components/report/OeeTrendPanel.vue')['default']
     PaymentDialog: typeof import('./src/components/erp/PaymentDialog.vue')['default']
     PointTrend: typeof import('./src/components/PointTrend.vue')['default']
     ProdStats: typeof import('./src/components/ProdStats.vue')['default']

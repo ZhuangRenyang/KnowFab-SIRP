@@ -167,7 +167,7 @@ public class DigestDataBuilder {
 
         /* 产量与停机 */
         double output = 0, stopSec = 0;
-        for (ProdHourly p : prodRepo.findByHourStartBetween(from, to)) {
+        for (ProdHourly p : prodRepo.findInWindow(from, to)) {
             output += p.getOutput();
             stopSec += p.getStopSec();
         }
@@ -180,7 +180,7 @@ public class DigestDataBuilder {
 
         /* 用电 */
         double kwh = 0, cost = 0;
-        for (EnergyRecord r : energyRepo.findByHourStartBetween(from, to)) {
+        for (EnergyRecord r : energyRepo.findInWindow(from, to)) {
             kwh += r.getKwh();
             cost += r.getCost();
         }
@@ -193,7 +193,7 @@ public class DigestDataBuilder {
             long a = d.atStartOfDay(ZONE).toInstant().toEpochMilli();
             long b = d.plusDays(1).atStartOfDay(ZONE).toInstant().toEpochMilli();
             double sum = 0;
-            for (EnergyRecord r : energyRepo.findByHourStartBetween(a, b)) {
+            for (EnergyRecord r : energyRepo.findInWindow(a, b)) {
                 sum += r.getKwh();
             }
             if (sum > 0) {
@@ -220,7 +220,7 @@ public class DigestDataBuilder {
             long a = d.atStartOfDay(ZONE).toInstant().toEpochMilli();
             long b = d.plusDays(1).atStartOfDay(ZONE).toInstant().toEpochMilli();
             double day = 0;
-            for (ProdHourly p : prodRepo.findByHourStartBetween(a, b)) {
+            for (ProdHourly p : prodRepo.findInWindow(a, b)) {
                 day += p.getOutput();
             }
             if (day > 0) {

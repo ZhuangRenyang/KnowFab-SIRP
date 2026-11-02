@@ -82,9 +82,26 @@ export interface DailyReport {
 
 export interface ShiftPlan { name: string; shifts: ShiftDef[] }
 
+/** 逐日 OEE 趋势（DH-15）。points 里缺的那天是 null，图上断线不是 0 */
+export interface TrendDevice {
+  code: string
+  name: string
+  series: (OeeInfo | null)[]
+}
+
+export interface RangeReport {
+  ok: boolean
+  dates: string[]
+  rows: (ReportTotals & { date: string; defect?: number; oee?: OeeInfo })[]
+  devices: TrendDevice[]
+}
+
 export const reportsApi = {
   daily: (date: string) =>
     http.get<DailyReport>(`/api/reports/daily?date=${encodeURIComponent(date)}`),
+  /** 最近 N 天的逐日汇总（趋势图数据源） */
+  range: (days: number) =>
+    http.get<RangeReport>(`/api/reports/range?days=${days}`),
   shifts: () => http.get<{ plan: ShiftPlan }>('/api/reports/shifts'),
   saveShifts: (plan: ShiftPlan) =>
     http.post<{ ok: boolean; message?: string }>('/api/reports/shifts', plan)

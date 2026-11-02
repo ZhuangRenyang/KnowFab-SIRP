@@ -34,6 +34,8 @@
       <OeePanel :oee="oee" />
     </div>
 
+    <div class="panel"><OeeTrendPanel /></div>
+
     <div class="panels">
       <div class="panel">
         <div class="p-head"><h3>{{ t('rpt.hourly') }}</h3><span>{{ t('rpt.hourlySub', { peak }) }}</span></div>
@@ -125,6 +127,7 @@ import { useAuthStore } from '@/stores/auth'
 import ShiftsDialog from '@/components/report/ShiftsDialog.vue'
 import ManualDialog from '@/components/report/ManualDialog.vue'
 import OeePanel from '@/components/report/OeePanel.vue'
+import OeeTrendPanel from '@/components/report/OeeTrendPanel.vue'
 
 const { t } = useI18n()
 const auth = useAuthStore()
@@ -261,8 +264,6 @@ load()
 .warn { margin-bottom: var(--space-4); border-radius: var(--radius-md); }
 .toolbar { display: flex; gap: var(--space-2); align-items: center; margin-bottom: var(--space-4); flex-wrap: wrap; }
 .plan { font-size: var(--text-xs); color: var(--muted); }
-/* 日导出 / 月导出之间的竖线，避免两排按钮糊成一片 */
-.msep { width: 1px; height: 20px; background: var(--border); margin: 0 4px; }
 /* 日导出 / 月导出之间的竖线，避免两排按钮糊成一片 */
 .msep { width: 1px; height: 20px; background: var(--border); margin: 0 4px; }
 .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-3); margin-bottom: var(--space-4); }

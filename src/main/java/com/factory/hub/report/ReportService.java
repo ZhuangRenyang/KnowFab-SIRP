@@ -65,7 +65,7 @@ public class ReportService {
             long[] day = dayWindow(date);
             from = day[0];
             to = day[1];
-            all = repo.findByHourStartBetween(from, to);
+            all = repo.findInWindow(from, to);
         } else {
             // 先算出所有班次的时间窗，一次把这段数据查回来，避免每个班次查一遍库
             List<long[]> windows = new ArrayList<>();
@@ -75,7 +75,7 @@ public class ReportService {
                 from = Math.min(from, w[0]);
                 to = Math.max(to, w[1]);
             }
-            all = repo.findByHourStartBetween(from, to);
+            all = repo.findInWindow(from, to);
 
             for (int i = 0; i < shifts.size(); i++) {
                 ShiftPlan.Shift s = shifts.get(i);
@@ -125,35 +125,113 @@ public class ReportService {
         return out;
     }
 
-    /** 最近 N 天的每日汇总，给趋势图用 */
+    /**
+     * 最近 N 天的每日汇总，给趋势图用（DH-15 加了 OEE 趋势）。
+     * <p>
+     * 厂级一行一天 + 每台设备一行一天，图上画 OEE 的走势。
+     * <p>
+     * <b>补录不能走 {@code sumByDay} 那条聚合查询</b>：SUM 会把「没录」和「录了 0」
+     * 算成同一个数，而这两件事对 OEE 完全不同（前者是数据缺失，良率算不出来；
+     * 后者是已知的零不良）。所以这里取补录实体在内存里归拢。
+     */
     public Map<String, Object> range(LocalDate to, int days) {
         int n = Math.max(1, Math.min(days, 90));
+        ShiftPlan plan = shiftStore.current();
+        LocalDate first = to.minusDays(n - 1);
+        List<ManualEntry> manual = manualService.findActive(first, to);
+
         List<Map<String, Object>> rows = new ArrayList<>();
+        Map<String, Map<String, Object>> devTrend = new LinkedHashMap<>();
+        Map<String, String> devNames = new HashMap<>();
+        List<String> dates = new ArrayList<>();
+
         for (int i = n - 1; i >= 0; i--) {
             LocalDate d = to.minusDays(i);
+            dates.add(d.toString());
             long[] w = dayWindow(d);
+            List<ProdHourly> dayRows = repo.findInWindow(w[0], w[1]);
+
             Sum sum = new Sum();
-            for (ProdHourly p : repo.findByHourStartBetween(w[0], w[1])) {
+            Map<String, Sum> perDev = new LinkedHashMap<>();
+            for (ProdHourly p : dayRows) {
                 sum.add(p);
+                perDev.computeIfAbsent(p.getDeviceCode(), k -> new Sum()).add(p);
+                if (p.getDeviceName() != null) {
+                    devNames.putIfAbsent(p.getDeviceCode(), p.getDeviceName());
+                }
             }
-            Map<String, Object> m = new LinkedHashMap<>();
-            m.put("date", d.toString());
-            m.putAll(sum.toMap());
-            rows.add(m);
-        }
-        // 补录按天并入，趋势图才和日报/月报对得上
-        Map<LocalDate, double[]> manualByDay = manualService.byDay(to.minusDays(n - 1), to);
-        for (Map<String, Object> row : rows) {
-            LocalDate d = LocalDate.parse(String.valueOf(row.get("date")));
-            double mo = manualByDay.getOrDefault(d, new double[3])[2];
-            if (mo != 0d) {
-                row.put("manualOutput", round1(mo));
-                row.put("output", round1(((Number) row.get("output")).doubleValue() + mo));
+
+            // 当天的补录（按设备归拢）
+            List<ManualEntry> dayManual = new ArrayList<>();
+            for (ManualEntry e : manual) {
+                if (e.getDay().equals(d)) {
+                    dayManual.add(e);
+                }
+            }
+
+            // 设备行：补录并进去，再算 OEE
+            List<Map<String, Object>> devRows = new ArrayList<>();
+            for (Map.Entry<String, Sum> en : perDev.entrySet()) {
+                Map<String, Object> r = new LinkedHashMap<>();
+                r.put("code", en.getKey());
+                r.put("name", devNames.getOrDefault(en.getKey(), en.getKey()));
+                r.putAll(en.getValue().toMap());
+                devRows.add(r);
+            }
+            applyManualToDevices(devRows, dayManual);
+            double planned = plan.plannedSecOf(d);
+            attachOee(devRows, dayManual, planned);
+
+            // 厂级一行
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("date", d.toString());
+            row.putAll(sum.toMap());
+            double manualOut = 0, manualDefect = 0;
+            for (ManualEntry e : dayManual) {
+                manualOut += e.getOutput();
+                if (e.getDefect() != null) {
+                    manualDefect += e.getDefect();
+                }
+            }
+            row.put("output", round1(sum.output + manualOut));
+            row.put("defect", round1(sum.defect + manualDefect));
+            if (manualOut != 0d) {
+                row.put("manualOutput", round1(manualOut));
+            }
+            row.put("oee", oeeTotals(devRows, dayManual, planned));
+            rows.add(row);
+
+            // 单设备趋势：每台设备一条与 dates 对齐的序列，缺的那天留 null
+            for (Map<String, Object> dr : devRows) {
+                String code = String.valueOf(dr.get("code"));
+                @SuppressWarnings("unchecked")
+                Map<String, Object> devOee = (Map<String, Object>) dr.get("oee");
+                devTrend.computeIfAbsent(code, k -> new LinkedHashMap<>())
+                        .put(d.toString(), devOee);
             }
         }
+
+        // 把每台设备的逐日 OEE 摊成跟 dates 对齐的数组（缺的填 null，图上断线）
+        List<Map<String, Object>> devices = new ArrayList<>();
+        for (Map.Entry<String, Map<String, Object>> e : devTrend.entrySet()) {
+            List<Map<String, Object>> series = new ArrayList<>();
+            for (String ds : dates) {
+                Object o = e.getValue().get(ds);
+                series.add(o instanceof Map<?, ?> ? (Map<String, Object>) o : null);
+            }
+            Map<String, Object> d = new LinkedHashMap<>();
+            d.put("code", e.getKey());
+            d.put("name", devNames.getOrDefault(e.getKey(), e.getKey()));
+            d.put("series", series);
+            devices.add(d);
+        }
+        devices.sort(Comparator.comparing((Map<String, Object> x) -> String.valueOf(x.get("code"))));
+
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("ok", true);
         out.put("rows", rows);
+        out.put("dates", dates);
+        out.put("devices", devices);
         return out;
     }
 
@@ -176,7 +254,7 @@ public class ReportService {
         long from = start.atStartOfDay(zone).toInstant().toEpochMilli();
         long to = endEx.atStartOfDay(zone).toInstant().toEpochMilli();
 
-        List<ProdHourly> all = repo.findByHourStartBetween(from, to);
+        List<ProdHourly> all = repo.findInWindow(from, to);
 
         // 逐日：一次遍历分桶，避免「31 天 × 全部行」的嵌套循环
         Map<LocalDate, Sum> perDay = new LinkedHashMap<>();
@@ -432,11 +510,19 @@ public class ReportService {
                 defect += e.getDefect();
             }
         }
-        Double theoreticalAll = noCycle > 0 ? null : theoretical;
+        Double theoreticalAll = (noCycle > 0 || n == 0) ? null : theoretical;
         boolean hasDefectData = noDefect == 0 && n > 0;
-        String note = noCycle > 0
-                ? "有 " + noCycle + " 台设备没配「理想节拍（秒/件）」，合计性能率算不出来"
-                : null;
+        String note;
+        if (n == 0) {
+            // 这天一台设备的数据都没有：全给 null。
+            // 给 0 的话，趋势图上会多出一段贴着底的直线，看着像「这���效率全废了」，
+            // 那是编出来的结论——「没数据」和「效率是 0」是两回事
+            note = "这天没有任何设备的数据，算不出来";
+        } else if (noCycle > 0) {
+            note = "有 " + noCycle + " 台设备没配「理想节拍（秒/件）」，合计性能率算不出来";
+        } else {
+            note = null;
+        }
         OeeCalculator.Result r = oeeCalc.compute(OeeCalculator.forAggregate(
                 run, output, defect, hasDefectData, theoreticalAll,
                 plannedSec * n, counted, note));
@@ -466,6 +552,11 @@ public class ReportService {
         m.put("hasDefectData", r.hasDefectData());
         m.put("theoreticalOutput", r.theoreticalOutput());
         m.put("idealCycleSec", cycle);
+        // 数据完整度：采到的时长占计划生产时间的比例。趋势图上用它标出
+        // 「这天的数别当真」——系统下午才接上的时候，可用率会低得离谱，
+        // 不标出来客户会当成设备效率差
+        double planned = r.plannedSec();
+        m.put("coverage", planned > 0 ? round1(r.countedSec() / planned * 100) : 0d);
         m.put("notes", r.notes());
         return m;
     }

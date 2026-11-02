@@ -23,6 +23,16 @@ public interface EnergyRepository extends JpaRepository<EnergyRecord, Long> {
     /** 早报要算「昨天 vs 前 7 天均值」，需要按区间取 */
     List<EnergyRecord> findByHourStartBetween(long from, long to);
 
+    /**
+     * 时间窗 {@code [from, to)}，上界不含。
+     * <p>
+     * 类注释说的「所有区间查询都是 [from, to)」，靠的就是这个方法——
+     * {@code findByHourStartBetween} 两边都含，会把边界那一小时算两遍
+     * （当前小时既在库里、又从内存的实时桶加一遍，电量翻倍）。
+     */
+    @Query("select e from EnergyRecord e where e.hourStart >= :from and e.hourStart < :to order by e.hourStart")
+    List<EnergyRecord> findInWindow(@Param("from") long from, @Param("to") long to);
+
     List<EnergyRecord> findByHourStartGreaterThanEqualOrderByHourStartAsc(long from);
 
     List<EnergyRecord> findByDeviceCodeAndHourStartBetweenOrderByHourStartAsc(

@@ -1,6 +1,6 @@
 import * as echarts from 'echarts/core'
 import { BarChart, LineChart } from 'echarts/charts'
-import { GridComponent, TooltipComponent, LegendComponent, MarkLineComponent,
+import { GridComponent, TooltipComponent, LegendComponent, MarkLineComponent, MarkAreaComponent,
   DataZoomInsideComponent, DataZoomSliderComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { onScopeDispose, watch } from 'vue'
@@ -9,7 +9,7 @@ import { useThemeStore } from '@/stores/theme'
 /* ECharts 按需注册（架构方案 §3：入口体积预算内），主题色全部取自 CSS 变量 Token，
    深浅切换时重建实例（PRD 风险 5：图表取色跟随主题，无硬编码色）。 */
 echarts.use([BarChart, LineChart, GridComponent, TooltipComponent, LegendComponent, MarkLineComponent,
-  DataZoomInsideComponent, DataZoomSliderComponent, CanvasRenderer])
+  MarkAreaComponent, DataZoomInsideComponent, DataZoomSliderComponent, CanvasRenderer])
 
 const css = (n: string) => getComputedStyle(document.documentElement).getPropertyValue(n).trim()
 

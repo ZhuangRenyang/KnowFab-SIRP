@@ -36,7 +36,13 @@ public class DemoProdSeeder implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(DemoProdSeeder.class);
 
-    private static final int DAYS = 7;
+    /**
+     * 播种多少天的演示生产数据。
+     * <p>
+     * 30 天：OEE 趋势图（DH-15）默认看 30 天，只有 7 天数据的话那���图大半是空的，
+     * 客户会以为「怎么没数据」。7 天只够填一个礼拜的报表。
+     */
+    private static final int DAYS = 30;
     private static final long HOUR_MS = 3_600_000L;
 
     private final SettingStore settings;
@@ -104,14 +110,20 @@ public class DemoProdSeeder implements ApplicationRunner {
                     double runSec = 3600 * runRatio;
                     double idleSec = 3600 * (idleRatio + rnd.nextDouble() * 0.05);
                     double stopSec = 3600 * stopRatio;
-                    double sum = runSec + idleSec + stopSec;
-                    if (sum > 3600) {                           // 归一化，不能出现一小时 3700 秒
+                    double alarmSec = rnd.nextInt(10) == 0 ? 60 + rnd.nextInt(300) : 0;
+
+                    // 归一化，不能出现一小时 3700 秒。
+                    // 报警时长要一起算进去：以前报警是归一化之后另加的，
+                    // 于是「运行+待机+停机=3600」再叠上报警，一小时能到 3900 秒，
+                    // 数据完整度算出 102%——看着像采集重复了
+                    double sum = runSec + idleSec + stopSec + alarmSec;
+                    if (sum > 3600) {
                         double k = 3600 / sum;
                         runSec *= k;
                         idleSec *= k;
                         stopSec *= k;
+                        alarmSec *= k;
                     }
-                    double alarmSec = rnd.nextInt(10) == 0 ? 60 + rnd.nextInt(300) : 0;
 
                     ProdHourly p = new ProdHourly(dev.getCode(), dev.getName(), hourStart);
                     p.setRunSec(round(runSec));

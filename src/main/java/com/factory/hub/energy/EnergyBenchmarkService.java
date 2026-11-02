@@ -108,10 +108,10 @@ public class EnergyBenchmarkService {
         }
 
         // 2) 每台设备产量：DB 已落库小时 + 当前小时实时
-        //    注意 sumByDevice / findByHourStartBetween 的上界都是 curHour（不含），
+        //    注意 sumByDevice / findInWindow 的上界都是 curHour（不含），
         //    所以这里加实时值不会和历史行重复计算。
         Map<String, Double> outByDevice = new HashMap<>();
-        for (ProdHourly p : prodRepo.findByHourStartBetween(from, to)) {
+        for (ProdHourly p : prodRepo.findInWindow(from, to)) {
             outByDevice.merge(p.getDeviceCode(), p.getOutput(), Double::sum);
         }
         if (curHour >= from) {
