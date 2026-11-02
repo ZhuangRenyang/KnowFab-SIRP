@@ -282,6 +282,11 @@ def main():
     check("H2 合法设置值写入", code == 200, code)
 
     # ============ 清理 ============
+    # H2 往 storm-threshold 写了个 50 做校验测试，用完必须还原——
+    # 不还原的话，客户机上这个批量告警合并阈值就比 yml 默认的 8 宽松了 6 倍多，
+    # 交换机一挂全厂离线时本来该合并成一条的告警会被逐条刷到群里。
+    code, body = req("DELETE", "/api/system/settings/alarm.storm-threshold", cookie=admin_cookie)
+    check("Z0 批量告警阈值恢复默认", code in (200, 204), code)
     tid = ids.get("TEST-01")
     if tid:
         code, body = req("DELETE", f"/api/devices/{tid}", cookie=admin_cookie)
