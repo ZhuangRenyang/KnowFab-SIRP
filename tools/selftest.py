@@ -322,6 +322,105 @@ def main():
     if probe_id:
         req("DELETE", f"/api/device-templates/{probe_id}", cookie=admin_cookie)
 
+    # ============ J. 告警限值分级（DH-14） ============
+    # 核心承诺：一条规则配多级限值后，同一设备同一测点**最多只有一条未关闭告警**，
+    # 且等级 = 按命中的最高档。
+    # 断言不用另读一次温度（sim 温度是随机游走的，再读一次就可能跨档，测试会飘），
+    # 而是用告警自己记下来的 value 反推期望档——同一份数据，无竞态。
+    RANK = {"MINOR": 1, "MAJOR": 2, "CRITICAL": 3}
+
+    def top_tier(value, tiers):
+        """命中里等级最高的那一档（只按 > 判定，本组规则用的就是 > ）"""
+        best = None
+        for t in tiers or []:
+            th = t.get("threshold")
+            if th is None or value is None:
+                continue
+            if value > float(th) and (best is None
+                                      or RANK.get(t.get("level"), 0) > RANK.get(best.get("level"), 0)):
+                best = t
+        return best
+
+    JTIERS = [{"level": "MINOR", "threshold": 35},
+              {"level": "MAJOR", "threshold": 50},
+              {"level": "CRITICAL", "threshold": 65}]
+    jrule = {"name": "SELFTEST-分级", "type": "THRESHOLD", "deviceCodes": "CNC-01",
+             "pointKey": "temperature", "op": ">", "forSeconds": 0, "recoverSeconds": 0,
+             "cooldownSeconds": 0, "enabled": True, "tiers": JTIERS}
+    code, body = req("POST", "/api/alarms/rules", jrule, cookie=admin_cookie)
+    check("J1 分级规则可保存", body.get("ok") is True, body)
+    jrule_id = (body.get("rule") or {}).get("id")
+    code, body = req("GET", "/api/alarms/rules", cookie=admin_cookie)
+    items = body.get("items") or []
+    jback = next((it.get("rule") for it in items if (it.get("rule") or {}).get("id") == jrule_id), None)
+    check("J2 档位读回一致", jback is not None
+          and len(jback.get("tiers") or []) == 3
+          and {(t.get("level"), t.get("threshold")) for t in jback.get("tiers") or []}
+          == {(t["level"], t["threshold"]) for t in JTIERS},
+          (jback or {}).get("tiers"))
+    # 非法配置必须被拒——配反了的档位存进去就是「该报的级别不对」，比不报更危险
+    code, body = req("POST", "/api/alarms/rules", dict(jrule, name="SELFTEST-缺阈值",
+                                                        tiers=[{"level": "MINOR"}, {"level": "MAJOR", "threshold": 50}]),
+                     cookie=admin_cookie)
+    check("J3 缺阈值被拒", body.get("ok") is False, body)
+    code, body = req("POST", "/api/alarms/rules", dict(jrule, name="SELFTEST-同档重复",
+                                                        tiers=[{"level": "MINOR", "threshold": 35},
+                                                               {"level": "MINOR", "threshold": 40}]),
+                     cookie=admin_cookie)
+    check("J4 同档重复被拒", body.get("ok") is False, body)
+    code, body = req("POST", "/api/alarms/rules", dict(jrule, name="SELFTEST-不单调",
+                                                        tiers=[{"level": "MINOR", "threshold": 90},
+                                                               {"level": "CRITICAL", "threshold": 65}]),
+                     cookie=admin_cookie)
+    check("J5 阈值不单调被拒", body.get("ok") is False, body)
+    code, body = req("POST", "/api/alarms/rules", dict(jrule, name="SELFTEST-等值多档", op="==",
+                                                        tiers=[{"level": "MINOR", "threshold": 35},
+                                                               {"level": "CRITICAL", "threshold": 65}]),
+                     cookie=admin_cookie)
+    check("J6 等值型配多档被拒", body.get("ok") is False, body)
+    # 老规则（单值、不带 tiers）必须照常工作，存量客户机上都是这种格式
+    code, body = req("POST", "/api/alarms/rules", {
+        "name": "SELFTEST-老规则", "type": "THRESHOLD", "deviceCodes": "CNC-01",
+        "pointKey": "temperature", "op": ">", "threshold": 70, "forSeconds": 0,
+        "recoverSeconds": 0, "cooldownSeconds": 0, "level": "MAJOR", "enabled": False,
+    }, cookie=admin_cookie)
+    check("J7 老规则（单值）可保存", body.get("ok") is True, body)
+    legacy_id = (body.get("rule") or {}).get("id")
+    code, body = req("GET", "/api/alarms/rules", cookie=admin_cookie)
+    lback = next((it.get("rule") for it in (body.get("items") or [])
+                  if (it.get("rule") or {}).get("id") == legacy_id), None)
+    check("J8 老规则读回不变", lback is not None and not (lback.get("tiers") or [])
+          and lback.get("threshold") == 70 and lback.get("level") == "MAJOR",
+          {"tiers": (lback or {}).get("tiers"), "threshold": (lback or {}).get("threshold")})
+    # 端到端：等引擎评估出告警，验「只有一条」+「等级是最高命中档」
+    jevents = []
+    for _ in range(24):
+        code, body = req("GET", "/api/alarms?state=ALL&level=ALL&range=1d&page=1&size=200",
+                         cookie=admin_cookie)
+        rows = body.get("items") or []
+        jevents = [e for e in rows if e.get("ruleId") == jrule_id
+                   and e.get("state") in ("ACTIVE", "ACKED")]
+        if jevents:
+            break
+        _t.sleep(1.5)
+    check("J9 分级规则触发后只有一条未关闭告警", len(jevents) == 1,
+          [(e.get("id"), e.get("level"), e.get("value")) for e in jevents])
+    if jevents:
+        ev = jevents[0]
+        want = top_tier(ev.get("value"), JTIERS)
+        check("J10 告警等级=按其取值算出的最高命中档",
+              want is not None and ev.get("level") == want.get("level"),
+              (ev.get("value"), ev.get("level"), (want or {}).get("level")))
+        check("J11 告警阈值=该档阈值", want is not None and ev.get("threshold") == want.get("threshold"),
+              (ev.get("threshold"), (want or {}).get("threshold")))
+    else:
+        check("J10 告警等级=按其取值算出的最高命中档", False, "没有触发告警")
+        check("J11 告警阈值=该档阈值", False, "没有触发告警")
+    if jrule_id:
+        req("DELETE", f"/api/alarms/rules/{jrule_id}", cookie=admin_cookie)
+    if legacy_id:
+        req("DELETE", f"/api/alarms/rules/{legacy_id}", cookie=admin_cookie)
+
     # ============ 清理 ============
     # H2 往 storm-threshold 写了个 50 做校验测试，用完必须还原——
     # 不还原的话，客户机上这个批量告警合并阈值就比 yml 默认的 8 宽松了 6 倍多，
@@ -333,6 +432,13 @@ def main():
     for t in ((tpls.get("items") if isinstance(tpls, dict) else tpls) or []):
         if t.get("name") == "SELFTEST-AUDIT-PROBE":
             req("DELETE", f"/api/device-templates/{t.get('id')}", cookie=admin_cookie)
+    # J 组留的告警规则：正常路径已内联删除，这里按名字兜底清一次
+    # （留着会一直触发告警，把客户的告警列表搞脏）
+    code, rl = req("GET", "/api/alarms/rules", cookie=admin_cookie)
+    for it in (rl.get("items") or []):
+        r = it.get("rule") or {}
+        if str(r.get("name") or "").startswith("SELFTEST-"):
+            req("DELETE", f"/api/alarms/rules/{r.get('id')}", cookie=admin_cookie)
     tid = ids.get("TEST-01")
     if tid:
         code, body = req("DELETE", f"/api/devices/{tid}", cookie=admin_cookie)
