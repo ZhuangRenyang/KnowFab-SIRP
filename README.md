@@ -1,13 +1,26 @@
 # KnowFab SIRP · 知造
 
-**让所有机器都报产量** —— 不改 PLC 程序、不装数据库、不要团队、不要年费。一个安装包，把全厂设备接进 ERP。
+**让设备数据直接驱动业务，而不是让工人重复录入。**
+
+KnowFab SIRP is a **free, open-source, device-native factory ERP (AI+)** for small and midsize
+manufacturers. It turns shop-floor machine data into business documents:
+**PLC / OPC UA acquisition → line counting → automatic finished-goods receipt → purchase & sales
+orders and stock documents → AR/AP with aging → business reports and AI analysis** —
+an end-to-end loop across **production, business and data**.
+
+- **Production and business in one loop** — machine counts post finished goods into stock directly;
+  output *is* inventory, no manual scanning.
+- **Business and finance in one loop** — shipments create receivables, goods receipts create payables;
+  payment matching and aging analysis share the same ledger source.
+- **Data never leaves the plant** — single installer with a bundled database, works offline, AGPL-3.0.
 
 ![车间大屏](docs/promo/shots/screen-full.png)
 
-设备采集 → 产量统计 → 自动入成品仓 → 进销存 / 财务 → 经营报表 → 全员 AI 助手。
-新机老机都能接（Modbus TCP / RTU、OPC UA、串口 485），断网可用，数据不出厂，AGPL-3.0 开源。
+The shop-floor board shows output, running state, alarms and energy at a glance — refreshed every
+5 seconds, viewable from a phone too. Both new and legacy machines connect (Modbus TCP / RTU,
+OPC UA, RS-485), it works offline, and data never leaves your plant. AGPL-3.0.
 
-**一条命令装好**（目标机器不用预装 Java、数据库、Docker）：
+**One command to install** (target machine needs no Java, database or Docker preinstalled):
 
 ```bash
 # Linux / macOS
