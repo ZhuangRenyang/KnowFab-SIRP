@@ -32,17 +32,21 @@ public class EnergyService {
     private final TariffStore tariffStore;
     private final SnapshotStore snapshot;
     private final DeviceService deviceService;
+    /** 产线上的 workshop 字段是用能单元（车间）的唯一来源——不新表，避免"两处维护车间" */
+    private final com.factory.hub.erp.ErpProdLineRepository lineRepo;
 
     public EnergyService(EnergyRepository repo,
                          EnergyRollup rollup,
                          TariffStore tariffStore,
                          SnapshotStore snapshot,
-                         DeviceService deviceService) {
+                         DeviceService deviceService,
+                         com.factory.hub.erp.ErpProdLineRepository lineRepo) {
         this.repo = repo;
         this.rollup = rollup;
         this.tariffStore = tariffStore;
         this.snapshot = snapshot;
         this.deviceService = deviceService;
+        this.lineRepo = lineRepo;
     }
 
     /**
@@ -172,6 +176,165 @@ public class EnergyService {
         row.put("price", price);
         row.put("ratio", total > 0 ? round(a[0] / total * 100d, 1) : 0d);
         return row;
+    }
+
+    /**
+     * 用能单元（ROADMAP DH-11）：全厂 → 车间 → 产线 三级能耗聚合。
+     * <p>
+     * <b>零新表</b>：车间来自 {@code erp_prod_line.workshop}，产线是 {@code erp_prod_line}，
+     * 设备挂线是 {@code device.prod_line_id}——三者都是已有数据，不再维护第二套组织树，
+     * 从根上避免"改了产线车间、能耗页还对不上"。
+     * <p>
+     * 数据源与设备排行同源（energy_hourly + 当前小时实时量），所以
+     * <b>各级合计必然等于全厂</b>：车间合计 + 未分配 = 全厂，接口里带 check 字段自证。
+     * 没挂产线的设备进"未分配"，不硬塞进任何车间——宁可显示缺口，也不做假账。
+     *
+     * @param range today / 7d / month
+     */
+    public Map<String, Object> byNode(String range) {
+        ZoneId zone = ZoneId.systemDefault();
+        LocalDate today = LocalDate.now(zone);
+        long from;
+        long to = upperBound();
+        switch (range == null ? "today" : range) {
+            case "month" -> from = startOf(today.withDayOfMonth(1), zone);
+            case "7d" -> from = startOf(today.minusDays(6), zone);
+            default -> from = startOf(today, zone);
+        }
+
+        // 1. 每台设备的电量（与 deviceRank 同一口径，含当前小时实时量）
+        Map<String, double[]> perDevice = new HashMap<>();
+        for (Object[] r : repo.sumByDevice(from, to)) {
+            perDevice.put(String.valueOf(r[0]), new double[]{d(r[1]), d(r[2]), d(r[3])});
+        }
+        long liveHour = rollup.currentHourStart();
+        if (liveHour >= from) {
+            for (Map.Entry<String, double[]> e : rollup.liveByDevice().entrySet()) {
+                double[] a = perDevice.computeIfAbsent(e.getKey(), k -> new double[3]);
+                a[0] += e.getValue()[0];
+                a[1] += e.getValue()[1];
+            }
+        }
+
+        // 2. 设备 → 产线 → 车间
+        Map<Long, com.factory.hub.erp.ErpProdLine> lineById = new HashMap<>();
+        for (com.factory.hub.erp.ErpProdLine l : lineRepo.findAll()) {
+            lineById.put(l.getId(), l);
+        }
+        Map<Long, double[]> perLine = new LinkedHashMap<>();          // [kwh, cost, backfill, deviceCount]
+        Map<String, double[]> perWorkshop = new LinkedHashMap<>();    // [kwh, cost, backfill, deviceCount, lineCount]
+        double[] unassigned = new double[4];
+        for (DeviceEntity dev : deviceService.all()) {
+            double[] v = perDevice.get(dev.getCode());
+            double kwh = v == null ? 0d : v[0];
+            double cost = v == null ? 0d : v[1];
+            double bf = v == null ? 0d : v[2];
+            Long lineId = dev.getProdLineId();
+            com.factory.hub.erp.ErpProdLine line = lineId == null ? null : lineById.get(lineId);
+            if (line == null) {
+                unassigned[0] += kwh;
+                unassigned[1] += cost;
+                unassigned[2] += bf;
+                unassigned[3] += 1;
+                continue;
+            }
+            double[] pl = perLine.computeIfAbsent(line.getId(), k -> new double[4]);
+            pl[0] += kwh;
+            pl[1] += cost;
+            pl[2] += bf;
+            pl[3] += 1;
+
+            String ws = (line.getWorkshop() == null || line.getWorkshop().isBlank())
+                    ? "未标注车间" : line.getWorkshop().trim();
+            double[] pw = perWorkshop.computeIfAbsent(ws, k -> new double[5]);
+            pw[0] += kwh;
+            pw[1] += cost;
+            pw[2] += bf;
+            pw[3] += 1;
+        }
+        // 车间下的产线数量
+        for (com.factory.hub.erp.ErpProdLine l : lineById.values()) {
+            String ws = (l.getWorkshop() == null || l.getWorkshop().isBlank())
+                    ? "未标注车间" : l.getWorkshop().trim();
+            double[] pw = perWorkshop.get(ws);
+            if (pw != null) {
+                pw[4] += 1;
+            }
+        }
+
+        double totalKwh = 0d, totalCost = 0d, totalBf = 0d;
+        for (double[] a : perDevice.values()) {
+            totalKwh += a[0];
+            totalCost += a[1];
+            totalBf += a[2];
+        }
+
+        // 3. 组装：车间（含其下产线）
+        List<Map<String, Object>> workshops = new ArrayList<>();
+        for (Map.Entry<String, double[]> we : perWorkshop.entrySet()) {
+            List<Map<String, Object>> lines = new ArrayList<>();
+            for (Map.Entry<Long, double[]> le : perLine.entrySet()) {
+                com.factory.hub.erp.ErpProdLine l = lineById.get(le.getKey());
+                if (l == null) {
+                    continue;
+                }
+                String ws = (l.getWorkshop() == null || l.getWorkshop().isBlank())
+                        ? "未标注车间" : l.getWorkshop().trim();
+                if (!ws.equals(we.getKey())) {
+                    continue;
+                }
+                double[] la = le.getValue();
+                Map<String, Object> lm = new LinkedHashMap<>();
+                lm.put("lineId", l.getId());
+                lm.put("lineName", l.getName());
+                lm.put("kwh", round(la[0], 2));
+                lm.put("cost", round(la[1], 2));
+                lm.put("backfillKwh", round(la[2], 2));
+                lm.put("deviceCount", (int) la[3]);
+                lm.put("share", totalKwh > 0 ? round(la[0] / totalKwh * 100, 1) : 0d);
+                lines.add(lm);
+            }
+            lines.sort((x, y) -> Double.compare((Double) y.get("kwh"), (Double) x.get("kwh")));
+
+            double[] wa = we.getValue();
+            Map<String, Object> wm = new LinkedHashMap<>();
+            wm.put("workshop", we.getKey());
+            wm.put("kwh", round(wa[0], 2));
+            wm.put("cost", round(wa[1], 2));
+            wm.put("backfillKwh", round(wa[2], 2));
+            wm.put("deviceCount", (int) wa[3]);
+            wm.put("lineCount", (int) wa[4]);
+            wm.put("share", totalKwh > 0 ? round(wa[0] / totalKwh * 100, 1) : 0d);
+            wm.put("lines", lines);
+            workshops.add(wm);
+        }
+        workshops.sort((x, y) -> Double.compare((Double) y.get("kwh"), (Double) x.get("kwh")));
+
+        // 4. 合计自证：各车间 + 未分配 必须等于全厂
+        double wsSum = 0d;
+        for (Map<String, Object> wm : workshops) {
+            wsSum += (Double) wm.get("kwh");
+        }
+        double unKwh = round(unassigned[0], 2);
+        double gap = round(totalKwh - wsSum - unKwh, 2);
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("range", range == null ? "today" : range);
+        out.put("total", Map.of(
+                "kwh", round(totalKwh, 2),
+                "cost", round(totalCost, 2),
+                "backfillKwh", round(totalBf, 2)));
+        out.put("workshops", workshops);
+        out.put("unassigned", Map.of(
+                "kwh", unKwh,
+                "cost", round(unassigned[1], 2),
+                "backfillKwh", round(unassigned[2], 2),
+                "deviceCount", (int) unassigned[3]));
+        out.put("check", Map.of(
+                "workshopSum", round(wsSum, 2),
+                "matchesTotal", Math.abs(gap) < 0.01,
+                "gap", gap));
+        return out;
     }
 
     /** 设备能耗排行。range: today / month / 7d */

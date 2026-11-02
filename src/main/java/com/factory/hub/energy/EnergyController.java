@@ -47,6 +47,12 @@ public class EnergyController {
         return energyService.deviceRank(range);
     }
 
+    /** 用能单元（DH-11）：全厂 → 车间 → 产线 三级能耗，合计带自证字段 */
+    @GetMapping("/by-node")
+    public Map<String, Object> byNode(@RequestParam(defaultValue = "today") String range) {
+        return energyService.byNode(range);
+    }
+
     /** 单台设备某天的能耗明细 */
     @GetMapping("/device/{code}")
     public ResponseEntity<Map<String, Object>> device(@PathVariable String code,

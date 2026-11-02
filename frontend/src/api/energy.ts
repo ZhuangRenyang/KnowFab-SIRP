@@ -85,10 +85,39 @@ export const SEG_TYPES: [string, string][] = [
   ['TIP', '尖峰'], ['PEAK', '高峰'], ['FLAT', '平段'], ['VALLEY', '低谷']
 ]
 
+/* 用能单元（DH-11）：全厂 → 车间 → 产线 三级 */
+export interface EnergyNodeLine {
+  lineId: number
+  lineName: string
+  kwh: number
+  cost: number
+  backfillKwh: number
+  deviceCount: number
+  share: number
+}
+export interface EnergyNodeWorkshop {
+  workshop: string
+  kwh: number
+  cost: number
+  backfillKwh: number
+  deviceCount: number
+  lineCount: number
+  share: number
+  lines: EnergyNodeLine[]
+}
+export interface EnergyByNode {
+  range: string
+  total: { kwh: number; cost: number; backfillKwh: number }
+  workshops: EnergyNodeWorkshop[]
+  unassigned: { kwh: number; cost: number; backfillKwh: number; deviceCount: number }
+  check: { workshopSum: number; matchesTotal: boolean; gap: number }
+}
+
 export const energyApi = {
   overview: () => http.get<EnergyOverview>('/api/energy/overview?days=7'),
   rank: (range: string) => http.get<EnergyRankItem[]>(`/api/energy/devices?range=${range}`),
   demand: () => http.get<DemandData>('/api/energy/demand'),
+  byNode: (range: string) => http.get<EnergyByNode>(`/api/energy/by-node?range=${range}`),
   device: (code: string) =>
     http.get<DeviceEnergyDetail>(`/api/energy/device/${encodeURIComponent(code)}`),
   tariff: () => http.get<{ plan: TariffPlan }>('/api/energy/tariff'),

@@ -69,6 +69,69 @@
       </div>
     </div>
 
+    <!-- 用能单元（DH-11）：全厂 → 车间 → 产线，合计与全厂对账 -->
+    <div class="panel">
+      <div class="p-head">
+        <h3>{{ t('energy.nodeTitle', { range: rangeLabel }) }}</h3>
+        <span>
+          {{ t('energy.nodeHint') }}
+          <b v-if="node && !node.check.matchesTotal" class="bad">
+            · {{ t('energy.nodeGap', { kwh: num(node.check.gap, 1) }) }}
+          </b>
+        </span>
+      </div>
+      <div v-if="!node || (!node.workshops.length && !node.unassigned.deviceCount)" class="empty">
+        {{ t('energy.nodeEmpty') }}
+      </div>
+      <table v-else class="etable">
+        <thead>
+          <tr>
+            <th>{{ t('energy.nodeCol') }}</th>
+            <th class="r">{{ t('energy.colKwh') }}</th>
+            <th class="r">{{ t('energy.colCost') }}</th>
+            <th style="width:110px">{{ t('energy.colRatio') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template v-for="w in node.workshops" :key="w.workshop">
+            <tr class="ws-row">
+              <td>
+                <b>{{ w.workshop }}</b>
+                <div class="dev-code">{{ t('energy.nodeLineCount', { lines: w.lineCount, devices: w.deviceCount }) }}</div>
+              </td>
+              <td class="r num">{{ num(w.kwh, 1) }} kWh</td>
+              <td class="r num">¥{{ num(w.cost, 2) }}</td>
+              <td><div class="minibar-track"><div class="minibar" :style="{ width: shareW(w.share) }"></div></div></td>
+            </tr>
+            <tr v-for="l in w.lines" :key="w.workshop + '-' + l.lineId" class="line-row">
+              <td class="indent">
+                {{ l.lineName }}
+                <div class="dev-code">{{ t('energy.nodeDeviceCount', { n: l.deviceCount }) }}</div>
+              </td>
+              <td class="r num">{{ num(l.kwh, 1) }} kWh</td>
+              <td class="r num">¥{{ num(l.cost, 2) }}</td>
+              <td><div class="minibar-track"><div class="minibar" :style="{ width: shareW(l.share) }"></div></div></td>
+            </tr>
+          </template>
+          <tr v-if="node.unassigned.deviceCount" class="un-row">
+            <td>
+              {{ t('energy.nodeUnassigned') }}
+              <div class="dev-code">{{ t('energy.nodeDeviceCount', { n: node.unassigned.deviceCount }) }}</div>
+            </td>
+            <td class="r num">{{ num(node.unassigned.kwh, 1) }} kWh</td>
+            <td class="r num">¥{{ num(node.unassigned.cost, 2) }}</td>
+            <td><div class="minibar-track"><div class="minibar ghost" :style="{ width: shareW(node.total.kwh > 0 ? node.unassigned.kwh / node.total.kwh * 100 : 0) }"></div></div></td>
+          </tr>
+          <tr class="total-row">
+            <td><b>{{ t('energy.nodeTotal') }}</b></td>
+            <td class="r num"><b>{{ num(node.total.kwh, 1) }} kWh</b></td>
+            <td class="r num"><b>¥{{ num(node.total.cost, 2) }}</b></td>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
     <div class="panel rank">
       <div class="p-head"><h3>{{ t('energy.rankTitle', { range: rangeLabel }) }}</h3><span>{{ t('energy.rankHint') }}</span></div>
       <div v-if="!rank.length" class="empty" v-html="rankEmpty"></div>
@@ -100,7 +163,7 @@
 const { t } = useI18n()
 import { computed, ref, watch, reactive} from 'vue'
 import { useI18n } from 'vue-i18n'
-import { energyApi, SEG_COLOR, type EnergyOverview, type EnergyRankItem, type DemandData, type TariffSegment } from '@/api/energy'
+import { energyApi, SEG_COLOR, type EnergyOverview, type EnergyRankItem, type EnergyByNode, type DemandData, type TariffSegment } from '@/api/energy'
 import { num } from '@/api/reports'
 import { useAuthStore } from '@/stores/auth'
 import { useEcharts } from '@/composables/useEcharts'
@@ -120,6 +183,7 @@ const chartInited = reactive({ demand: false, trend: false, hourly: false })
 const range = ref('today')
 const ov = ref<EnergyOverview | null>(null)
 const rank = ref<EnergyRankItem[]>([])
+const node = ref<EnergyByNode | null>(null)
 const dm = ref<DemandData | null>(null)
 const picked = ref('')
 const detail = ref<any>(null)
@@ -275,6 +339,7 @@ async function load() {
       loadRank(),
       energyApi.demand().catch(() => null)
     ])
+    loadNode()
     ov.value = o
     if (d && d.ok) dm.value = d
     if (picked.value) loadDetail(picked.value)
@@ -286,6 +351,17 @@ async function loadRank() {
     const rk = await energyApi.rank(range.value)
     rank.value = Array.isArray(rk) ? rk : []
   } catch (e: any) { console.error('设备排行加载失败', e) }
+}
+
+async function loadNode() {
+  try {
+    node.value = await energyApi.byNode(range.value)
+  } catch (e: any) { console.error('分项计量加载失败', e) }
+}
+
+/** 占比条宽度：0 也给 1px，否则看不出"有 0.0x%" */
+function shareW(share: number) {
+  return Math.min(100, Math.max(1, Number(share) || 0)) + '%'
 }
 
 async function loadDetail(code: string) {
@@ -352,4 +428,13 @@ usePolling(load, 15000, { immediate: true })
 .minibar { height: 5px; background: var(--accent); border-radius: 3px; }
 .detail { margin-top: var(--space-3); border-top: 1px solid var(--border); padding-top: var(--space-3); }
 @media (max-width: 1200px) { .kpis { grid-template-columns: repeat(3, 1fr); } .panels { grid-template-columns: 1fr; } }
+
+.ws-row td { padding-top: 10px; }
+.ws-row.bottom, .ws-row { border-top: none; }
+.line-row td.indent { padding-left: 26px; color: var(--fg-2); }
+.un-row td { color: var(--muted); font-style: italic; }
+.total-row td { border-top: 1px solid var(--border); padding-top: 10px; }
+.minibar.ghost { background: var(--border); }
+.bad { color: var(--alarm); }
+
 </style>
