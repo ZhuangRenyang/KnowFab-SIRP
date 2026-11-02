@@ -195,9 +195,13 @@ public class ReportController {
         if (!confirm) {
             out.put("ok", false);
             out.put("message", "演示数据清空不可恢复，请传 {\"confirm\":true}");
+            audit.fail(AuditLog.CAT_REPORT, AuditLog.ACT_PURGE, "report", "报表生产数据",
+                    "请求清空报表生产数据", "未确认，操作被拒绝");
             return out;
         }
         int n = repo.purgeAll();
+        audit.ok(AuditLog.CAT_REPORT, AuditLog.ACT_PURGE, "report", "报表生产数据",
+                "清空报表生产数据 " + n + " 行（不可恢复）");
         out.put("ok", true);
         out.put("message", "已清空 " + n + " 行小时生产数据");
         return out;

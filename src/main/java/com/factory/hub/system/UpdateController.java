@@ -141,7 +141,16 @@ public class UpdateController {
 
     @PostMapping("/update/cancel")
     public Map<String, Object> cancel() {
-        return updateService.cancel();
+        Map<String, Object> out = updateService.cancel();
+        boolean ok = out != null && Boolean.TRUE.equals(out.get("ok"));
+        if (ok) {
+            audit.ok(AuditLog.CAT_SYSTEM, AuditLog.ACT_UPDATE, "update", "应用升级",
+                    "取消待应用的升级包");
+        } else {
+            audit.fail(AuditLog.CAT_SYSTEM, AuditLog.ACT_UPDATE, "update", "应用升级",
+                    "取消待应用的升级包", "没有待应用的升级包");
+        }
+        return out;
     }
 
     /* ==================== 审计辅助 ==================== */

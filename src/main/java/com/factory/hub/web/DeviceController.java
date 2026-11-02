@@ -180,6 +180,8 @@ public class DeviceController {
     @PostMapping("/devices/reload")
     public Map<String, Object> reload() {
         scheduler.reload();
+        audit.ok(AuditLog.CAT_DEVICE, AuditLog.ACT_UPDATE, "devices", "采集配置",
+                "重载设备采集配置（采集调度重启中）");
         return Map.of("ok", true, "running", scheduler.running());
     }
 

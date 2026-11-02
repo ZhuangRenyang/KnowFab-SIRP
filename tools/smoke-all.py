@@ -197,12 +197,15 @@ def sec_system():
     st, r = req("GET", "/api/system/version")
     check(s, "版本信息", st == 200 and has(r, "version"), st)
     st, r = req("GET", "/api/system/update/status")
-    # 开源版免配置：未填更新源时默认盯 GitHub Releases（接口结构必须稳定）
+    # 开源版免配置：未填更新源时默认盯 Gitee Releases（国内现场更快），
+    # 连不上再自动兜底 GitHub Releases（2026-10-29 起是这个顺序）。
+    # 两个源都要在，缺一个就等于某个网络环境下的客户拿不到更新。
     st, r = req("GET", "/api/system/update/check")
     srcs = [x.get("source") for x in (r.get("sources") or [])] if isinstance(r, dict) else []
-    check(s, "默认升级源 GitHub Releases", st == 200
-          and srcs and srcs[0].startswith("github://ZhuangRenyang/"),
-          srcs[:1] or st)
+    check(s, "默认升级源 Gitee 主 + GitHub 兜底", st == 200
+          and srcs and srcs[0].startswith("gitee://ZhuangRenyang/")
+          and any(x.startswith("github://ZhuangRenyang/") for x in srcs),
+          srcs[:2] or st)
     check(s, "升级状态", st == 200, st)
     st, r = req("GET", "/api/system/settings")
     check(s, "系统设置", st == 200 and isinstance(r, dict) and r, st)

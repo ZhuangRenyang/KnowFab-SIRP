@@ -16,6 +16,7 @@ import json
 import sys
 import urllib.request
 import urllib.error
+import urllib.parse
 
 BASE = "http://127.0.0.1:8080"
 ADMIN_USER = "admin"
@@ -281,12 +282,57 @@ def main():
     code, body = req("POST", "/api/system/settings", {"alarm.storm-threshold": "50"}, cookie=admin_cookie)
     check("H2 合法设置值写入", code == 200, code)
 
+    # ============ I. 操作审计（DH-24） ============
+    # 审计要守住的四条：①改了就留痕 ②只增不改不删 ③非管理员看不到 ④搜得到
+    # 触发器用设备模板：名字唯一，审计里一定搜得到，不依赖任何已有数据。
+    code, body = req("GET", "/api/audit")
+    check("I1 匿名读审计被拒(401)", code == 401, code)
+    code, body = req("GET", "/api/audit", cookie=leader_cookie)
+    check("I2 班组长读审计被拒(403)", code == 403, code)
+    code, body = req("GET", "/api/audit", cookie=admin_cookie)
+    check("I3 管理员读审计(200)", code == 200 and body.get("ok") is True, code)
+    code, body = req("POST", "/api/device-templates", {
+        "name": "SELFTEST-AUDIT-PROBE", "protocol": "modbus-tcp", "pointsJson":
+        "[{\"key\":\"t\",\"name\":\"测试\",\"address\":0,\"functionCode\":3,"
+        "\"dataType\":\"u16\",\"role\":\"value\"}]"
+    }, cookie=admin_cookie)
+    probe_id = (body.get("item") or {}).get("id")
+    check("I4 写操作成功", body.get("ok") is True and probe_id, body)
+    code, body = req("GET", "/api/audit?keyword=SELFTEST-AUDIT-PROBE&limit=50", cookie=admin_cookie)
+    rows = body.get("rows") or []
+    hit = [r for r in rows if "AUDIT-PROBE" in (r.get("targetName") or "") + (r.get("detail") or "")]
+    check("I5 这次改动能搜到", len(hit) >= 1, (len(hit), len(rows)))
+    check("I6 审计带操作人与来源 IP",
+          bool(hit) and bool(hit[0].get("operator")) and hit[0].get("ip") is not None,
+          hit[0] if hit else "")
+    # 中文关键词也要能搜——客户来问「谁改过电价」，搜「电价」两个字就该出来
+    code, body = req("GET", "/api/audit?keyword=" + urllib.parse.quote("审计") + "&limit=50",
+                     cookie=admin_cookie)
+    check("I7 中文关键词可搜", code == 200, code)
+    # 只增不改不删：查询之外不该有任何写审计的入口
+    code, body = req("POST", "/api/audit", {"detail": "伪造"}, cookie=admin_cookie)
+    check("I8 审计表不可写入", code in (404, 405), code)
+    code, body = req("DELETE", "/api/audit/1", cookie=admin_cookie)
+    check("I9 审计表不可删除", code in (404, 405), code)
+    # 分类过滤
+    code, body = req("GET", "/api/audit?category=DEVICE&limit=50", cookie=admin_cookie)
+    drows = body.get("rows") or []
+    check("I10 分类过滤只回该类", code == 200 and all(r.get("category") == "DEVICE" for r in drows),
+          [r.get("category") for r in drows[:5]])
+    if probe_id:
+        req("DELETE", f"/api/device-templates/{probe_id}", cookie=admin_cookie)
+
     # ============ 清理 ============
     # H2 往 storm-threshold 写了个 50 做校验测试，用完必须还原——
     # 不还原的话，客户机上这个批量告警合并阈值就比 yml 默认的 8 宽松了 6 倍多，
     # 交换机一挂全厂离线时本来该合并成一条的告警会被逐条刷到群里。
     code, body = req("DELETE", "/api/system/settings/alarm.storm-threshold", cookie=admin_cookie)
     check("Z0 批量告警阈值恢复默认", code in (200, 204), code)
+    # I4 的审计探针模板：正常路径已内联删除，这里按名字兜底清一次
+    code, tpls = req("GET", "/api/device-templates", cookie=admin_cookie)
+    for t in ((tpls.get("items") if isinstance(tpls, dict) else tpls) or []):
+        if t.get("name") == "SELFTEST-AUDIT-PROBE":
+            req("DELETE", f"/api/device-templates/{t.get('id')}", cookie=admin_cookie)
     tid = ids.get("TEST-01")
     if tid:
         code, body = req("DELETE", f"/api/devices/{tid}", cookie=admin_cookie)
