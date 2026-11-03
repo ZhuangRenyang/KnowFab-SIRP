@@ -595,6 +595,91 @@ def main():
     check("M12 管理员清历史没被误拦（未确认应返回 ok:false）",
           code == 200 and body.get("ok") is False, (code, body))
 
+    # ============ N. BOM 与生产工单（2026-11-03 补，DH-70/71）============
+    # 起因：在此之前 ERP 只有「设备产出 → 成品入库」，原料那一侧一分不动。
+    # 客户买 100 吨钢、做完 80 个零件卖掉，仓库里钢还是 100 吨——
+    # 进销存「期初+入-出=期末」算术上永远对，但那是单边账。
+    # 这组用例把「BOM 展开 → 领料扣库存 → 库存不足拦截」钉死。
+    ST_CODE_M, ST_CODE_P, ST_WH = "ST-MAT", "ST-PROD", "ST-BOM-WH"
+
+    code, skus = req("GET", "/api/erp/skus?q=" + ST_CODE_M, cookie=admin_cookie)
+    st_mat = next((x for x in (skus or []) if x.get("code") == ST_CODE_M), None)
+    if not st_mat:
+        req("POST", "/api/erp/skus", {"code": ST_CODE_M, "name": "自测材料", "unit": "kg",
+                                      "category": "原材料", "purchasePrice": 10}, cookie=admin_cookie)
+        code, skus = req("GET", "/api/erp/skus?q=" + ST_CODE_M, cookie=admin_cookie)
+        st_mat = next((x for x in (skus or []) if x.get("code") == ST_CODE_M), None)
+    code, skus = req("GET", "/api/erp/skus?q=" + ST_CODE_P, cookie=admin_cookie)
+    st_prod = next((x for x in (skus or []) if x.get("code") == ST_CODE_P), None)
+    if not st_prod:
+        req("POST", "/api/erp/skus", {"code": ST_CODE_P, "name": "自测成品", "unit": "件",
+                                      "category": "成品", "purchasePrice": 99}, cookie=admin_cookie)
+        code, skus = req("GET", "/api/erp/skus?q=" + ST_CODE_P, cookie=admin_cookie)
+        st_prod = next((x for x in (skus or []) if x.get("code") == ST_CODE_P), None)
+    check("N1 自测商品就绪", bool(st_mat and st_prod), (st_mat, st_prod))
+    mat_id, prod_id = st_mat["id"], st_prod["id"]
+
+    code, whs = req("GET", "/api/erp/warehouses?q=" + ST_WH, cookie=admin_cookie)
+    wh = next((x for x in (whs or []) if x.get("code") == ST_WH), None)
+    if not wh:
+        req("POST", "/api/erp/warehouses", {"code": ST_WH, "name": "自测仓"}, cookie=admin_cookie)
+        code, whs = req("GET", "/api/erp/warehouses?q=" + ST_WH, cookie=admin_cookie)
+        wh = next((x for x in (whs or []) if x.get("code") == ST_WH), None)
+    check("N2 自测仓库就绪", bool(wh), wh)
+    wh_id = wh["id"] if wh else None
+
+    # ① 没配 BOM 就下达：必须拒绝，且说清该去配什么。
+    #    允许"下达但没用料"的工单存在，领料时才发现没料可领，现场只能绕开系统手工出库。
+    code, body = req("POST", "/api/erp/work-orders",
+                     {"productSkuId": prod_id, "planQty": 5, "warehouseId": wh_id}, cookie=admin_cookie)
+    no_wo = body.get("orderNo") if isinstance(body, dict) else None
+    code, body = req("POST", "/api/erp/work-orders/%s/release" % no_wo, {}, cookie=admin_cookie)
+    check("N3 没配 BOM 不能下达（且提示去配物料清单）",
+          isinstance(body, dict) and body.get("ok") is False and "BOM" in str(body.get("message")),
+          (code, body))
+
+    # ② 配 BOM：成品 = 材料 x 2 件，损耗 10%
+    code, body = req("POST", "/api/erp/bom?productSkuId=%d" % prod_id,
+                     {"lines": [{"materialSkuId": mat_id, "qty": 2, "lossRate": 10}]}, cookie=admin_cookie)
+    check("N4 保存 BOM", code == 200 and body.get("ok") is True, (code, body))
+    code, body = req("POST", "/api/erp/bom?productSkuId=%d" % prod_id,
+                     {"lines": [{"materialSkuId": prod_id, "qty": 1}]}, cookie=admin_cookie)
+    check("N5 材料不能是产品自己（应拒绝）", body.get("ok") is False, (code, body))
+
+    # ③ 下达：用料 = 5 x 2 x 1.1 = 11
+    code, body = req("POST", "/api/erp/work-orders/%s/release" % no_wo, {}, cookie=admin_cookie)
+    check("N6 工单下达成功", body.get("ok") is True, (code, body))
+    code, body = req("GET", "/api/erp/work-orders/%s" % no_wo, cookie=admin_cookie)
+    mats = body.get("materials") or [] if isinstance(body, dict) else []
+    need = float(mats[0]["needQty"]) if mats else -1
+    check("N7 用料按「计划 x 用量 x 损耗」展开（5x2x1.1=11）", abs(need - 11) < 0.01, need)
+
+    # ④ 库存不足：仓里 0 却要领 11，必须拒绝并说清差多少
+    code, body = req("POST", "/api/erp/work-orders/%s/issue" % no_wo,
+                     {"warehouseId": wh_id, "lines": [{"skuId": mat_id, "qty": 11}]}, cookie=admin_cookie)
+    check("N8 库存不足时领料被拒（整单失败，不写半张单）",
+          body.get("ok") is False and "库存不足" in str(body.get("message")), (code, body))
+
+    # ⑤ 补料 50 后再领：库存必须真的减
+    req("POST", "/api/erp/stock/bills",
+        {"type": "OTHER_IN", "warehouseId": wh_id, "remark": "SELFTEST",
+         "lines": [{"skuId": mat_id, "qty": 50}]}, cookie=admin_cookie)
+    code, body = req("POST", "/api/erp/work-orders/%s/auto-issue" % no_wo,
+                     {"warehouseId": wh_id}, cookie=admin_cookie)
+    check("N9 一键按缺口领料成功（生成生产领料单）",
+          body.get("ok") is True and str(body.get("billNo", "")).startswith("SCLL"), (code, body))
+    code, bal = req("GET", "/api/erp/stock/balances?whId=%d" % wh_id, cookie=admin_cookie)
+    row = next((x for x in (bal or []) if x.get("skuId") == mat_id), None)
+    left = float(row["qty"]) if row else None
+    check("N10 领料后原料库存真的减少（50-11=39）", left is not None and abs(left - 39) < 0.01, left)
+
+    # ⑥ 权限对照：班组长能开工（现场操作），但不能下达（下达会展开用料，属计划动作）
+    code, body = req("POST", "/api/erp/work-orders/%s/start" % no_wo, {}, cookie=leader_cookie)
+    check("N11 班组长可以开工（现场操作，别收得过紧）", code != 403, (code, body))
+    code, body = req("POST", "/api/erp/work-orders",
+                     {"productSkuId": prod_id, "planQty": 1}, cookie=leader_cookie)
+    check("N12 班组长不能建工单(403)", code == 403, (code, body))
+
     # ============ 清理 ============
     # H2 往 storm-threshold 写了个 50 做校验测试，用完必须还原——
     # 不还原的话，客户机上这个批量告警合并阈值就比 yml 默认的 8 宽松了 6 倍多，
