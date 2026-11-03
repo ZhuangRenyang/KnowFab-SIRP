@@ -540,6 +540,97 @@ def sec_ai_chat():
             req("DELETE", "/api/users/%s" % u["id"])
 
 
+def sec_qc():
+    """质检模块冒烟：四个 tab 背后的接口都活着，数据形状对。
+
+    起因：这一轮新做的质检模块（看板/检验单/不良品/主数据）**一次都没进过冒烟**。
+    smoke-all 的定位是「每个功能页面背后的接口都活着」——页面点开一片空白，
+    通常就是这里某个接口 404 或形状变了。
+
+    这里的检查偏「形状」不偏「业务」：业务正确性由 qc-e2e.py 与后端单测负责。
+    """
+    s = "质检"
+
+    # ---- ① 看板 ----
+    st, r = req("GET", "/api/erp/qc/dashboard")
+    check(s, "质检看板", st == 200 and r.get("ok") is True and has(r, "qcDefectQty", "deviceDefectQty"),
+          st)
+    # 两个口径必须分开给（不能合成一个数）
+    check(s, "看板两口径分开", isinstance(r, dict) and "qcDefectQty" in r and "deviceDefectQty" in r,
+          list(r.keys())[:8] if isinstance(r, dict) else st)
+    st, r = req("GET", "/api/erp/qc/pareto")
+    check(s, "帕累托图", st == 200 and r.get("ok") is True and isinstance(r.get("rows"), list), st)
+
+    # ---- ② 检验单 ----
+    st, r = req("GET", "/api/erp/qc/inspections?page=1&size=5")
+    check(s, "检验单列表", st == 200 and r.get("ok") is True and isinstance(r.get("rows"), list), st)
+    check(s, "检验单列表带分页", isinstance(r, dict) and "total" in r and "page" in r,
+          list(r.keys())[:8] if isinstance(r, dict) else st)
+    # 单条详情（用列表里的第一张）
+    # ⚠️ 后端的详情是**三层结构** {ok, header, items, defects}——
+    # 单头在 header 里，前端在 api/qcOps.ts 里摊平到顶层。
+    # 冒烟要对**后端的真实形状**断言，不是前端的摊平后形状。
+    rows = r.get("rows") if isinstance(r, dict) else []
+    if rows:
+        no = rows[0].get("inspectionNo")
+        st, d = req("GET", "/api/erp/qc/inspections/%s" % no)
+        hdr = d.get("header") if isinstance(d, dict) else None
+        check(s, "检验单详情", st == 200 and d.get("ok") is True
+              and isinstance(hdr, dict) and hdr.get("inspectionNo") == no,
+              "%s no=%s hdr=%s" % (st, no, type(hdr).__name__))
+        check(s, "检验单详情带明细与不良记录",
+              isinstance(d, dict) and isinstance(d.get("items"), list)
+              and isinstance(d.get("defects"), list),
+              list(d.keys()) if isinstance(d, dict) else st)
+    else:
+        check(s, "检验单详情", True, "无数据跳过", skip=True)
+        check(s, "检验单详情带明细与不良记录", True, "无数据跳过", skip=True)
+
+    # ---- ③ 不良品 ----
+    st, r = req("GET", "/api/erp/qc/defects?page=1&size=5")
+    check(s, "不良记录列表", st == 200 and r.get("ok") is True and isinstance(r.get("rows"), list), st)
+    # 追溯链字段必须在（前端 QcDefectRow 声明了，后端要真给）
+    drows = r.get("rows") if isinstance(r, dict) else []
+    if drows:
+        need = ("defectNo", "source", "status", "qty", "inStock", "inspectionNo", "workOrderNo")
+        missing = [k for k in need if k not in drows[0]]
+        check(s, "不良记录带追溯链字段", not missing, "缺 %s" % missing)
+    else:
+        check(s, "不良记录带追溯链字段", True, "无数据跳过", skip=True)
+    # 待处置汇总：件数与条数要分开（3 条 3000 件 ≠ 3000 条 1 件）
+    check(s, "不良统计给件数与条数",
+          isinstance(r, dict) and "pendingQty" in r and "pendingRecords" in r,
+          list(r.keys())[:8] if isinstance(r, dict) else st)
+
+    # ---- ④ 主数据：缺陷分类 + AQL 方案 ----
+    st, r = req("GET", "/api/erp/qc/defect-codes?enabled=true&page=1&size=50")
+    check(s, "缺陷分类列表", st == 200 and r.get("ok") is True and isinstance(r.get("rows"), list), st)
+    st, r = req("GET", "/api/erp/qc/aql/plans")
+    check(s, "AQL 方案表", st == 200 and r.get("ok") is True and isinstance(r.get("rows"), list), st)
+    # 方案表要带水平与严格度（抽样下拉按它推导选项，少了字段下拉就列不全）
+    arows = r.get("rows") if isinstance(r, dict) else []
+    if arows:
+        check(s, "AQL 方案带水平/严格度",
+              "level" in arows[0] and "strictLevel" in arows[0], list(arows[0].keys())[:8])
+    else:
+        check(s, "AQL 方案带水平/严格度", True, "无数据跳过", skip=True)
+
+    # ---- ⑤ 抽样查表：国标箭头格要借样本量 ----
+    st, r = req("GET", "/api/erp/qc/aql/resolve?level=GENERAL_II&strictLevel=NORMAL"
+                     "&lotQty=500&aql=0.65")
+    check(s, "AQL 查表", st == 200 and r.get("ok") is True and "sampleSize" in r, st)
+    # H 档 @ AQL 0.65 在国标表 2-A 里是箭头格（↓ 借 J 行）→ 抽 80 件，不是 50 件
+    check(s, "H 档 @0.65 抽 80 件（国标箭头格）",
+          isinstance(r, dict) and int(r.get("sampleSize") or 0) == 80,
+          r.get("sampleSize") if isinstance(r, dict) else st)
+    st, r = req("GET", "/api/erp/qc/aql/levels")
+    check(s, "可用检验水平", st == 200 and r.get("ok") is True and isinstance(r.get("combos"), list), st)
+
+    # ---- ⑥ 放行校验（禁发仓 fail-safe）----
+    st, r = req("GET", "/api/erp/qc/concession-release?whId=1&skuIds=1")
+    check(s, "放行校验接口", st == 200 and r.get("ok") is True, st)
+
+
 def sec_write(skus, whs):
     """写路径冒烟：建单→取消、建单→作废，验证完顺手把数据清干净。"""
     s = "写路径"
@@ -668,6 +759,7 @@ def main():
     sec_lines()
     sec_sales_query()
     sec_ai_chat()
+    sec_qc()
     sec_write(skus, whs)
     sec_auth_negative()
 

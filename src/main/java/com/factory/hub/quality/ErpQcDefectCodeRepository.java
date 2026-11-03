@@ -16,8 +16,6 @@ public interface ErpQcDefectCodeRepository extends JpaRepository<ErpQcDefectCode
     /** 代码唯一性校验（改自己时排除自己） */
     boolean existsByCodeAndIdNot(String code, Long id);
 
-    List<ErpQcDefectCode> findByEnabledTrueOrderBySortNoAscCodeAsc();
-
     /**
      * 列表查询：三个条件都可为空。
      * 排序把 CR 排最前——分级决定判定后果，列表第一眼要能看到最危险的几条。

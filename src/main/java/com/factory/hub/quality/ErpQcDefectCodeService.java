@@ -64,22 +64,6 @@ public class ErpQcDefectCodeService {
         return out;
     }
 
-    /** 下拉框用：只给启用的，按分级 + 排序号 */
-    @Transactional(readOnly = true)
-    public List<Map<String, Object>> options() {
-        List<Map<String, Object>> out = new ArrayList<>();
-        for (ErpQcDefectCode c : codeRepo.findByEnabledTrueOrderBySortNoAscCodeAsc()) {
-            Map<String, Object> m = new LinkedHashMap<>();
-            m.put("id", c.getId());
-            m.put("code", c.getCode());
-            m.put("name", c.getName());
-            m.put("severity", c.getSeverity());
-            m.put("defaultAql", c.getDefaultAql());
-            out.add(m);
-        }
-        return out;
-    }
-
     /* ==================== 写入 ==================== */
 
     @Transactional

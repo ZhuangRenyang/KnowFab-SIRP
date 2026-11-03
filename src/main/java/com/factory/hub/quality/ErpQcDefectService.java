@@ -332,6 +332,23 @@ public class ErpQcDefectService {
         m.put("defectNo", d.getDefectNo());
         m.put("source", d.getSource());
         m.put("status", d.getStatus());
+        // —— 追溯链字段（前端 QcDefectRow 早就声明了，后端一直没给）——
+        // 缺了这几个，用户在不良品列表上**看不出这条是哪张检验单/哪张工单来的**，
+        // 追溯链断在这里（不良 → 检验单 → 工单 → 产品 → 客户）。
+        // 「这条不良是谁判出来的、对应哪批货」是质量追溯的基本要求，
+        // 不是锦上添花的字段。
+        m.put("sourceKey", d.getSourceKey());
+        m.put("inspectionNo", d.getInspectionNo());
+        m.put("workOrderNo", d.getWorkOrderNo());
+        m.put("skuId", d.getSkuId());
+        m.put("defectCodeId", d.getDefectCodeId());
+        m.put("srcBillNo", d.getSrcBillNo());
+        m.put("warehouseId", d.getWarehouseId());
+        m.put("registeredBy", d.getRegisteredBy());
+        m.put("remark", d.getRemark());
+        m.put("voidedAt", d.getVoidedAt());
+        m.put("voidedBy", d.getVoidedBy());
+        m.put("voidReason", d.getVoidReason());
         m.put("displayStatus", displayStatus(d, rows));
         m.put("qty", d.getQty());
         m.put("disposedQty", d.getDisposedQty());

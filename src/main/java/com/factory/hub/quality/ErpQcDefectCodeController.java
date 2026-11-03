@@ -51,16 +51,6 @@ public class ErpQcDefectCodeController {
         }
     }
 
-    /** 下拉选项：只给启用的 */
-    @GetMapping("/options")
-    public List<Map<String, Object>> options() {
-        try {
-            return service.options();
-        } catch (Exception e) {
-            return List.of();
-        }
-    }
-
     @PostMapping
     public Map<String, Object> create(@RequestBody Map<String, Object> body) {
         try {

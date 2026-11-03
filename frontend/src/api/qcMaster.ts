@@ -42,11 +42,6 @@ export const qcDefectCodeApi = {
     if (p.enabled !== undefined) qs.set('enabled', String(p.enabled))
     return http.get<QcDefectCodeListResult>(`/api/erp/qc/defect-codes?${qs.toString()}`)
   },
-  /** 下拉选项：只给启用的，字段少 */
-  options: () =>
-    http.get<{ id: number; code: string; name: string; severity: string; category?: string | null }[]>(
-      '/api/erp/qc/defect-codes/options'
-    ),
   create: (body: QcDefectCodeInput) =>
     http.post<QcApiOk>('/api/erp/qc/defect-codes', body),
   update: (id: number, body: QcDefectCodeInput) =>

@@ -101,13 +101,23 @@ class Api:
             headers={"Content-Type": "application/json"})
         try:
             with self.op.open(req, timeout=30) as r:
-                return json.loads(r.read().decode("utf-8"))
+                out = json.loads(r.read().decode("utf-8"))
+                # ⚠️ 成功路径也要记 httpStatus。
+                # 否则「200 + {ok:false}」与「403 + {ok:false}」在断言里长得一模一样——
+                # 我就因此一度以为项目的权限拒绝是 200，其实 SecurityConfig 的
+                # denied handler 明确 setStatus(403)。判断权限拒绝必须看状态码。
+                if isinstance(out, dict):
+                    out.setdefault("httpStatus", r.status)
+                return out
         except urllib.error.HTTPError as e:
             body_txt = e.read().decode("utf-8", "replace")
             try:
-                return json.loads(body_txt)
+                out = json.loads(body_txt)
             except Exception:
-                return {"ok": False, "httpStatus": e.code, "raw": body_txt[:300]}
+                out = {"ok": False, "raw": body_txt[:300]}
+            if isinstance(out, dict):
+                out["httpStatus"] = e.code
+            return out
 
     def get(self, path):
         return self.send("GET", path)
@@ -556,7 +566,7 @@ def run_checks(api, args_port):
                 "items": [],
                 "remark": "【e2e】班组长建单",
             })
-            check(lc.get("ok") is True and not lc.get("httpStatus"),
+            check(lc.get("httpStatus") == 200 and lc.get("ok") is True,
                   "LEADER 建检验单 → 200（现场录检验单）",
                   "httpStatus=%s %s" % (lc.get("httpStatus"), lc.get("message", "")))
             lno = lc.get("inspectionNo")
@@ -567,16 +577,17 @@ def run_checks(api, args_port):
                 # ⚠️ 判权限要看 ok，<b>不能看 HTTP 状态码</b>：本项目全站约定是
                 # 「失败一律 200 + {ok:false}」，权限不足返回的是 200 + ok:false，
                 # 消息「当前角色没有这个操作权限」。
-                check(lj.get("ok") is False and "权限" in str(lj.get("message", "")),
-                      "LEADER 调判定 → 被拒（判定权不外包）",
+                # 权限不足由 SecurityConfig 拦 → HTTP 403；
+                # 业务失败才是 200 + ok:false（ErpQcBody.fail）。两者别混。
+                check(lj.get("httpStatus") == 403 and lj.get("ok") is False,
+                      "LEADER 调判定 → 403（判定权不外包）",
                       "ok=%s httpStatus=%s %s" % (lj.get("ok"), lj.get("httpStatus"),
                                                  lj.get("message", "")))
             # 处置 → 也应该 403
             ldis = leader.post("/api/erp/qc/defects/E2E-NOT-EXIST/scrap", {"qty": 1})
-            check(ldis.get("ok") is False and "权限" in str(ldis.get("message", "")),
-                  "LEADER 调处置 → 被拒（处置权不外包）",
-                  "ok=%s 原文=%s" % (ldis.get("ok"),
-                                     json.dumps(ldis, ensure_ascii=False)[:160]))
+            check(ldis.get("httpStatus") == 403 and ldis.get("ok") is False,
+                  "LEADER 调处置 → 403（处置权不外包）",
+                  "ok=%s httpStatus=%s" % (ldis.get("ok"), ldis.get("httpStatus")))
 
     print()
     print("--- ⑫ 对账定责不放大（P0-1：定责是标记不是改数）---")

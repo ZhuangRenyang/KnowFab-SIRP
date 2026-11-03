@@ -730,6 +730,153 @@ def main():
 
     req("POST", "/api/erp/work-orders/%s/cancel" % cost_no, {"reason": "SELFTEST"}, cookie=admin_cookie)
 
+    # ============ Q. 质检模块（2026-11-03 补）============
+    # 起因：质检模块是这一轮新做的（检验单/不良品/放行/对账），
+    # 但之前**完全没进门禁**——selftest 与 smoke-all 都没碰过它。
+    # 这组用例把「权限收口」和「判定主链」钉死：
+    #   · 判定权不外包：班组长能录检验单，不能自己判定
+    #   · 销售看不到质检数据（不良率/检验单/缺陷分类 = 车间内部数据）
+    #   · 判 FAIL 必须生成不良记录（不生成 = 没人处置 = 废品流回车间）
+    #
+    # ⚠️ 判权限看 **HTTP 状态码**：权限不足由 SecurityConfig 拦 → 403；
+    #    业务失败才是 200 + {ok:false}（ErpQcBody.fail）。两层别混。
+
+    # ---- ① 读接口：销售被挡，班组长可读 ----
+    code, body = req("GET", "/api/erp/qc/inspections", cookie=sales_cookie)
+    check("Q1 销售读检验单列表被拒(403)", code == 403, (code, str(body)[:80]))
+    code, body = req("GET", "/api/erp/qc/dashboard", cookie=sales_cookie)
+    check("Q2 销售读质检看板被拒(403)", code == 403, (code, str(body)[:80]))
+    code, body = req("GET", "/api/erp/qc/defect-codes?enabled=true", cookie=sales_cookie)
+    check("Q3 销售读缺陷分类被拒(403)", code == 403, (code, str(body)[:80]))
+    code, body = req("GET", "/api/erp/qc/inspections", cookie=leader_cookie)
+    check("Q4 班组长读检验单列表(200)", code == 200, (code, str(body)[:80]))
+    code, body = req("GET", "/api/erp/qc/dashboard", cookie=leader_cookie)
+    check("Q5 班组长读质检看板(200)", code == 200, (code, str(body)[:80]))
+    # 销售该有的能力不能被误伤
+    code, body = req("GET", "/api/erp/sales-query/stock?q=&page=1&size=1", cookie=sales_cookie)
+    check("Q6 销售仍可读销售查询(200)", code == 200, (code, str(body)[:80]))
+
+    # ---- ② 写接口：班组长能建单，不能判定/处置 ----
+    # 拿一个真实产品 id（建检验单要用）
+    code, skus_body = req("GET", "/api/erp/skus", cookie=admin_cookie)
+    sku_list = skus_body if isinstance(skus_body, list) else (
+        skus_body.get("rows") or skus_body.get("items") or [] if isinstance(skus_body, dict) else [])
+    qc_sku_id = None
+    for s_ in sku_list:
+        if isinstance(s_, dict) and s_.get("id"):
+            qc_sku_id = s_.get("id")
+            break
+    if qc_sku_id is None:
+        check("Q7 拿到产品 id（用于建检验单）", False, "没有可用产品")
+    else:
+        check("Q7 拿到产品 id（用于建检验单）", True, qc_sku_id)
+        # 销售建单被拒
+        code, body = req("POST", "/api/erp/qc/inspections", {
+            "inspectionType": "FQC", "skuId": qc_sku_id, "lotQty": 500,
+            "level": "GENERAL_II", "strictLevel": "NORMAL", "aql": 2.5,
+            "defectQty": 0, "items": [], "remark": "SELFTEST-Q",
+        }, cookie=sales_cookie)
+        check("Q8 销售建检验单被拒(403)", code == 403, (code, str(body)[:80]))
+        # 班组长建单成功
+        code, body = req("POST", "/api/erp/qc/inspections", {
+            "inspectionType": "FQC", "skuId": qc_sku_id, "lotQty": 500,
+            "level": "GENERAL_II", "strictLevel": "NORMAL", "aql": 2.5,
+            "defectQty": 0, "items": [], "remark": "SELFTEST-Q-LEADER",
+        }, cookie=leader_cookie)
+        check("Q9 班组长建检验单(200)", code == 200, (code, str(body)[:100]))
+        qc_no = body.get("inspectionNo") if isinstance(body, dict) else None
+        if not qc_no:
+            check("Q10 检验单号已返回", False, str(body)[:100])
+        else:
+            check("Q10 检验单号已返回", True, qc_no)
+            # 班组长能提交
+            code, body = req("PUT", "/api/erp/qc/inspections/%s" % qc_no,
+                             {"defectQty": 0}, cookie=leader_cookie)
+            check("Q11 班组长改单(200)", code == 200, (code, str(body)[:80]))
+            code, body = req("POST", "/api/erp/qc/inspections/%s/submit" % qc_no, {},
+                             cookie=leader_cookie)
+            check("Q12 班组长提交检验单(200)", code == 200, (code, str(body)[:80]))
+            # 判定权不外包
+            code, body = req("POST", "/api/erp/qc/inspections/%s/judge" % qc_no,
+                             {"defectQty": 99}, cookie=leader_cookie)
+            check("Q13 班组长调判定被拒(403，判定权不外包)", code == 403,
+                  (code, str(body)[:80]))
+            code, body = req("POST", "/api/erp/qc/inspections/%s/judge" % qc_no,
+                             {"defectQty": 99}, cookie=sales_cookie)
+            check("Q14 销售调判定被拒(403)", code == 403, (code, str(body)[:80]))
+            # 管理员判定成功，且判 FAIL 必须生成不良记录
+            code, body = req("POST", "/api/erp/qc/inspections/%s/judge" % qc_no,
+                             {"defectQty": 99}, cookie=admin_cookie)
+            check("Q15 管理员判定(200)", code == 200, (code, str(body)[:80]))
+            if isinstance(body, dict):
+                check("Q16 判定结果与原因码都在", bool(body.get("result")) and bool(body.get("why")),
+                      (body.get("result"), body.get("why")))
+                check("Q17 判定留了存档说明", bool(body.get("judgeText")), body.get("judgeText"))
+            # 判 FAIL → 必须生成 source=INSPECTION 的不良记录
+            code, body = req("GET", "/api/erp/qc/defects?source=INSPECTION", cookie=admin_cookie)
+            qc_rows = (body.get("rows") or body.get("items") or []) if isinstance(body, dict) else []
+            # 按 inspectionNo 精确定位（toRow 现在返回追溯链字段了）
+            mine = [r for r in qc_rows if r.get("inspectionNo") == qc_no]
+            check("Q18 判 FAIL 生成了不良记录（不生成=没人处置）", len(mine) >= 1,
+                  "%d 条" % len(mine))
+            if mine:
+                check("Q19 不良记录进待处置队列", mine[0].get("status") == "PENDING",
+                      mine[0].get("status"))
+                check("Q20 不良件数取件数（不是缺陷项数）",
+                      abs(float(mine[0].get("qty") or 0) - 99) < 0.01, mine[0].get("qty"))
+                check("Q21 FQC 判出的不良 in_stock=false（没进过成品仓）",
+                      mine[0].get("inStock") is False, mine[0].get("inStock"))
+            # 重复判定不增殖（幂等键）
+            code, body2 = req("GET", "/api/erp/qc/defects?source=INSPECTION", cookie=admin_cookie)
+            n1 = len((body2.get("rows") or []) if isinstance(body2, dict) else [])
+            req("POST", "/api/erp/qc/inspections/%s/judge" % qc_no, {"defectQty": 99},
+                cookie=admin_cookie)
+            code, body3 = req("GET", "/api/erp/qc/defects?source=INSPECTION", cookie=admin_cookie)
+            n2 = len((body3.get("rows") or []) if isinstance(body3, dict) else [])
+            check("Q22 重复判定不产生第二条不良记录（幂等键）", n2 == n1, "%d -> %d" % (n1, n2))
+
+    # ---- ③ AQL 查表：国标箭头格必须借样本量 ----
+    # H 档（批量 281~500）@ AQL 0.65 在国标表 2-A 里是箭头格（↓ 借 J 行）→ 抽 80 件。
+    # 旧实现只抽 50 件 → 抽样强度不足 → 该判不合格的批次被放行。
+    code, body = req("GET", "/api/erp/qc/aql/resolve?level=GENERAL_II&strictLevel=NORMAL"
+                           "&lotQty=500&aql=0.65", cookie=admin_cookie)
+    check("Q23 AQL 查表可调用", code == 200, (code, str(body)[:80]))
+    if code == 200 and isinstance(body, dict):
+        check("Q24 H 档 @ AQL 0.65 抽 80 件（箭头格借 J 行，不是 50）",
+              int(body.get("sampleSize") or 0) == 80, body.get("sampleSize"))
+        check("Q25 Ac=1 Re=2", int(body.get("ac") or -1) == 1 and int(body.get("re") or -1) == 2,
+              (body.get("ac"), body.get("re")))
+
+    # ---- ④ 抽样下拉只列有数据的组合（界面不制造必然失败）----
+    code, body = req("GET", "/api/erp/qc/aql/levels", cookie=admin_cookie)
+    check("Q26 可用检验水平接口可调用", code == 200, (code, str(body)[:80]))
+    if code == 200 and isinstance(body, dict):
+        combos = body.get("combos") or []
+        check("Q27 至少有一个可用组合", len(combos) >= 1, "%d 个" % len(combos))
+        bad = [c for c in combos if int(c.get("planCount") or 0) <= 0]
+        check("Q28 列出来的组合方案数都大于 0", not bad, bad[:2])
+
+    # ---- ⑤ 退货必须带原因（不落默认值）----
+    code, body = req("GET", "/api/erp/sales/orders", cookie=admin_cookie)
+    orders = body if isinstance(body, list) else (
+        body.get("rows") or body.get("items") or [] if isinstance(body, dict) else [])
+    shipped = None
+    for o_ in orders:
+        if isinstance(o_, dict) and str(o_.get("status", "")).upper() in (
+                "SHIPPED", "PARTIAL", "COMPLETED", "DONE"):
+            shipped = o_
+            break
+    if not shipped:
+        check("Q29 找到已发货订单可退", False, "演示数据里没有已发货订单")
+    else:
+        check("Q29 找到已发货订单可退", True, shipped.get("orderNo"))
+        code, body = req("POST", "/api/erp/sales/orders/%s/return" % shipped.get("orderNo"), {
+            "warehouseId": 1, "lines": [{"skuId": qc_sku_id, "qty": 1}],
+        }, cookie=admin_cookie)
+        # 原因缺失 → 业务失败（200 + ok:false），不是 403
+        check("Q30 退货缺原因被拒（不落默认值）",
+              code == 200 and body.get("ok") is False, (code, str(body)[:100]))
+
     # ============ 清理 ============
     # H2 往 storm-threshold 写了个 50 做校验测试，用完必须还原——
     # 不还原的话，客户机上这个批量告警合并阈值就比 yml 默认的 8 宽松了 6 倍多，
