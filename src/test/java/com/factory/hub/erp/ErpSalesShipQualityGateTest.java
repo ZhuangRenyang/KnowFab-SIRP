@@ -55,12 +55,13 @@ class ErpSalesShipQualityGateTest {
         ErpPartnerRepository partnerRepo = mock(ErpPartnerRepository.class);
         ErpQualityReleaseGate gate = mock(ErpQualityReleaseGate.class);
         ErpSalesService svc;
+        ErpQualityReturnGate returnGate = mock(ErpQualityReturnGate.class);
     }
 
     private Fx fx() {
         Fx f = new Fx();
         f.svc = new ErpSalesService(f.orderRepo, f.itemRepo, f.stockService, f.billRepo,
-                f.hdrRepo, f.skuRepo, f.partnerRepo, f.gate);
+                f.hdrRepo, f.skuRepo, f.partnerRepo, f.gate, f.returnGate);
 
         ErpSalesOrder o = new ErpSalesOrder();
         o.setOrderNo(ORDER_NO);

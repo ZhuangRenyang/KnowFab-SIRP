@@ -76,6 +76,8 @@ public class ErpSalesService {
      * （质量域依赖 ERP，ERP 不认识质量域；实现在质量域，Spring 装配）。
      */
     private final ErpQualityReleaseGate releaseGate;
+    /** 质量退货闸门：按退货原因分流（质量原因 → 禁发仓 + 不良记录） */
+    private final ErpQualityReturnGate returnGate;
 
     public ErpSalesService(ErpSalesOrderRepository orderRepo,
                            ErpSalesOrderItemRepository itemRepo,
@@ -84,7 +86,8 @@ public class ErpSalesService {
                            ErpStockBillHdrRepository hdrRepo,
                            ErpSkuRepository skuRepo,
                            ErpPartnerRepository partnerRepo,
-                           ErpQualityReleaseGate releaseGate) {
+                           ErpQualityReleaseGate releaseGate,
+                           ErpQualityReturnGate returnGate) {
         this.orderRepo = orderRepo;
         this.itemRepo = itemRepo;
         this.stockService = stockService;
@@ -93,6 +96,7 @@ public class ErpSalesService {
         this.skuRepo = skuRepo;
         this.partnerRepo = partnerRepo;
         this.releaseGate = releaseGate;
+        this.returnGate = returnGate;
     }
 
     /* ==================== 建单 / 改单 ==================== */
@@ -256,13 +260,24 @@ public class ErpSalesService {
 
     /** 客户退货：生成 SO_RETURN（正数入库），数量不能超过净发货 */
     @Transactional
+    /**
+     * 客户退货。
+     *
+     * @param returnReason 退货原因（{@link ErpQualityReturnGate#REASON_QUALITY} 质量问题 /
+     *                      {@link ErpQualityReturnGate#REASON_OTHER} 其它原因）——
+     *                      <b>必填</b>，不填直接拒绝，不落默认值
+     */
     public Map<String, Object> returnFromCustomer(String orderNo, Long whId, Object rawLines,
-                                                  String remark, String operator) {
+                                                  String returnReason, String remark, String operator) {
         ErpSalesOrder o = load(orderNo);
         if (ErpSalesOrder.STATUS_CANCELLED.equals(o.getStatus())
                 || ErpSalesOrder.STATUS_DRAFT.equals(o.getStatus())) {
             throw new IllegalArgumentException("草稿/已取消的订单没有货可退");
         }
+        // 先问质量域：这批货该入哪个仓（质量原因会被强制改到禁发仓）。
+        // 放在最前面是因为"原因缺失"要立刻拒绝——落默认值等于把"忘了填"
+        // 悄悄变成"按非质量处理"，那正是要防的那件事。
+        Long targetWhId = returnGate.resolveReturnWarehouse(returnReason, whId);
         List<ErpSalesOrderItem> items = itemRepo.findByOrderIdOrderByLineNoAsc(o.getId());
         Map<Long, ErpSalesOrderItem> bySku = new HashMap<>();
         Map<Long, ErpSalesOrderItem> byId = new HashMap<>();
@@ -296,11 +311,21 @@ public class ErpSalesService {
         String note = "销售退货（订单 " + orderNo + "）"
                 + (remark == null || remark.isBlank() ? "" : "；" + remark);
         ErpStockService.Created c = stockService.createManual(
-                ErpStockBill.TYPE_SO_RETURN, o.getCustomerId(), whId, null, note, operator, reqs, orderNo);
+                ErpStockBill.TYPE_SO_RETURN, o.getCustomerId(), targetWhId, null, note, operator, reqs, orderNo);
         recalc(orderNo);
+
+        // 入库之后才补记不良记录：记录要带入库单号，之后处置"报废"才知道去哪个仓扣库存。
+        // 非质量原因不进这一步（正常回良品仓，不生成不良记录）。
+        List<ErpQualityReturnGate.QualityReturnLine> returnLines = new ArrayList<>();
+        for (ErpStockService.LineReq r : reqs) {
+            returnLines.add(new ErpQualityReturnGate.QualityReturnLine(r.skuId(), r.qty()));
+        }
+        returnGate.registerReturnDefects(orderNo, o.getCustomerId(), targetWhId,
+                c.billNo(), returnLines, remark, operator);
 
         Map<String, Object> out = ok("已退货，单据号 " + c.billNo());
         out.put("billNo", c.billNo());
+        out.put("warehouseId", targetWhId);
         return out;
     }
 

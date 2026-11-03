@@ -112,13 +112,20 @@ public class ErpSalesController {
         }
     }
 
-    /** 客户退货：数量按净发货校验，生成 SO_RETURN（正数入库） */
+    /**
+     * 客户退货：数量按净发货校验，生成 SO_RETURN（正数入库）。
+     * <p>
+     * {@code returnReason} 必填（QUALITY / OTHER）：质量原因的货强制入禁发仓
+     * 并生成待处置的不良记录，其它原因正常回良品仓。
+     * <b>不落默认值</b>——落默认值等于把"忘了填"悄悄变成"按非质量处理"。
+     */
     @PostMapping("/orders/{orderNo}/return")
     public Map<String, Object> returnFromCustomer(@PathVariable String orderNo,
                                                   @RequestBody Map<String, Object> body) {
         try {
             return service.returnFromCustomer(orderNo, asLong(body.get("warehouseId")),
-                    body.get("lines"), str(body.get("remark")), operator());
+                    body.get("lines"), str(body.get("returnReason")),
+                    str(body.get("remark")), operator());
         } catch (IllegalArgumentException e) {
             return fail(e.getMessage());
         }
