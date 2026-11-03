@@ -17,6 +17,15 @@ export const useAuthStore = defineStore('auth', () => {
   /** 销售角色：只有「销售查询」一个只读页 */
   const isSales = computed(() => user.value?.role === 'SALES')
   const canWrite = computed(() => user.value?.role === 'ADMIN' || user.value?.role === 'MANAGER')
+  /**
+   * 车间现场操作权限：ADMIN / MANAGER / LEADER。
+   * <p>
+   * 班组长要在车间开机、完工、领料，让他找经理点一下不现实——不给他，
+   * 现场就会绕开系统记在纸上，反而更查不清。只覆盖「开工/完工/领料」这三类动作，
+   * 建单、下达、改单、取消仍然是 canWrite。
+   */
+  const canOperate = computed(() =>
+    user.value?.role === 'ADMIN' || user.value?.role === 'MANAGER' || user.value?.role === 'LEADER')
   const displayName = computed(() => user.value?.displayName || user.value?.username || '--')
   const roleLabel = computed(() => {
     const r = user.value?.role
@@ -56,5 +65,5 @@ export const useAuthStore = defineStore('auth', () => {
     return http.post<{ ok: boolean; message?: string }>('/api/auth/password', { oldPassword, newPassword })
   }
 
-  return { user, ready, isAdmin, isSales, canWrite, displayName, roleLabel, ensure, login, logout, changePassword }
+  return { user, ready, isAdmin, isSales, canWrite, canOperate, displayName, roleLabel, ensure, login, logout, changePassword }
 })
