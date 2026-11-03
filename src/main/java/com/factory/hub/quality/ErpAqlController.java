@@ -58,7 +58,7 @@ public class ErpAqlController {
             m.put("re", r.re());
             m.put("planId", r.planId());
             m.put("fullInspection", r.fullInspection());
-            m.put("note", r.note());
+            m.put("reasonCode", r.reasonCode());
             // Ac=-1 是零容忍，前端要显示成「0 件（零容忍）」，不能和普通的 0 长得一样
             m.put("zeroTolerance", r.ac() == ErpAqlService.AC_ZERO_TOLERANCE);
             return m;
@@ -94,8 +94,6 @@ public class ErpAqlController {
             out.put("ok", true);
             out.put("total", rows.size());
             out.put("unverifiedCount", service.unverifiedCount());
-            // 页面顶部固定说明：CR 零容忍不在表里，不写清楚会被当成漏配
-            out.put("crRuleNote", ErpAqlService.crRuleNote());
             out.put("rows", rows);
             return out;
         } catch (Exception e) {

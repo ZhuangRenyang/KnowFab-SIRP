@@ -241,7 +241,7 @@ public class ErpQcDefectQueryService {
             out.put("deviceCollectedQty", BigDecimal.ZERO);
             out.put("existingManualQty", BigDecimal.ZERO);
             out.put("deviceHasRejectPoint", false);
-            out.put("note", "这张工单没指定设备，没有设备通道数据可比对");
+            out.put("source", "NO_DEVICE");
             return out;
         }
         long from = o.getActualStart() != null ? o.getActualStart()
@@ -265,9 +265,8 @@ public class ErpQcDefectQueryService {
         out.put("deviceHasRejectPoint", hasReject);
         out.put("projectedTotal", deviceQty.add(manualQty)
                 .setScale(4, java.math.RoundingMode.HALF_UP));
-        out.put("note", hasReject
-                ? "这台设备配了 reject 点位，采集值优先，人工补录只作对照不叠加"
-                : "这台设备没配 reject 点位，没有设备通道数据，人工补录就是唯一来源");
+        // 只给代号，文案由前端 i18n 写
+        out.put("source", hasReject ? "DEVICE_PRIORITY" : "MANUAL_ONLY");
         return out;
     }
 

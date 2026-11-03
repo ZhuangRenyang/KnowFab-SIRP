@@ -136,7 +136,6 @@ public class ErpQcReconService {
         out.put("qcQty", qcQty);
         out.put("calibratedQty", target);
         out.put("changedRecords", changed);
-        out.put("note", "校准只影响质量报表，不影响 OEE 良率（prod_hourly 是 OEE 的唯一数据源，未被改动）");
         return out;
     }
 

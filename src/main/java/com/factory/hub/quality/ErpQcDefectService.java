@@ -151,11 +151,9 @@ public class ErpQcDefectService {
         out.put("pendingQty", defect.pendingQty());
         out.put("status", defect.getStatus());
         out.put("displayStatus", displayStatus(defect, dispRepo.findByDefectIdOrderBySeqNoAsc(defect.getId())));
-        if (plan.warn() != null) {
-            out.put("warn", plan.warn());
-        }
-        if (plan.summary() != null) {
-            out.put("summary", plan.summary());
+        if (plan.warnCode() != null) {
+            out.put("warnCode", plan.warnCode());
+            out.put("warnParams", plan.warnParams());
         }
         return out;
     }

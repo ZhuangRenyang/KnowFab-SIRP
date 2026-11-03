@@ -3,6 +3,7 @@ package com.factory.hub.quality;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 处置 × 库存状态 六分支适配器（QC-SPEC §3.4）——<b>本模块最容易错的地方</b>。
@@ -35,6 +36,11 @@ import java.util.List;
  * 账实立刻分家；已入账的不出库，账上就永远比现实多一批。
  */
 public final class ErpQualityStockAdapter {
+
+    /** 风险提示代号：返工已入账，货还在仓里，要人先领料出库 */
+    public static final String WARN_REWORK_NEED_ISSUE = "REWORK_NEED_ISSUE";
+    /** 风险提示代号：让步品在待处理仓，要客户同意凭证才能放行 */
+    public static final String WARN_CONCESSION_NEED_ACK = "CONCESSION_NEED_ACK";
 
     /** 处置动作（与 {@link ErpQcDisposition} 的常量一致） */
     private ErpQualityStockAdapter() {
@@ -71,12 +77,15 @@ public final class ErpQualityStockAdapter {
 
     /**
      * 一份计划。
+     * <p>
+     * <b>只给代号与参数，不给面向用户的文案</b>：后端塞中文则英文界面蹦中文，
+     * 塞英文则中文界面蹦英文，只有"后端给码、前端给文案"是干净的。
      *
-     * @param intents 要执行的动作，可能为空（报废未入账时就是空）
-     * @param summary 给用户看的一句话总结
-     * @param warn    必须让人看见的风险提示（没有则 null）
+     * @param intents    要执行的动作，可能为空（报废未入账时就是空）
+     * @param warnCode   风险提示的代号（没有则 null）
+     * @param warnParams 提示里的可变参数（如仓库名）
      */
-    public record Plan(List<Intent> intents, String summary, String warn) {
+    public record Plan(List<Intent> intents, String warnCode, Map<String, Object> warnParams) {
         public boolean isEmpty() {
             return intents.isEmpty();
         }
@@ -176,19 +185,15 @@ public final class ErpQualityStockAdapter {
      */
     private static Plan scrap(Ctx c) {
         if (!c.inStock()) {
-            return new Plan(List.of(),
-                    "报废 " + plain(c.qty()) + " 件（这批货从未入账，不产生库存单据）",
-                    null);
+            return new Plan(List.of(), null, null);
         }
+        // 报废出库单的 qty 之所以为正，是因为方向由单据类型决定；
+        // 界面显示时按类型加负号，别在这里再取反一次
         return new Plan(List.of(new Intent(
-                        Op.STOCK_BILL, com.factory.hub.erp.ErpStockBill.TYPE_SCRAP_OUT, c.qty(),
-                        null, c.warehouseId(), c.defectNo(),
-                        "不良品处置报废（不良单 " + c.defectNo() + "）",
-                        "从所在仓出库报废")),
-                "报废出库 " + plain(c.qty()) + " 件",
-                // 报废出库单的 qty 之所以为正，是因为方向由单据类型决定；
-                // 界面显示时按类型加负号，别在这里再取反一次
-                null);
+                Op.STOCK_BILL, com.factory.hub.erp.ErpStockBill.TYPE_SCRAP_OUT, c.qty(),
+                null, c.warehouseId(), c.defectNo(),
+                "不良品处置报废（不良单 " + c.defectNo() + "）",
+                "从所在仓出库报废")), null, null);
     }
 
     /**
@@ -207,14 +212,11 @@ public final class ErpQualityStockAdapter {
         Intent order = new Intent(Op.REWORK_ORDER, null, c.qty(), null, null, c.defectNo(),
                 "不良品返工（不良单 " + c.defectNo() + "）", "建返工工单");
         if (!c.inStock()) {
-            return new Plan(List.of(order),
-                    "建返工工单 " + plain(c.qty()) + " 件（这批货从未入账，不产生库存单据）",
-                    null);
+            return new Plan(List.of(order), null, null);
         }
-        return new Plan(List.of(order),
-                "建返工工单 " + plain(c.qty()) + " 件（不产生库存单据）",
-                "这批货还在「" + c.whLabel() + "」，返工前请先开一张「其他出库」领到车间 —— "
-                        + "系统不代做这一步（自动出库会让仓管以为货已经发出去了，账实当场分家）");
+        // 提示只给代号 + 仓库名，文案由前端 i18n 写
+        return new Plan(List.of(order), WARN_REWORK_NEED_ISSUE,
+                Map.of("warehouseName", c.whLabel()));
     }
 
     /**
@@ -229,27 +231,23 @@ public final class ErpQualityStockAdapter {
      */
     private static Plan concession(Ctx c) {
         requireBlockedWh(c, "让步接收");
-        String warn = "待处理仓的货不能直接出库；客户同意后登记同意凭证才能放行";
         // 货已经在待处理仓：不用调，也不需要别的库存动作
         boolean moved = c.inStock() && !c.warehouseId().equals(c.blockedWarehouseId());
         if (c.inStock() && !moved) {
-            return new Plan(List.of(),
-                    "让步接收 " + plain(c.qty()) + " 件（货已在待处理仓，无库存动作）", warn);
+            return new Plan(List.of(), WARN_CONCESSION_NEED_ACK, Map.of());
         }
         if (!c.inStock()) {
             return new Plan(List.of(new Intent(
-                            Op.STOCK_BILL, com.factory.hub.erp.ErpStockBill.TYPE_OTHER_IN, c.qty(),
-                            null, c.blockedWarehouseId(), c.defectNo(),
-                            "不良品让步接收（不良单 " + c.defectNo() + "）",
-                            "让步接收，入待处理仓")),
-                    "让步接收入待处理仓 " + plain(c.qty()) + " 件", warn);
+                    Op.STOCK_BILL, com.factory.hub.erp.ErpStockBill.TYPE_OTHER_IN, c.qty(),
+                    null, c.blockedWarehouseId(), c.defectNo(),
+                    "不良品让步接收（不良单 " + c.defectNo() + "）",
+                    "让步接收，入待处理仓")), WARN_CONCESSION_NEED_ACK, Map.of());
         }
         return new Plan(List.of(new Intent(
-                        Op.STOCK_BILL, com.factory.hub.erp.ErpStockBill.TYPE_TRANSFER, c.qty(),
-                        c.warehouseId(), c.blockedWarehouseId(), c.defectNo(),
-                        "不良品让步接收：原仓转到待处理仓（不良单 " + c.defectNo() + "）",
-                        "让步接收，调到待处理仓")),
-                "从所在仓调到待处理仓 " + plain(c.qty()) + " 件", warn);
+                Op.STOCK_BILL, com.factory.hub.erp.ErpStockBill.TYPE_TRANSFER, c.qty(),
+                c.warehouseId(), c.blockedWarehouseId(), c.defectNo(),
+                "不良品让步接收：原仓转到待处理仓（不良单 " + c.defectNo() + "）",
+                "让步接收，调到待处理仓")), WARN_CONCESSION_NEED_ACK, Map.of());
     }
 
     private static void requireBlockedWh(Ctx c, String action) {

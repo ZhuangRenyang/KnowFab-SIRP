@@ -95,6 +95,16 @@ public interface ErpQcDefectRepository extends JpaRepository<ErpQcDefect, Long> 
            "where d.status = 'PENDING' and d.voidedAt is null and d.qty > d.disposedQty")
     long pendingRecordCount();
 
+    /** 未分类条数：与件数分开给（2 条 3000 件 vs 3000 条 1 件，治理手段完全不同） */
+    @Query("select count(d) from ErpQcDefect d where d.defectCodeId is null and d.voidedAt is null")
+    long countUntriaged();
+
+    /** 帕累托（按设备）：{@code [deviceCode, sumQty]} */
+    @Query("select d.deviceCode, coalesce(sum(d.qty), 0) from ErpQcDefect d " +
+           "where d.foundAt >= :from and d.foundAt <= :to and d.voidedAt is null " +
+           "group by d.deviceCode order by coalesce(sum(d.qty), 0) desc")
+    List<Object[]> paretoByDevice(@Param("from") long from, @Param("to") long to);
+
     /** 未分类件数：帕累托里固定有一行"未分类"，这个数不能静默变成 0 */
     @Query("select coalesce(sum(d.qty), 0) from ErpQcDefect d " +
            "where d.defectCodeId is null and d.voidedAt is null")

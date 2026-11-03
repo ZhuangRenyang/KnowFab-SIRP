@@ -156,8 +156,9 @@ class ErpQcDefectServiceTest {
                 anyString(), anyString(), any(), any());
         verify(f.workOrderService, times(1)).create(any(), anyString());
         assertEquals("WO20261103-0009", f.saved.get(0).getReworkOrderNo());
-        assertNotNull(out.get("warn"), "已入账的返工必须提示：货还在成品仓，要人先领料出库");
-        assertTrue(String.valueOf(out.get("warn")).contains("成品仓"), String.valueOf(out.get("warn")));
+        assertEquals(ErpQualityStockAdapter.WARN_REWORK_NEED_ISSUE, out.get("warnCode"),
+                "已入账的返工必须给提示代号（文案由前端写）");
+        assertEquals("成品仓", ((Map<?, ?>) out.get("warnParams")).get("warehouseName"));
     }
 
     @Test

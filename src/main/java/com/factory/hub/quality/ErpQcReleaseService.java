@@ -1,5 +1,6 @@
 package com.factory.hub.quality;
 
+import com.factory.hub.erp.ErpSku;
 import com.factory.hub.erp.ErpWarehouse;
 import com.factory.hub.erp.ErpWarehouseRepository;
 import org.springframework.stereotype.Service;
@@ -36,27 +37,34 @@ import java.util.stream.Collectors;
  * ③ 只依赖仓一个维度——仓是物理事实，不会因某条记录漏写而失效。
  */
 @Service
-public class ErpQcReleaseService {
+public class ErpQcReleaseService implements com.factory.hub.erp.ErpQualityReleaseGate {
 
     /** 有让步流水但没有客户同意凭证 */
     public static final String BLOCK_NO_ACK = "NO_ACK";
     /** 禁发仓里没有任何放行依据 */
     public static final String BLOCK_NO_RELEASE = "NO_RELEASE";
 
-    /** 已知限制：SKU 级匹配不做数量配平 */
-    public static final String NOTE = "让步匹配为 SKU 级，不做数量配平；"
-            + "订单数量大于禁发仓存量时会整行拦截（多拦不少拦，方向安全）";
+    /**
+     * 已知限制的<b>代号</b>（不给中文原文）。
+     * <p>
+     * 后端不返回面向用户的文案：塞中文则英文界面蹦中文，塞英文则中文界面蹦英文。
+     * 只有"后端给码、前端给文案"是干净的。限制说明由前端 i18n 写。
+     */
+    public static final String LIMIT_SKU_LEVEL_MATCH = "SKU_LEVEL_MATCH";
 
     private final ErpWarehouseRepository whRepo;
     private final ErpQcDispositionRepository dispRepo;
     private final ErpQcDefectRepository defectRepo;
+    private final com.factory.hub.erp.ErpSkuRepository skuRepo;
 
     public ErpQcReleaseService(ErpWarehouseRepository whRepo,
                                ErpQcDispositionRepository dispRepo,
-                               ErpQcDefectRepository defectRepo) {
+                               ErpQcDefectRepository defectRepo,
+                               com.factory.hub.erp.ErpSkuRepository skuRepo) {
         this.whRepo = whRepo;
         this.dispRepo = dispRepo;
         this.defectRepo = defectRepo;
+        this.skuRepo = skuRepo;
     }
 
     /**
@@ -75,7 +83,8 @@ public class ErpQcReleaseService {
         out.put("fromSpecialWh", wh != null && wh.isBlocked());
         out.put("blocked", false);
         out.put("hits", new ArrayList<>());
-        out.put("note", NOTE);
+        // 已知限制只给代号，说明文字由前端 i18n 写（后端不返回面向用户的文案）
+        out.put("limitCode", LIMIT_SKU_LEVEL_MATCH);
 
         // 正常仓：直接放行
         if (wh == null || !wh.isBlocked()) {
@@ -110,6 +119,79 @@ public class ErpQcReleaseService {
         return out;
     }
 
+    /**
+     * 硬拦：不能出库就抛异常（AC-15）。
+     * <p>
+     * <b>这是"查不到就拦"落地的那一步</b>：查询接口只是给界面提示，
+     * 界面关了照样能提交；拦在出库路径上才是硬的。
+     * <p>
+     * 两种拦法给两种提示（要用户做的事完全不同，不能混成一个"被拦了"）：
+     * <ul>
+     *   <li>{@code NO_ACK}：有让步记录但缺客户书面同意 → 去登记同意凭证；</li>
+     *   <li>{@code NO_RELEASE}：禁发仓里没有任何放行依据 → 去不良品页处置。</li>
+     * </ul>
+     */
+    @Override
+    public void assertShippable(Long whId, List<Long> skuIds) {
+        Map<String, Object> out = check(whId, skuIds);
+        if (!Boolean.TRUE.equals(out.get("blocked"))) {
+            return;
+        }
+        List<?> hits = (List<?>) out.get("hits");
+        // 禁发仓 + 一个 SKU 都没给：无法核验有没有放行依据 → 拒（fail-safe 方向）
+        if (skuIds == null || skuIds.isEmpty()) {
+            throw new IllegalArgumentException("这次出库的源仓是禁发仓，但没能核验出库的货物，"
+                    + "不能直接发货。请先到「不良品」页处置这批货，或改从正常仓发货");
+        }
+        if (hits == null || hits.isEmpty()) {
+            // hits 为空 = 本次出库的每个 SKU 都有放行依据（有客户同意凭证）→ 放行
+            return;
+        }
+        for (Object o : hits) {
+            if (!(o instanceof Map<?, ?> hit)) {
+                continue;
+            }
+            Long skuId = hit.get("skuId") instanceof Number n ? n.longValue() : null;
+            String reason = String.valueOf(hit.get("blockReason"));
+            String nos = defectNosOf(hit.get("records"));
+            String skuText = skuId == null ? "这批货" : "商品「" + skuName(skuId) + "」";
+            if (BLOCK_NO_ACK.equals(reason)) {
+                throw new IllegalArgumentException(skuText + "有让步记录但缺客户书面同意"
+                        + (nos.isEmpty() ? "" : "（不良单 " + nos + "）")
+                        + "，请先登记客户同意凭证再发货");
+            }
+            throw new IllegalArgumentException(skuText + "在禁发仓里，还没做处置判定"
+                    + (nos.isEmpty() ? "" : "（不良单 " + nos + "）")
+                    + "，请先处置完再发货");
+        }
+    }
+
+    /** 命中记录里的不良单号（给用户看是哪几张单卡住了） */
+    private String defectNosOf(Object records) {
+        if (!(records instanceof List<?> list)) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (Object o : list) {
+            if (!(o instanceof Map<?, ?> m)) {
+                continue;
+            }
+            Object no = m.get("defectNo");
+            if (no == null) {
+                continue;
+            }
+            if (!sb.isEmpty()) {
+                sb.append("、");
+            }
+            sb.append(no);
+        }
+        return sb.toString();
+    }
+
+    private String skuName(Long skuId) {
+        return skuRepo.findById(skuId).map(ErpSku::getName).orElse("商品#" + skuId);
+    }
+
     private Map<String, Object> hit(Long skuId, String blockReason, List<ErpQcDisposition> rows) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("skuId", skuId);
@@ -117,7 +199,7 @@ public class ErpQcReleaseService {
         // 下一步要人做的事不同，不能混成一个"被拦了"：
         // NO_ACK → 登记客户同意单号；NO_RELEASE → 去不良品页处置
         m.put("actionHint", BLOCK_NO_ACK.equals(blockReason)
-                ? "登记客户同意凭证后即可放行" : "请先到不良品页处置这批货");
+                ? "REGISTER_ACK" : "DISPOSE_FIRST");
         List<Map<String, Object>> records = new ArrayList<>();
         for (ErpQcDisposition d : rows) {
             Map<String, Object> r = new LinkedHashMap<>();

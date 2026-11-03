@@ -69,8 +69,15 @@ public class ErpAqlService {
      * @param note           给前端显示的一句人话（为什么全检），不需要解释时为 null
      */
     public record Resolved(String codeLetter, int sampleSize, int ac, int re,
-                           Long planId, boolean fullInspection, String note) {
+                           Long planId, boolean fullInspection, String reasonCode) {
     }
+
+    /** 原因代号：批量小于最小抽样档 → 全检 */
+    public static final String REASON_LOT_TOO_SMALL = "LOT_TOO_SMALL";
+    /** 原因代号：方案样本量不小于批量 → 全检（国标：样本量等于或超过批量时执行 100% 检验） */
+    public static final String REASON_SAMPLE_GE_LOT = "SAMPLE_GE_LOT";
+    /** 原因代号：CR 致命缺陷 → 零容忍（Ac=-1），不走抽样表 */
+    public static final String REASON_ZERO_TOLERANCE = "ZERO_TOLERANCE";
 
     /**
      * 查不到方案时抛这个（而不是普通 IllegalArgumentException），
@@ -102,8 +109,7 @@ public class ErpAqlService {
 
         // ① 批量比最小档还小：没有抽样方案可用，只能全检
         if (lot < MIN_LOT) {
-            return new Resolved(null, lot, 0, 1, null, true,
-                    "批量 " + lot + " 件小于最小抽样档，按全检执行");
+            return new Resolved(null, lot, 0, 1, null, true, REASON_LOT_TOO_SMALL);
         }
 
         ErpQcAqlPlan plan = planRepo.findPlan(lv, st, lot, a)
@@ -112,8 +118,7 @@ public class ErpAqlService {
         // ② 样本量 >= 批量：国标要求 100% 检验，Ac/Re 不变
         if (plan.getSampleSize() >= lot) {
             return new Resolved(plan.getCodeLetter(), lot, plan.getAc(), plan.getRe(),
-                    plan.getId(), true,
-                    "方案样本量 " + plan.getSampleSize() + " 件不小于批量 " + lot + " 件，按全检执行");
+                    plan.getId(), true, REASON_SAMPLE_GE_LOT);
         }
         return new Resolved(plan.getCodeLetter(), plan.getSampleSize(), plan.getAc(), plan.getRe(),
                 plan.getId(), false, null);
@@ -134,7 +139,7 @@ public class ErpAqlService {
         }
         return new Resolved(base.codeLetter(), base.sampleSize(),
                 AC_ZERO_TOLERANCE, RE_ZERO_TOLERANCE, base.planId(), base.fullInspection(),
-                "致命缺陷：零容忍，发现 1 件即整批拒收");
+                REASON_ZERO_TOLERANCE);
     }
 
     /* ==================== 方案表维护 ==================== */
@@ -250,16 +255,6 @@ public class ErpAqlService {
     @Transactional(readOnly = true)
     public long unverifiedCount() {
         return planRepo.findAllOrdered().stream().filter(p -> !p.isVerified()).count();
-    }
-
-    /**
-     * 抽样方案页顶部那句固定说明。
-     * <p>
-     * CR 零容忍不落在表里（66 行完全相同的 Ac=-1 会和"正常格子的 Ac=0"混淆），
-     * 所以必须在界面上把规则说清楚，否则维护页上看不到 CR 就会以为漏配了。
-     */
-    public static String crRuleNote() {
-        return "CR 致命缺陷：任意样本量 Ac = -1（零容忍），不走抽样表，发现 1 件即整批拒收";
     }
 
     /* ==================== 内部 ==================== */

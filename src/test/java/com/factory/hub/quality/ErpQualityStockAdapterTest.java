@@ -47,8 +47,7 @@ class ErpQualityStockAdapterTest {
         assertEquals(0, p.stockBillCount(), "从未入账的货不能动库存");
         assertEquals(0, p.reworkOrderCount());
         assertTrue(p.isEmpty());
-        assertTrue(p.summary().contains("从未入账"), p.summary());
-        assertNull(p.warn(), "这一支没有需要人额外注意的风险");
+        assertNull(p.warnCode(), "这一支没有需要人额外注意的风险");
     }
 
     /* ==================== 分支②：报废 × 已入账 ==================== */
@@ -83,7 +82,7 @@ class ErpQualityStockAdapterTest {
         assertEquals(1, p.reworkOrderCount());
         assertEquals(ErpQualityStockAdapter.Op.REWORK_ORDER, p.intents().get(0).op());
         assertEquals(0, p.intents().get(0).qty().compareTo(bd("6")));
-        assertNull(p.warn());
+        assertNull(p.warnCode(), "未入账的返工没有额外风险提示");
     }
 
     /* ==================== 分支④：返工 × 已入账 ==================== */
@@ -97,9 +96,10 @@ class ErpQualityStockAdapterTest {
         assertEquals(0, p.stockBillCount(),
                 "返工不自动出库：领料要去车间，而车间是不是一个仓由客户定义，系统不该替它选");
         assertEquals(1, p.reworkOrderCount());
-        assertNotNull(p.warn(), "必须提示：货还在哪、该人做什么");
-        assertTrue(p.warn().contains("成品仓"), "提示里要写清货在哪个仓：" + p.warn());
-        assertTrue(p.warn().contains("其他出库"), "要告诉人具体开什么单：" + p.warn());
+        assertEquals(ErpQualityStockAdapter.WARN_REWORK_NEED_ISSUE, p.warnCode(),
+                "提示只给代号，文案由前端 i18n 写");
+        assertEquals("成品仓", p.warnParams().get("warehouseName"),
+                "提示参数里要有仓库名，前端才知道货在哪");
     }
 
     @Test
@@ -107,8 +107,9 @@ class ErpQualityStockAdapterTest {
     void reworkWarningAlwaysHasWarehouse() {
         ErpQualityStockAdapter.Plan p = ErpQualityStockAdapter.plan(
                 ctx(true, ErpQcDisposition.ACT_REWORK, "6"));
-        assertNotNull(p.warn());
-        assertTrue(p.warn().contains("仓库#1"), "至少要能看出是哪一仓：" + p.warn());
+        assertEquals(ErpQualityStockAdapter.WARN_REWORK_NEED_ISSUE, p.warnCode());
+        assertEquals("仓库#1", p.warnParams().get("warehouseName"),
+                "没给仓名时也要有可读的兜底");
     }
 
     /* ==================== 分支⑤：让步 × 未入账 ==================== */
@@ -126,8 +127,7 @@ class ErpQualityStockAdapterTest {
         assertEquals(WH_BLOCKED, i.whId(), "必须入待处理仓，不能入良品仓");
         assertNull(i.srcWhId());
         assertEquals(0, i.qty().signum() > 0 ? 0 : 1);
-        assertNotNull(p.warn());
-        assertTrue(p.warn().contains("同意"), "要提示：客户同意后才能放行：" + p.warn());
+        assertEquals(ErpQualityStockAdapter.WARN_CONCESSION_NEED_ACK, p.warnCode());
     }
 
     /* ==================== 分支⑥：让步 × 已入账 ==================== */

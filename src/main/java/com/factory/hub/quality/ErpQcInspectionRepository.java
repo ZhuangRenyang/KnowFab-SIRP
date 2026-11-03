@@ -19,6 +19,16 @@ public interface ErpQcInspectionRepository extends JpaRepository<ErpQcInspection
     String maxNoByPrefix(@Param("prefix") String prefix);
 
     /**
+     * 窗口内的检验覆盖件数（全检按批量算，抽样按样本量算）。
+     * <p>
+     * 这是质检口径不良率的分母：质检判出的不良件数 ÷ 覆盖件数。
+     */
+    @Query("select coalesce(sum(case when i.fullInspection = true then i.lotQty " +
+           "else i.sampleSize end), 0) from ErpQcInspection i " +
+           "where i.createdAt >= :from and i.createdAt <= :to and i.status <> 'CANCELLED'")
+    java.math.BigDecimal sumInspectedQty(@Param("from") long from, @Param("to") long to);
+
+    /**
      * 列表。type/status 为空表示全部；时间窗按 {@code created_at}。
      * 排序：未判定的排前面（待办优先），同态按创建时间倒序。
      */

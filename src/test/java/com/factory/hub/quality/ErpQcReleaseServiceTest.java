@@ -12,6 +12,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -38,7 +39,8 @@ class ErpQcReleaseServiceTest {
     private ErpQcReleaseService svc(ErpQcDispositionRepository dispRepo,
                                      ErpQcDefectRepository defectRepo,
                                      ErpWarehouseRepository whRepo) {
-        return new ErpQcReleaseService(whRepo, dispRepo, defectRepo);
+        return new ErpQcReleaseService(whRepo, dispRepo, defectRepo,
+                mock(com.factory.hub.erp.ErpSkuRepository.class));
     }
 
     private static ErpWarehouse wh(Long id, boolean blocked) {
@@ -165,14 +167,71 @@ class ErpQcReleaseServiceTest {
     }
 
     @Test
-    @DisplayName("返回里带已知限制说明（SKU 级匹配不做数量配平）")
+    @DisplayName("返回里带已知限制代号（说明文字由前端 i18n 写，后端不返回面向用户的文案）")
     void noteExplainsKnownLimit() {
         ErpWarehouseRepository whRepo = mock(ErpWarehouseRepository.class);
         when(whRepo.findById(WH_STANDARD)).thenReturn(Optional.of(wh(WH_STANDARD, false)));
         ErpQcReleaseService s = svc(mock(ErpQcDispositionRepository.class),
                 mock(ErpQcDefectRepository.class), whRepo);
         Map<String, Object> out = s.check(WH_STANDARD, List.of(12L));
-        assertNotNull(out.get("note"));
-        assertTrue(String.valueOf(out.get("note")).contains("SKU 级"), String.valueOf(out.get("note")));
+        assertEquals(ErpQcReleaseService.LIMIT_SKU_LEVEL_MATCH, out.get("limitCode"));
+    }
+
+    /* ==================== 硬拦（AC-15）：assertShippable ==================== */
+
+    @Test
+    @DisplayName("硬拦①：有让步流水但缺客户同意 → 抛异常，消息里带不良单号和下一步")
+    void assertBlocksWithoutAck() {
+        ErpWarehouseRepository whRepo = mock(ErpWarehouseRepository.class);
+        when(whRepo.findById(WH_BLOCKED)).thenReturn(Optional.of(wh(WH_BLOCKED, true)));
+        ErpQcDispositionRepository dispRepo = mock(ErpQcDispositionRepository.class);
+        when(dispRepo.findActiveConcessionsBySkuIds(any()))
+                .thenReturn(List.of(concession(1L, null)));
+        ErpQcDefectRepository defectRepo = mock(ErpQcDefectRepository.class);
+        ErpQcDefect d = new ErpQcDefect();
+        d.setId(1L);
+        d.setDefectNo("BLP20261103-0001");
+        d.setSkuId(12L);
+        when(defectRepo.findById(1L)).thenReturn(Optional.of(d));
+
+        ErpQcReleaseService s = svc(dispRepo, defectRepo, whRepo);
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> s.assertShippable(WH_BLOCKED, List.of(12L)));
+        assertTrue(ex.getMessage().contains("客户书面同意"), ex.getMessage());
+        assertTrue(ex.getMessage().contains("BLP20261103-0001"),
+                "消息要带不良单号，人才知道去处理哪一张：" + ex.getMessage());
+    }
+
+    @Test
+    @DisplayName("硬拦②：禁发仓里没做任何让步 → 抛异常（NO_RELEASE）")
+    void assertBlocksWithoutRelease() {
+        ErpWarehouseRepository whRepo = mock(ErpWarehouseRepository.class);
+        when(whRepo.findById(WH_BLOCKED)).thenReturn(Optional.of(wh(WH_BLOCKED, true)));
+        ErpQcDispositionRepository dispRepo = mock(ErpQcDispositionRepository.class);
+        when(dispRepo.findActiveConcessionsBySkuIds(any())).thenReturn(List.of());
+        ErpQcReleaseService s = svc(dispRepo, mock(ErpQcDefectRepository.class), whRepo);
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> s.assertShippable(WH_BLOCKED, List.of(12L)));
+        assertTrue(ex.getMessage().contains("处置判定"), ex.getMessage());
+    }
+
+    @Test
+    @DisplayName("硬拦③：有客户同意凭证 → 放行；普通仓 → 放行（别把正常发货也拦了）")
+    void assertPassesWhenAllowed() {
+        ErpWarehouseRepository whRepo = mock(ErpWarehouseRepository.class);
+        when(whRepo.findById(WH_BLOCKED)).thenReturn(Optional.of(wh(WH_BLOCKED, true)));
+        when(whRepo.findById(WH_STANDARD)).thenReturn(Optional.of(wh(WH_STANDARD, false)));
+        ErpQcDispositionRepository dispRepo = mock(ErpQcDispositionRepository.class);
+        when(dispRepo.findActiveConcessionsBySkuIds(any()))
+                .thenReturn(List.of(concession(1L, "ACK-2026-001")));
+        ErpQcDefectRepository defectRepo = mock(ErpQcDefectRepository.class);
+        ErpQcDefect d = new ErpQcDefect();
+        d.setId(1L);
+        d.setSkuId(12L);
+        when(defectRepo.findById(1L)).thenReturn(Optional.of(d));
+
+        ErpQcReleaseService s = svc(dispRepo, defectRepo, whRepo);
+        s.assertShippable(WH_BLOCKED, List.of(12L));      // 有凭证，不抛
+        s.assertShippable(WH_STANDARD, List.of(12L));    // 普通仓，不抛
     }
 }

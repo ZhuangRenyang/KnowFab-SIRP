@@ -142,7 +142,8 @@ class ErpAqlServiceTest {
         assertEquals(1, r.sampleSize());
         assertEquals(0, r.ac());
         assertEquals(1, r.re());
-        assertNotNull(r.note(), "全检必须给一句人话说明原因");
+        assertEquals(ErpAqlService.REASON_LOT_TOO_SMALL, r.reasonCode(),
+                "全检只给代号，说明文字由前端写");
     }
 
     @Test
@@ -160,7 +161,7 @@ class ErpAqlServiceTest {
         assertEquals(2, full.sampleSize());
         assertEquals(0, full.ac());
         assertEquals(1, full.re());
-        assertNotNull(full.note(), "转全检要给一句人话说明原因");
+        assertEquals(ErpAqlService.REASON_SAMPLE_GE_LOT, full.reasonCode());
     }
 
     /* ==================== 查不到 = 抛异常（不给默认值） ==================== */
@@ -202,7 +203,7 @@ class ErpAqlServiceTest {
             assertEquals(ErpAqlService.AC_ZERO_TOLERANCE, r.ac());
             assertEquals(ErpAqlService.RE_ZERO_TOLERANCE, r.re());
             assertEquals(-1, r.ac(), "内部统一用 -1 表示零容忍，不能用 0（0 是未配置）");
-            assertTrue(r.note().contains("零容忍"));
+            assertEquals(ErpAqlService.REASON_ZERO_TOLERANCE, r.reasonCode());
         }
         // 非 CR 不改变方案
         ErpAqlService.Resolved ma = svc.resolveForSeverity("II", "NORMAL",

@@ -42,6 +42,16 @@ public interface ProdHourlyRepository extends JpaRepository<ProdHourly, Long> {
     double runSecOf(@Param("code") String code, @Param("from") long from, @Param("to") long to);
 
 
+    /**
+     * 窗口内的产出与不良数合计（质量看板的设备口径用）。
+     * <p>
+     * 设备口径 = 设备计数器说的不良 ÷ 设备计数器的产出，与质检口径分开展示，
+     * 两者之差就是双通道对账条上的 gap。
+     */
+    @Query("select coalesce(sum(p.output), 0), coalesce(sum(p.defect), 0) from ProdHourly p " +
+           "where p.hourStart >= :from and p.hourStart < :to")
+    List<Object[]> sumOutputAndDefect(@Param("from") long from, @Param("to") long to);
+
     /** 单设备单小时的精确行（内存桶重启后从这里继承累计，防覆盖写冲掉已落库增量） */
     ProdHourly findByDeviceCodeAndHourStart(String deviceCode, long hourStart);
 

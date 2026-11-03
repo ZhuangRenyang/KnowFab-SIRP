@@ -66,6 +66,16 @@ public class ErpSalesService {
     private final ErpStockBillHdrRepository hdrRepo;
     private final ErpSkuRepository skuRepo;
     private final ErpPartnerRepository partnerRepo;
+    /**
+     * 质量放行闸门（AC-15）。
+     * <p>
+     * <b>必须在建单之前拦</b>：禁发仓里的让步品/待判定退货，没有客户书面同意就发不出去。
+     * 拦在 {@code createManual} 之前，货一件都不会动。
+     * <p>
+     * 用接口而不是直接依赖质量域的类，是为了让依赖保持单向
+     * （质量域依赖 ERP，ERP 不认识质量域；实现在质量域，Spring 装配）。
+     */
+    private final ErpQualityReleaseGate releaseGate;
 
     public ErpSalesService(ErpSalesOrderRepository orderRepo,
                            ErpSalesOrderItemRepository itemRepo,
@@ -73,7 +83,8 @@ public class ErpSalesService {
                            ErpStockBillRepository billRepo,
                            ErpStockBillHdrRepository hdrRepo,
                            ErpSkuRepository skuRepo,
-                           ErpPartnerRepository partnerRepo) {
+                           ErpPartnerRepository partnerRepo,
+                           ErpQualityReleaseGate releaseGate) {
         this.orderRepo = orderRepo;
         this.itemRepo = itemRepo;
         this.stockService = stockService;
@@ -81,6 +92,7 @@ public class ErpSalesService {
         this.hdrRepo = hdrRepo;
         this.skuRepo = skuRepo;
         this.partnerRepo = partnerRepo;
+        this.releaseGate = releaseGate;
     }
 
     /* ==================== 建单 / 改单 ==================== */
@@ -221,6 +233,14 @@ public class ErpSalesService {
         if (reqs.isEmpty()) {
             throw new IllegalArgumentException("没有要发货的数量");
         }
+
+        // AC-15 质量放行硬拦：源仓是禁发仓时，必须有客户书面同意才能发。
+        // 拦在建单之前 —— 货一件都不会动。普通仓直接放行（别把正常发货也拦了）
+        List<Long> shipSkuIds = new ArrayList<>();
+        for (ErpStockService.LineReq r : reqs) {
+            shipSkuIds.add(r.skuId());
+        }
+        releaseGate.assertShippable(whId, shipSkuIds);
 
         String note = "销售出库（订单 " + orderNo + "）"
                 + (remark == null || remark.isBlank() ? "" : "；" + remark);
