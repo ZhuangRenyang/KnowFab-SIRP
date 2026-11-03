@@ -2399,6 +2399,8 @@ erpRpt: {
     flagOk: 'OK',
     secOutput: 'Output records',
     outputHint: 'One record per receipt, unique bill no. - retries never double count',
+    colGoodQty: 'Good qty in',
+    outputSum: 'Good {good} + defect {bad} = total {total}',
     noOutput: 'No output yet',
     colBillNo: 'Receipt no.',
     colQty: 'Qty',

@@ -2403,6 +2403,8 @@ erpRpt: {
     flagOk: '齐',
     secOutput: '产出流水',
     outputHint: '每一笔入库对应一条，单号唯一 —— 重复重试不会多记',
+    colGoodQty: '良品入库',
+    outputSum: '良品 {good} + 不良 {bad} = 总产出 {total}',
     noOutput: '还没有产出',
     colBillNo: '入库单号',
     colQty: '数量',

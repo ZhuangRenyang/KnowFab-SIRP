@@ -1,23 +1,28 @@
 /* ============================================================
-   全局 ERP 布局工具类
+   全局 ERP 布局骨架
    ------------------------------------------------------------
    为什么需要这个文件（不是"多此一举抽公共样式"）：
 
-   `.tab-toolbar` 原本只定义在 ErpSkuTab / ErpPartnerTab / ErpWarehouseTab /
-   StockAlertTab 各自的 <style scoped> 里。scoped 会编译成
-   `.tab-toolbar[data-v-xxxxx]`，**只对本组件模板生效**。
-   于是没有自己定义这个类的页面（生产工单、成本核算）里，
-   工具条从「一行 flex」退化成「竖排堆叠」——状态筛选、搜索框、刷新、新建
-   四个东西上下摞在一起，页面高度凭空多出一截。
+   ① `.tab-toolbar` 原本只定义在 ErpSkuTab / ErpPartnerTab / ErpWarehouseTab /
+      StockAlertTab 各自的 <style scoped> 里。scoped 会编译成
+      `.tab-toolbar[data-v-xxxxx]`，**只对本组件模板生效**。
+      于是没自己定义这个类的页面（生产工单、成本核算）里，工具条从
+      「一行 flex」退化成「竖排堆叠」——状态筛选、搜索框、刷新、新建
+      四个东西上下摞在一起，页面高度凭空多出一截。
 
-   这类「多个页面共用的布局骨架」必须放全局。放在任何一个组件的 scoped 里，
-   都等于只给那个组件用。
+   ② 下面这些类（.kpi-row / .kpi / .cell-main …）原本散在各页面的 scoped 里，
+      每次新增页面就复制一遍。2026-11-03 就因此出过事：tokens.css 改名后
+      三个页面各有一份过期的变量引用，83 处静默失效（见提交 26531e7）。
+      同一份骨架散成 N 份，改一次就得改 N 个地方，漏一个就是视觉塌陷。
 
-   优先级说明：各组件 scoped 里的同名定义特异性更高（多了 [data-v-x]），
-   仍然会覆盖这里。所以这个文件只做兜底，不会破坏已有页面的微调。
+   这里放的是**跨页面复用的结构类**，不放任何单个页面特有的微调。
+   各组件 scoped 里的同名定义特异性更高（多了 [data-v-x]），仍然会覆盖这里，
+   所以不会破坏已有页面的定制。
    ============================================================ */
 
-/* 页内工具条：状态下拉 + 搜索 + 刷新 + 主按钮，一行排开、放不下自动换行 */
+/* ---------- 页内工具条 ---------- */
+
+/* 状态下拉 + 搜索 + 刷新 + 主按钮，一行排开、放不下自动换行 */
 .tab-toolbar {
   display: flex;
   align-items: center;
@@ -30,3 +35,183 @@
 .grow {
   flex: 1;
 }
+
+/* ---------- KPI 卡片行 ---------- */
+
+/*
+ * 列数不写死：各页面卡的数量不同（工单 5 张、成本 3 张、质检看板 5 张），
+ * 用 auto-fit 自适应。页面要精确控制列宽时，自己写 grid-template-columns 覆盖。
+ */
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.kpi {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  padding: 10px 14px;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+/* 可点击的 KPI 卡（点了当筛选条件用）才给手型和悬停反馈 */
+.kpi[role="button"],
+.kpi.clickable {
+  cursor: pointer;
+}
+
+.kpi.clickable:hover {
+  border-color: var(--accent);
+}
+
+.kpi.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.kpi-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.kpi-value {
+  margin-top: 2px;
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--fg);
+  line-height: 1.2;
+}
+
+/* 需要强调"这个数不正常"的卡（缺料、报废损失、待处置） */
+.kpi.warn .kpi-value,
+.kpi-warn .kpi-value {
+  color: var(--idle);
+}
+
+.kpi.danger .kpi-value {
+  color: var(--danger);
+}
+
+/* ---------- 表格单元格 ---------- */
+
+/* 单元格主行（产品名、工单号）+ 副行（编码、时间）。把两行塞进一个单元格省一列宽度 */
+.cell-main {
+  font-size: 13px;
+  color: var(--fg);
+}
+
+.cell-sub {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* ---------- 数字与语义色 ---------- */
+
+/* 所有数量/金额/百分比必须过这个类：等宽 + 表格数字对齐，车间横向扫读全靠它 */
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.danger { color: var(--danger); }
+.warn { color: var(--idle); }
+.muted { color: var(--muted); }
+.strong { font-weight: 600; }
+
+/* 中国工厂习惯：涨/正数用红，跌/负数用绿（与欧美相反） */
+.up { color: var(--danger); }
+.down { color: var(--run); }
+
+/* ---------- 分页与提示 ---------- */
+
+.pager {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.hint {
+  margin: 8px 2px 0;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+/* ---------- 表单布局 ---------- */
+
+/* 一行两列的表单分组，省掉一堆 el-col :span="12" */
+.frow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+/* 字段下方的说明文字（比 placeholder 更持久，比 tooltip 更易读） */
+.field-hint {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+/* ---------- 抽屉详情 ---------- */
+
+.dt-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.dt-no {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--fg);
+  font-family: var(--font-mono);
+}
+
+.dt-flag {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.dt-desc {
+  margin-bottom: 16px;
+}
+
+/* 详情里的分节标题（用料 / 产出 / 成本 / 检验记录） */
+.dt-sec {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 12px 0 6px;
+  flex-wrap: wrap;
+}
+
+.dt-sec-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.dt-sec-sub {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* ---------- 宽度工具 ---------- */
+
+.w120 { width: 120px; }
+.w160 { width: 160px; }
+.w180 { width: 180px; }
+.w200 { width: 200px; }
+.w240 { width: 240px; }
+.w260 { width: 260px; }
+.w-full { width: 100%; }
+.ml8 { margin-left: 8px; }
+.mb8 { margin-bottom: 8px; }
+.mb12 { margin-bottom: 12px; }

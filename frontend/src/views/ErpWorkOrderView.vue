@@ -305,7 +305,7 @@
 
         <div class="dt-sec">
           <span class="dt-sec-title">{{ t('wo.secOutput') }}</span>
-          <span class="dt-sec-sub">{{ t('wo.outputHint') }}</span>
+          <span class="dt-sec-sub">{{ t('wo.outputSum', { good: qty(detail.doneQty, 0), bad: qty(detail.defectQty, 0), total: qty(detail.doneQty + detail.defectQty, 0) }) }}</span>
         </div>
         <el-table :data="detail.outputs" size="small" stripe :empty-text="t('wo.noOutput')">
           <el-table-column :label="t('wo.colBillNo')" width="168">
@@ -314,7 +314,7 @@
           <el-table-column :label="t('wo.colDevice')" width="120">
             <template #default="{ row }"><span class="num">{{ row.deviceCode || '--' }}</span></template>
           </el-table-column>
-          <el-table-column :label="t('wo.colQty')" width="90" align="right">
+          <el-table-column :label="t('wo.colGoodQty')" width="100" align="right">
             <template #default="{ row }"><span class="num">{{ qty(row.qty, 2) }}</span></template>
           </el-table-column>
           <el-table-column :label="t('wo.colDefectQty')" width="90" align="right">
