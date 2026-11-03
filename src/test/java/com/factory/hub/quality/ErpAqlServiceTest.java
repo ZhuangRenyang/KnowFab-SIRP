@@ -106,15 +106,15 @@ class ErpAqlServiceTest {
     /* ==================== 播种表本身 ==================== */
 
     @Test
-    @DisplayName("播种 630 行：7 个水平 × 15 个批量档 × 6 个 AQL，且没有重复的格子")
+    @DisplayName("播种 1890 行：7 水平 × 3 严格度 × 15 批量档 × 6 AQL，且没有重复的格子")
     void seedTableShape() {
         List<ErpQcAqlPlan> table = ErpAqlSeeder.buildPlans();
-        assertEquals(630, table.size());
+        assertEquals(1890, table.size());
         assertEquals(ErpAqlSeeder.plannedRowCount(), table.size());
         long distinct = table.stream()
                 .map(p -> p.getLevel() + "|" + p.getStrictLevel() + "|" + p.getLotFrom() + "|" + p.getAql())
                 .distinct().count();
-        assertEquals(630, distinct, "同一格不允许两行，否则查表会随机命中其中一行");
+        assertEquals(1890, distinct, "同一格不允许两行，否则查表会随机命中其中一行");
     }
 
     @Test
@@ -125,7 +125,9 @@ class ErpAqlServiceTest {
             // 7 个水平都在（表 1 的前四列是特殊检验水平 S-1~S-4）
             assertTrue(ErpAqlLevelMap.levelIndex(p.getLevel()) >= 0,
                     "检验水平不认识：" + p.getLevel());
-            assertEquals(ErpQcAqlPlan.STRICT_NORMAL, p.getStrictLevel());
+            // 3 个严格度都在（表 2-A 正常 / 2-B 加严 / 2-C 放宽）
+            assertTrue(java.util.Arrays.asList(ErpAqlSeeder.STRICT_LEVELS).contains(p.getStrictLevel()),
+                    "严格度不认识：" + p.getStrictLevel());
         }
         // 字码行的样本量（国标表 1 的字码列）
         int[] expectedSample = {2, 3, 5, 8, 13, 20, 32, 50, 80, 125, 200, 315, 500, 800, 1250, 2000};
@@ -202,12 +204,40 @@ class ErpAqlServiceTest {
     }
 
     @Test
-    @DisplayName("加严/放宽没有播种时同样抛异常，不会退化成正常检验")
-    void tightenedNotSeededThrows() {
-        // 播种器只写了 NORMAL，加严检验必须明确报错 ——
-        // 悄悄按正常检验算，等于把"该加严"的一批货按正常标准放过去了
-        assertThrows(IllegalArgumentException.class, () -> serviceWithStandardTable()
-                .resolve("II", "TIGHTENED", new BigDecimal("800"), new BigDecimal("1.0")));
+    @DisplayName("加严检验已播种：能查表，且抽样量比正常检验大（加严的实质）")
+    void tightenedIsSeededAndStricter() {
+        // 国标表 2-B：同样的接收数要抽更多件，这才是"加严"。
+        // 如果加严的样本量 ≤ 正常，那等于没加严 —— 该判不合格的批次照样被放过去。
+        ErpAqlService svc = serviceWithStandardTable();
+        ErpAqlService.Resolved normal = svc.resolve("II", "NORMAL",
+                new BigDecimal("800"), new BigDecimal("1.0"));
+        ErpAqlService.Resolved tight = svc.resolve("II", "TIGHTENED",
+                new BigDecimal("800"), new BigDecimal("1.0"));
+        // ⚠️ 加严**不一定**增大样本量 —— 它有两副面孔：
+        //   ① 样本量不变、Ac 变小（本例：都是 J 行 n=80，正常 Ac=2，加严 Ac=1）
+        //   ② 样本量变大（同样的 Ac 换到更大一号的字码行）
+        // 只断言"样本量更大"会误判成 bug —— 我第一版就这么写错了。
+        assertTrue(tight.ac() < normal.ac() || tight.sampleSize() > normal.sampleSize(),
+                "加严必须比正常更严（Ac 更小 或 样本量更大）：正常 Ac=" + normal.ac()
+                        + " n=" + normal.sampleSize()
+                        + "，加严 Ac=" + tight.ac() + " n=" + tight.sampleSize());
+        assertTrue(tight.ac() <= normal.ac(),
+                "加严的接收数不能比正常还大：正常 " + normal.ac() + "，加严 " + tight.ac());
+    }
+
+    @Test
+    @DisplayName("放宽检验已播种：能查表，且抽样量比正常检验小（放宽的实质）")
+    void reducedIsSeededAndLooser() {
+        // 国标表 2-C：字码还是 A~R，但样本量整体降两档。
+        // 如果放宽的样本量与正常一样，那等于没放宽 —— 白挂一个状态。
+        ErpAqlService svc = serviceWithStandardTable();
+        ErpAqlService.Resolved normal = svc.resolve("II", "NORMAL",
+                new BigDecimal("800"), new BigDecimal("1.0"));
+        ErpAqlService.Resolved reduced = svc.resolve("II", "REDUCED",
+                new BigDecimal("800"), new BigDecimal("1.0"));
+        assertTrue(reduced.sampleSize() < normal.sampleSize(),
+                "放宽的样本量必须小于正常：正常 " + normal.sampleSize()
+                        + "，放宽 " + reduced.sampleSize());
     }
 
     /* ==================== CR 零容忍 ==================== */

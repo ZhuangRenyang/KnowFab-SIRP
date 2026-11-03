@@ -115,10 +115,12 @@ public class ErpAqlSeeder implements ApplicationRunner {
     private int seedIfEmptyImpl() {
         List<ErpQcAqlPlan> missing = new ArrayList<>();
         for (String level : ErpAqlLevelMap.LEVELS) {
-            if (planRepo.countByLevelAndStrictLevel(level, ErpQcAqlPlan.STRICT_NORMAL) > 0) {
-                continue;   // 这个水平已有数据（可能是客户维护的），不动
+            for (String strict : STRICT_LEVELS) {
+                if (planRepo.countByLevelAndStrictLevel(level, strict) > 0) {
+                    continue;   // 这个组合已有数据（可能是客户维护的），不动
+                }
+                missing.addAll(buildPlansOfLevel(level, strict));
             }
-            missing.addAll(buildPlansOfLevel(level));
         }
         if (missing.isEmpty()) {
             return 0;
@@ -142,8 +144,10 @@ public class ErpAqlSeeder implements ApplicationRunner {
     public int reseed() {
         List<ErpQcAqlPlan> old = new ArrayList<>();
         for (String level : ErpAqlLevelMap.LEVELS) {
-            old.addAll(planRepo.findByLevelAndStrictLevelOrderByAqlAscLotFromAsc(
-                    level, ErpQcAqlPlan.STRICT_NORMAL));
+            for (String strict : STRICT_LEVELS) {
+                old.addAll(planRepo.findByLevelAndStrictLevelOrderByAqlAscLotFromAsc(
+                        level, strict));
+            }
         }
         if (!old.isEmpty()) {
             planRepo.deleteAll(old);
@@ -175,17 +179,25 @@ public class ErpAqlSeeder implements ApplicationRunner {
      * 同一个字码的行会有重复（不同水平/批量档可能落到同一字码），
      * 这是有意的冗余：<b>每行都是一句完整的业务结论</b>，可读性换存储。
      */
+    /** 三个严格度（播种顺序 = 正常 → 加严 → 放宽，与国标表 2-A/2-B/2-C 的顺序一致） */
+    public static final String[] STRICT_LEVELS = {
+            ErpQcAqlPlan.STRICT_NORMAL, ErpQcAqlPlan.STRICT_TIGHTENED, ErpQcAqlPlan.STRICT_REDUCED
+    };
+
     public static List<ErpQcAqlPlan> buildPlans() {
         List<ErpQcAqlPlan> rows = new ArrayList<>(
-                ErpAqlLevelMap.LEVELS.length * ErpAqlLevelMap.LOT_FROM.length * AQL_TEXT.length);
+                ErpAqlLevelMap.LEVELS.length * STRICT_LEVELS.length
+                        * ErpAqlLevelMap.LOT_FROM.length * AQL_TEXT.length);
         for (String level : ErpAqlLevelMap.LEVELS) {
-            rows.addAll(buildPlansOfLevel(level));
+            for (String strict : STRICT_LEVELS) {
+                rows.addAll(buildPlansOfLevel(level, strict));
+            }
         }
         return rows;
     }
 
-    /** 某一个检验水平的全部方案行（15 批量档 × 6 AQL = 90 行） */
-    public static List<ErpQcAqlPlan> buildPlansOfLevel(String level) {
+    /** 某个检验水平 + 某个严格度的全部方案行（15 批量档 × 6 AQL = 90 行） */
+    public static List<ErpQcAqlPlan> buildPlansOfLevel(String level, String strictLevel) {
         long now = System.currentTimeMillis();
         List<ErpQcAqlPlan> rows = new ArrayList<>(
                 ErpAqlLevelMap.LOT_FROM.length * AQL_TEXT.length);
@@ -196,19 +208,21 @@ public class ErpAqlSeeder implements ApplicationRunner {
                     log.warn("AQL 方案表：水平 {} 的第 {} 批量档找不到字码，跳过", level, i);
                     continue;
                 }
+                // 三张表（正常/加严/放宽）各自的字码行数、样本量、格子都不同
+                ErpAqlStandardGrid.PlanTable table = ErpAqlStandardGrid.tableOf(strictLevel);
                 for (int j = 0; j < AQL_TEXT.length; j++) {
                     // 国标 10.3：箭头格借相邻行的方案（Ac/Re 和样本量 n 一起借）
-                    ErpAqlStandardGrid.Cell cell = ErpAqlStandardGrid.resolveCell(gridRow, j);
+                    ErpAqlStandardGrid.Cell cell = ErpAqlStandardGrid.resolveCell(table, gridRow, j);
                     if (cell == null) {
-                        // 箭头指向表外：GB/T 2828.1 表 2-A 里不会出现，
-                        // 真出现了说明标准原表被改动过 —— 宁可少播一格也不要播一个假方案。
-                        log.warn("AQL 方案表 {} 档 @ {} 的箭头指向表外，跳过该格",
-                                ErpAqlStandardGrid.LETTER[gridRow], AQL_TEXT[j]);
+                        // 该格无方案（表 2-B 的 S 行）或箭头指向表外 ——
+                        // 宁可少播一格也不要播一个假方案。
+                        log.warn("AQL 方案表（{}）{} 档 @ {} 无方案，跳过该格",
+                                strictLevel, ErpAqlStandardGrid.LETTER[gridRow], AQL_TEXT[j]);
                         continue;
                     }
                     ErpQcAqlPlan p = new ErpQcAqlPlan();
                     p.setLevel(level);
-                    p.setStrictLevel(ErpQcAqlPlan.STRICT_NORMAL);
+                    p.setStrictLevel(strictLevel);
                     p.setLotFrom(ErpAqlLevelMap.LOT_FROM[i]);
                     p.setLotTo(ErpAqlLevelMap.LOT_TO[i]);
                     p.setCodeLetter(ErpAqlStandardGrid.LETTER[gridRow]);
@@ -216,8 +230,8 @@ public class ErpAqlSeeder implements ApplicationRunner {
                     p.setAc(cell.ac());
                     p.setRe(cell.re());
                     p.setAql(new BigDecimal(AQL_TEXT[j]));
-                    p.setRemark(remarkOf(gridRow, j, cell));
-                    p.setVerified(verifiedOf(gridRow, j));
+                    p.setRemark(remarkOf(strictLevel, gridRow, j, cell));
+                    p.setVerified(verifiedOf(strictLevel, gridRow, j));
                     p.setCreatedAt(now);
                     p.setUpdatedAt(now);
                     rows.add(p);
@@ -244,14 +258,20 @@ public class ErpAqlSeeder implements ApplicationRunner {
         return true;
     }
 
+    /** 按严格度的版本（三张表都已逐格核对过标准原文，恒为 true） */
+    public static boolean verifiedOf(String strictLevel, int bandIndex, int aqlIndex) {
+        return true;
+    }
+
     /**
      * 逐行备注：把"这格是怎么来的"直接写在数据里，翻库也能看出来。
      * <p>
      * 箭头格要写明「借了哪一行」——这一行是本轮修复的核心，
      * 不写清楚的话，下一个维护这张表的人会以为样本量就该是本行的字码值。
      */
-    private static String remarkOf(int bandIndex, int aqlIndex, ErpAqlStandardGrid.Cell cell) {
-        String base = "GB/T 2828.1-2012 表 2-A 一般检验水平 II 正常检验一次抽样";
+    private static String remarkOf(String strictLevel, int bandIndex, int aqlIndex,
+                                   ErpAqlStandardGrid.Cell cell) {
+        String base = "GB/T 2828.1-2012 " + tableNameOf(strictLevel) + "一次抽样";
         if (cell.arrow() == null) {
             return base;
         }
@@ -259,9 +279,21 @@ public class ErpAqlSeeder implements ApplicationRunner {
                 + cell.sampleSize() + "，Ac=" + cell.ac() + "/Re=" + cell.re();
     }
 
-    /** 供单测断言用：本播种器会写多少行 */
+    /** 表号：2-A 正常 / 2-B 加严 / 2-C 放宽（备注里要写清是哪张表） */
+    private static String tableNameOf(String strictLevel) {
+        if (ErpQcAqlPlan.STRICT_TIGHTENED.equals(strictLevel)) {
+            return "表 2-B 加严检验";
+        }
+        if (ErpQcAqlPlan.STRICT_REDUCED.equals(strictLevel)) {
+            return "表 2-C 放宽检验";
+        }
+        return "表 2-A 正常检验";
+    }
+
+    /** 供单测断言用：本播种器会写多少行（7 水平 × 3 严格度 × 15 批量档 × 6 AQL） */
     public static int plannedRowCount() {
-        return ErpAqlLevelMap.LEVELS.length * LOT_FROM.length * AQL_TEXT.length;
+        return ErpAqlLevelMap.LEVELS.length * STRICT_LEVELS.length
+                * LOT_FROM.length * AQL_TEXT.length;
     }
 
     /**

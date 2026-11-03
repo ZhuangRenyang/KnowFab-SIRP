@@ -153,8 +153,8 @@ class ErpAqlStandardGridTest {
     @DisplayName("播种出的 630 行（7 水平 × 15 批量档 × 6 AQL）：样本量与解析结果一致，备注写明来源")
     void seededRowsMatchResolution() {
         java.util.List<ErpQcAqlPlan> rows = ErpAqlSeeder.buildPlans();
-        // 7 个检验水平 × 15 个批量档 × 6 个 AQL
-        assertEquals(7 * 15 * 6, rows.size());
+        // 7 个检验水平 × 3 个严格度 × 15 个批量档 × 6 个 AQL
+        assertEquals(7 * 3 * 15 * 6, rows.size());
         for (ErpQcAqlPlan p : rows) {
             // 字码行下标：现在由「批量 + 水平」共同决定（表 1），不是批量档下标
             int gridRow = ErpAqlLevelMap.gridRowOf(p.getLotFrom(), p.getLevel());
@@ -167,7 +167,10 @@ class ErpAqlStandardGridTest {
                 }
             }
             assertTrue(col >= 0, "AQL 对不上：" + p.getAql());
-            ErpAqlStandardGrid.Cell c = ErpAqlStandardGrid.resolveCell(gridRow, col);
+            // ⚠️ 必须用**这一行所属严格度**的表去解析，不能一律用正常检验表 ——
+            // 三张表的格子与样本量都不同，拿错表会算出别的方案
+            ErpAqlStandardGrid.Cell c = ErpAqlStandardGrid.resolveCell(
+                    ErpAqlStandardGrid.tableOf(p.getStrictLevel()), gridRow, col);
             assertEquals(c.sampleSize(), p.getSampleSize(), "样本量不一致");
             assertEquals(c.ac(), p.getAc(), "接收数不一致");
             assertEquals(c.re(), p.getRe(), "拒收数不一致");

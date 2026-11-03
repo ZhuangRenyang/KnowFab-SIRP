@@ -58,16 +58,19 @@ class ErpAqlAvailableCombosTest {
     }
 
     @Test
-    @DisplayName("播种器的真实数据：7 个检验水平 × 正常检验")
-    void seededTableHasAllSevenLevels() {
+    @DisplayName("播种器的真实数据：7 个检验水平 × 3 个严格度 = 21 个组合")
+    void seededTableHasAllCombos() {
         Set<String> combos = new HashSet<>();
         for (ErpQcAqlPlan p : ErpAqlSeeder.buildPlans()) {
             combos.add(p.getLevel() + "/" + p.getStrictLevel());
         }
-        // 国标表 1 的 7 个检验水平全部导入（4 个特殊 + 3 个一般）
-        assertEquals(7, combos.size(), "7 个水平都要有：" + combos);
+        // 国标表 1 的 7 个检验水平 × 表 2-A/2-B/2-C 的 3 个严格度
+        assertEquals(21, combos.size(), "21 个组合都要有：" + combos);
         for (String level : ErpAqlLevelMap.LEVELS) {
-            assertTrue(combos.contains(level + "/NORMAL"), "缺水平 " + level);
+            for (String strict : ErpAqlSeeder.STRICT_LEVELS) {
+                assertTrue(combos.contains(level + "/" + strict),
+                        "缺组合 " + level + "/" + strict);
+            }
         }
     }
 }

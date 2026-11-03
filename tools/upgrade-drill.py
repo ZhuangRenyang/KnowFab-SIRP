@@ -333,21 +333,23 @@ def check_idempotent(port, logfile):
     problems = []
     if "迁移脚本" not in raw:
         problems.append("删掉记录后迁移没有重跑（幂等无法验证）")
-    # AQL 方案表：7 个检验水平 × 15 个批量档 × 6 个 AQL = 630 行
-    # （补齐 7 个水平后行数从 66 变成 630，这是预期的，不是重复播种）
+    # AQL 方案表：7 水平 × 3 严格度 × 15 批量档 × 6 AQL = 1890 行
+    # （补齐 7 个水平 + 加严/放宽两张表后，行数 66 → 630 → 1890，是预期的）
     n = table_count("erp_qc_aql_plan")
-    log("  erp_qc_aql_plan 行数 %d（7 水平 × 15 批量档 × 6 AQL = 630）" % n)
-    if n > 630:
-        problems.append("erp_qc_aql_plan 有 %d 行，超过 630，种子数据疑似重复播种" % n)
-    if n < 630:
-        problems.append("erp_qc_aql_plan 只有 %d 行，少于 630：升级后没补齐 7 个检验水平" % n)
-    # 7 个水平各 90 行
+    log("  erp_qc_aql_plan 行数 %d（7 水平 × 3 严格度 × 15 批量档 × 6 AQL = 1890）" % n)
+    if n > 1890:
+        problems.append("erp_qc_aql_plan 有 %d 行，超过 1890，种子数据疑似重复播种" % n)
+    if n < 1890:
+        problems.append("erp_qc_aql_plan 只有 %d 行，少于 1890：升级后没补齐水平或严格度" % n)
+    # 7 水平 × 3 严格度，每个组合 90 行
     for lv in ("SPECIAL_S1", "SPECIAL_S2", "SPECIAL_S3", "SPECIAL_S4",
                "GENERAL_I", "GENERAL_II", "GENERAL_III"):
-        cnt = q("select count(*) from erp_qc_aql_plan where level=%s and strict_level='NORMAL'", (lv,))[0][0]
-        if int(cnt) != 90:
-            problems.append("erp_qc_aql_plan 的 %s 水平有 %s 行，应为 90（15 批量档 × 6 AQL）"
-                            % (lv, cnt))
+        for st in ("NORMAL", "TIGHTENED", "REDUCED"):
+            cnt = q("select count(*) from erp_qc_aql_plan where level=%s and strict_level=%s",
+                    (lv, st))[0][0]
+            if int(cnt) != 90:
+                problems.append("erp_qc_aql_plan 的 %s/%s 有 %s 行，应为 90（15 批量档 × 6 AQL）"
+                                % (lv, st, cnt))
 
     # AQL 箭头格的样本量修正（QC 核对 GB/T 2828.1 表 2-A 时发现）
     # 升级前旧版把箭头格当数字格，H 档 @ AQL 0.65 的样本量是 50；

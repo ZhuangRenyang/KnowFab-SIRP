@@ -391,6 +391,45 @@ def run_checks(api, args_port):
               int(r.get("sampleSize", 0)) == want_n, r.get("sampleSize"))
         check("%s 水平 Ac = %d" % (lv, want_ac),
               int(r.get("ac", -1)) == want_ac, r.get("ac"))
+    # ---- 三个严格度：正常 / 加严 / 放宽 都要能查表，且方向正确 ----
+    # 国标表 2-A/2-B/2-C 是三张独立的表：行数不同、样本量不同、Ac 也不同。
+    # 判"是否真的加严/放宽"，不能只看样本量（加严也可能只降 Ac 不增样本量）。
+    rn = api.get("/api/erp/qc/aql/resolve?level=GENERAL_II&strictLevel=NORMAL"
+                 "&lotQty=800&aql=1.0")
+    rt = api.get("/api/erp/qc/aql/resolve?level=GENERAL_II&strictLevel=TIGHTENED"
+                 "&lotQty=800&aql=1.0")
+    rr = api.get("/api/erp/qc/aql/resolve?level=GENERAL_II&strictLevel=REDUCED"
+                 "&lotQty=800&aql=1.0")
+    for nm, x in (("NORMAL", rn), ("TIGHTENED", rt), ("REDUCED", rr)):
+        check("%s 严格度能查表" % nm, x.get("ok") is True, str(x.get("message"))[:70])
+    if rn.get("ok") and rt.get("ok") and rr.get("ok"):
+        n_ac, n_n = int(rn.get("ac", -1)), int(rn.get("sampleSize", 0))
+        t_ac, t_n = int(rt.get("ac", -1)), int(rt.get("sampleSize", 0))
+        r_ac, r_n = int(rr.get("ac", -1)), int(rr.get("sampleSize", 0))
+        # 加严：Ac 更小 或 样本量更大（两者其一即可，不能强制要求样本量变大）
+        check("加严比正常更严（Ac 更小 或 抽更多）",
+              t_ac < n_ac or t_n > n_n,
+              "正常 Ac=%d n=%d / 加严 Ac=%d n=%d" % (n_ac, n_n, t_ac, t_n))
+        check("加严的接收数不大于正常", t_ac <= n_ac,
+              "正常 Ac=%d / 加严 Ac=%d" % (n_ac, t_ac))
+        # 放宽：样本量必须更小（表 2-C 的字码-样本量整体降两档）
+        check("放宽的样本量比正常小", r_n < n_n,
+              "正常 n=%d / 放宽 n=%d" % (n_n, r_n))
+        log("三严格度对比：正常 Ac=%d n=%d / 加严 Ac=%d n=%d / 放宽 Ac=%d n=%d"
+            % (n_ac, n_n, t_ac, t_n, r_ac, r_n))
+
+    # 21 个 (水平 × 严格度) 组合都要有方案
+    r = api.get("/api/erp/qc/aql/levels")
+    combos_all = as_rows(r.get("combos") if isinstance(r, dict) else r)
+    lv_set = {c.get("level") for c in combos_all}
+    check("7 个检验水平都有方案", len(lv_set) >= 7, "%d 个" % len(lv_set))
+    # 严格度不在 levels 接口里（那是水平维度），单独查三次都要通
+    for st in ("NORMAL", "TIGHTENED", "REDUCED"):
+        x = api.get("/api/erp/qc/aql/resolve?level=GENERAL_II&strictLevel=%s"
+                    "&lotQty=500&aql=2.5" % st)
+        check("严格度 %s 在水平 II 下有方案" % st, x.get("ok") is True,
+              str(x.get("message"))[:60])
+
     # 不认识的水平 → 必须报错，不能静默当成水平 II
     r = api.get("/api/erp/qc/aql/resolve?level=GENERAL_IV&strictLevel=NORMAL"
                 "&lotQty=500&aql=2.5")
