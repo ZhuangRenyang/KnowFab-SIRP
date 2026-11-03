@@ -7,6 +7,8 @@ import com.factory.hub.erp.ErpLineService;
 import com.factory.hub.erp.ErpPurchaseService;
 import com.factory.hub.erp.ErpSalesQueryService;
 import com.factory.hub.erp.ErpSalesService;
+import com.factory.hub.erp.ErpWorkOrderService;
+import com.factory.hub.energy.EnergyService;
 import com.factory.hub.collect.SnapshotStore;
 import com.factory.hub.model.DeviceEntity;
 import com.factory.hub.service.DeviceService;
@@ -71,6 +73,13 @@ public class AiChatService {
     private final AlarmService alarmService;
     private final AiChatLogRepository chatRepo;
     private final ErpReportService reportService;
+    private final ErpWorkOrderService workOrderService;
+    private final EnergyService energyService;
+    /**
+     * 设备侧日报（OEE 在这里）。注意别和 {@link ErpReportService} 混了：
+     * 那个是 ERP 经营报表（进销存/销售额），这个是设备产量与 OEE。
+     */
+    private final com.factory.hub.report.ReportService deviceReportService;
 
     /** 每用户滑动窗口限流 */
     private final Map<String, Deque<Long>> rate = new HashMap<>();
@@ -80,7 +89,9 @@ public class AiChatService {
                          ErpLineService lineService, ErpSalesQueryService salesQueryService,
                          ErpPurchaseService purchaseService, ErpSalesService salesService,
                          ErpFinanceService financeService, AlarmService alarmService,
-                         AiChatLogRepository chatRepo, ErpReportService reportService) {
+                         AiChatLogRepository chatRepo, ErpReportService reportService,
+                         ErpWorkOrderService workOrderService, EnergyService energyService,
+                         com.factory.hub.report.ReportService deviceReportService) {
         this.configStore = configStore;
         this.client = client;
         this.mapper = mapper;
@@ -94,6 +105,9 @@ public class AiChatService {
         this.alarmService = alarmService;
         this.chatRepo = chatRepo;
         this.reportService = reportService;
+        this.workOrderService = workOrderService;
+        this.energyService = energyService;
+        this.deviceReportService = deviceReportService;
     }
 
     /* ==================== 工具定义 ==================== */
@@ -136,6 +150,31 @@ public class AiChatService {
         list.add(new Tool("query_finance", "查询应收应付汇总（应收未收/应付未付/本月收付款/账龄）",
                 Map.of("type", "object", "properties", Map.of(), "required", List.of()),
                 MANAGER_UP));
+        // ---- DH-71 起：工单 / 缺料 / 能耗 / OEE ----
+        // 这四类数据的共同点：以前 AI 只能回答"多少"，不能回答"为什么"。
+        // 工单给出"这批货做到哪一步"，缺料给出"会不会停线"，能耗与 OEE 给出"效率在哪儿掉"。
+        list.add(new Tool("query_work_orders",
+                "查询生产工单：在产/待开工/逾期/缺料的工单与进度。参数：status 状态（DRAFT/RELEASED/RUNNING/DONE/CANCELLED，可空），limit 条数（默认 10，最多 20）",
+                Map.of("type", "object",
+                        "properties", Map.of(
+                                "status", Map.of("type", "string", "description", "状态，可空表示全部"),
+                                "limit", Map.of("type", "integer", "description", "条数，默认 10")),
+                        "required", List.of()),
+                SHOP_FLOOR));
+        list.add(new Tool("query_shortage",
+                "查询缺料清单：未完工工单里需求大于已领的材料，含领料仓现有库存",
+                Map.of("type", "object", "properties", Map.of(), "required", List.of()),
+                MANAGER_UP));
+        list.add(new Tool("query_energy",
+                "查询能耗：近 N 天的电量/电费总览与设备能耗排名。参数：days 天数（默认 30，最多 365）",
+                Map.of("type", "object",
+                        "properties", Map.of("days", Map.of("type", "integer", "description", "天数，默认 30")),
+                        "required", List.of()),
+                MANAGER_UP));
+        list.add(new Tool("query_oee",
+                "查询今日 OEE：全厂与各设备的可用率/性能/良率三因子（百分比）",
+                Map.of("type", "object", "properties", Map.of(), "required", List.of()),
+                SHOP_FLOOR));
         return list;
     }
 
@@ -297,6 +336,10 @@ public class AiChatService {
                 case "query_purchase_orders" -> purchase(num(args.get("limit"), 5));
                 case "query_sales_orders" -> sales(num(args.get("limit"), 5));
                 case "query_finance" -> finance();
+                case "query_work_orders" -> workOrders(str(args.get("status")), num(args.get("limit"), 10));
+                case "query_shortage" -> workOrderService.shortage();
+                case "query_energy" -> energy(num(args.get("days"), 30));
+                case "query_oee" -> oee();
                 default -> err("未实现的工具");
             };
             String json = mapper.writeValueAsString(data);
@@ -396,6 +439,86 @@ public class AiChatService {
             out.put(k, s.get(k));
         }
         out.put("note", "金额单位元；ar=应收 ap=应付；Pre=预收/预付；Aging 为账龄分档金额");
+        return out;
+    }
+
+    /* ---- 工单 / 缺料 / 能耗 / OEE（DH-71） ---- */
+
+    /**
+     * 工单查询：只给回答"这批货做到哪一步"需要的字段。
+     * <p>
+     * 不把 remark / createdBy 这些业务无关字段塞进上下文——模型看到多余字段就会绕着它编，
+     * 而且 token 是真的花钱。缺料情况单独用 {@code query_shortage} 查，不在这里重复统计。
+     */
+    private Map<String, Object> workOrders(String status, int limit) {
+        int n = Math.max(1, Math.min(20, limit));
+        Map<String, Object> r = workOrderService.list(status, null, 1, n);
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (Object o : (List<?>) r.getOrDefault("rows", List.of())) {
+            if (!(o instanceof Map<?, ?> row)) {
+                continue;
+            }
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("orderNo", row.get("orderNo"));
+            m.put("product", row.get("productName"));
+            m.put("planQty", row.get("planQty"));
+            m.put("doneQty", row.get("doneQty"));
+            m.put("progress", row.get("progress"));
+            m.put("status", row.get("statusLabel"));
+            m.put("device", row.get("deviceCode"));
+            m.put("overdue", row.get("overdue"));
+            m.put("dueInDays", row.get("dueInDays"));
+            m.put("srcOrderNo", row.get("srcOrderNo"));
+            rows.add(m);
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("counts", r.get("summary"));
+        out.put("total", r.get("total"));
+        out.put("orders", rows);
+        out.put("note", "progress 是完成百分比；dueInDays 为负表示已逾期；planQty/doneQty 单位随产品");
+        return out;
+    }
+
+    /** 能耗：总览 + 排名，让模型能回答"哪个设备最费电"而不只是"一共用了多少" */
+    private Map<String, Object> energy(int days) {
+        int d = Math.max(1, Math.min(365, days));
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("overview", energyService.overview(d));
+        try {
+            out.put("deviceRank7d", energyService.deviceRank("7d"));
+        } catch (Exception e) {
+            out.put("deviceRank7d", List.of());
+        }
+        out.put("note", "电量单位 kWh、金额单位元；deviceRank 为近 7 天各设备用电排名");
+        return out;
+    }
+
+    /**
+     * OEE：三因子都是百分数（0~100）。
+     * <p>
+     * 特意带上 note：历史上这个字段曾经错算 100 倍（4062%），模型看到 4062 会当真去解释。
+     * 说明一下量纲，异常值时它能自己发现"这个数不可能"。
+     */
+    private Map<String, Object> oee() {
+        Map<String, Object> d = deviceReportService.daily(LocalDate.now());
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("date", d.get("date"));
+        out.put("factory", d.get("oee"));
+        List<Map<String, Object>> devs = new ArrayList<>();
+        for (Object o : (List<?>) d.getOrDefault("devices", List.of())) {
+            if (!(o instanceof Map<?, ?> row)) {
+                continue;
+            }
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("code", row.get("code"));
+            m.put("name", row.get("name"));
+            m.put("output", row.get("output"));
+            m.put("oee", row.get("oee"));
+            devs.add(m);
+        }
+        out.put("devices", devs);
+        out.put("note", "OEE 三因子（可用率/性能/良率）与 oee 都是百分数，正常范围 0~100；"
+                + "null 表示数据不足算不出来（不是 0）");
         return out;
     }
 
@@ -565,6 +688,14 @@ public class AiChatService {
                 3. 用简体中文回答：先给结论，再给关键数字；尽量简短（300 字以内），多条数据用列表。
                 4. 数量必须带单位（件/kg/套），金额用 ¥，不要把不同单位的数量相加。
                 5. 当前时间：%s。数据都是实时查询的，不必提醒用户数据可能过期。
+                6. **只罗列数字不算回答**。凡是涉及趋势、异常、对比的问题，给完数字后必须补一句
+                   「可能的原因 + 建议先查什么」，并指明是哪台设备/哪张工单/哪个物料。
+                   例如不要只说"本月单耗 1.8 kWh/件，比上月高 12%%"，要补
+                   "主要是 X 号机空转时长增加，建议先看它的停机原因和当班产量"。
+                7. 分析只能基于工具返回的字段，**不要猜测工具没给出的原因**（比如没查过报警就不要说"可能是设备故障"）。
+                   数据不足以判断时，直接说"现有数据看不出原因，建议再查 XX"，并告诉用户该问什么。
+                8. 需要多类数据才能回答时（例如"为什么这个月产能下降了"），一次把相关工具都调上
+                   （工单 + OEE + 能耗 + 报警），不要只查一个就下结论。
                 """.formatted(roleLabel(role), now);
     }
 
