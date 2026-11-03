@@ -474,6 +474,6 @@ async function save() {
 .mono :deep(textarea) { font-family: var(--font-mono); font-size: var(--text-xs); }
 .scan-tip {
   margin: 0 0 var(--space-2) 130px; padding: 6px 10px; font-size: var(--text-xs);
-  color: var(--meta); background: var(--bg-soft); border-radius: var(--radius-sm);
+  color: var(--meta); background: var(--surface-2); border-radius: var(--radius-sm);
 }
 </style>

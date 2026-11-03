@@ -834,36 +834,36 @@ onMounted(async () => {
   margin-bottom: 12px;
 }
 .kpi {
-  border: 1px solid var(--line-1);
-  border-radius: var(--r-md);
-  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
   padding: 10px 14px;
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
 }
 .kpi:hover {
-  border-color: var(--brand);
+  border-color: var(--accent);
 }
 .kpi.on {
-  border-color: var(--brand);
-  background: var(--brand-weak);
+  border-color: var(--accent);
+  background: var(--accent-soft);
 }
 .kpi-label {
   font-size: 12px;
-  color: var(--text-3);
+  color: var(--muted);
 }
 .kpi-value {
   margin-top: 2px;
   font-size: 22px;
   font-weight: 600;
-  color: var(--text-1);
+  color: var(--fg);
   line-height: 1.2;
 }
 .kpi-warn .kpi-value {
   color: var(--danger);
 }
 .card {
-  border-radius: var(--r-md);
+  border-radius: var(--radius-md);
 }
 .grow {
   flex: 1;
@@ -875,11 +875,11 @@ onMounted(async () => {
 .ml8 { margin-left: 8px; }
 .cell-main {
   font-size: 13px;
-  color: var(--text-1);
+  color: var(--fg);
 }
 .cell-sub {
   font-size: 11px;
-  color: var(--text-3);
+  color: var(--muted);
 }
 .prog {
   display: flex;
@@ -891,15 +891,15 @@ onMounted(async () => {
 }
 .prog-text {
   font-size: 12px;
-  color: var(--text-2);
+  color: var(--fg-2);
   white-space: nowrap;
 }
 .num {
-  font-family: var(--font-num);
+  font-family: var(--font-mono);
 }
 .danger { color: var(--danger); }
-.warn { color: var(--warning); }
-.muted { color: var(--text-3); }
+.warn { color: var(--idle); }
+.muted { color: var(--muted); }
 .strong { font-weight: 600; }
 .pager {
   margin-top: 12px;
@@ -909,7 +909,7 @@ onMounted(async () => {
 .hint {
   margin: 8px 2px 0;
   font-size: 12px;
-  color: var(--text-3);
+  color: var(--muted);
   line-height: 1.6;
 }
 .shortage-head {
@@ -919,7 +919,7 @@ onMounted(async () => {
   padding: 2px 2px 10px;
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-1);
+  color: var(--fg);
 }
 .dt-head {
   display: flex;
@@ -931,7 +931,7 @@ onMounted(async () => {
 .dt-no {
   font-size: 16px;
   font-weight: 600;
-  color: var(--text-1);
+  color: var(--fg);
 }
 .dt-flag {
   font-size: 12px;
@@ -949,11 +949,11 @@ onMounted(async () => {
 .dt-sec-title {
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-1);
+  color: var(--fg);
 }
 .dt-sec-sub {
   font-size: 12px;
-  color: var(--text-3);
+  color: var(--muted);
 }
 .frow {
   display: grid;
@@ -966,40 +966,40 @@ onMounted(async () => {
   gap: 8px;
 }
 .cost-cell {
-  border: 1px solid var(--line-1);
-  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   padding: 8px 10px;
-  background: var(--bg-2);
+  background: var(--surface-2);
 }
 .cost-cell.cc-total {
-  border-color: var(--brand);
-  background: var(--brand-weak);
+  border-color: var(--accent);
+  background: var(--accent-soft);
 }
 .cc-label {
   display: block;
   font-size: 11px;
-  color: var(--text-3);
+  color: var(--muted);
 }
 .cc-val {
   display: block;
   margin-top: 2px;
   font-size: 15px;
   font-weight: 600;
-  color: var(--text-1);
+  color: var(--fg);
 }
 .cc-sub {
   display: block;
   margin-top: 2px;
   font-size: 11px;
-  color: var(--text-3);
+  color: var(--muted);
 }
 .cc-sub b {
-  font-family: var(--font-num);
+  font-family: var(--font-mono);
 }
 .cost-note {
   margin: 6px 2px 0;
   font-size: 11px;
-  color: var(--text-3);
+  color: var(--muted);
   line-height: 1.5;
 }
 .issue-head {
@@ -1011,14 +1011,14 @@ onMounted(async () => {
 .field-hint {
   margin-top: 2px;
   font-size: 11px;
-  color: var(--text-3);
+  color: var(--muted);
   line-height: 1.4;
 }
 .opt-code {
   display: inline-block;
   min-width: 82px;
-  font-family: var(--font-num);
+  font-family: var(--font-mono);
   font-size: 12px;
-  color: var(--text-3);
+  color: var(--muted);
 }
 </style>

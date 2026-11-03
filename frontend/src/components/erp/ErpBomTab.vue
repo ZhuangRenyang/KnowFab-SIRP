@@ -341,9 +341,9 @@ onMounted(async () => {
   align-items: start;
 }
 .bom-side {
-  border: 1px solid var(--line-1);
-  border-radius: var(--r-md);
-  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
   padding: 10px;
   max-height: calc(100vh - 250px);
   display: flex;
@@ -360,44 +360,44 @@ onMounted(async () => {
   text-align: left;
   border: 1px solid transparent;
   background: transparent;
-  border-radius: var(--r-sm);
+  border-radius: var(--radius-sm);
   padding: 7px 9px;
   cursor: pointer;
   line-height: 1.35;
   transition: background 0.15s, border-color 0.15s;
 }
 .bom-side-item:hover {
-  background: var(--bg-3);
+  background: var(--surface-3);
 }
 .bom-side-item.on {
-  background: var(--brand-weak);
-  border-color: var(--brand);
+  background: var(--accent-soft);
+  border-color: var(--accent);
 }
 .bom-side-item .code {
   display: block;
-  font-family: var(--font-num);
+  font-family: var(--font-mono);
   font-size: 12px;
-  color: var(--text-3);
+  color: var(--muted);
 }
 .bom-side-item .name {
   display: block;
   font-size: 13px;
-  color: var(--text-1);
+  color: var(--fg);
 }
 .bom-side-item .badge {
   display: inline-block;
   margin-top: 3px;
   font-size: 11px;
-  color: var(--brand);
+  color: var(--accent);
 }
 .bom-side-item .badge.empty {
-  color: var(--text-3);
+  color: var(--muted);
 }
 .bom-main {
   min-width: 0;
-  border: 1px solid var(--line-1);
-  border-radius: var(--r-md);
-  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
   padding: 12px 14px 4px;
 }
 .bom-head {
@@ -411,26 +411,26 @@ onMounted(async () => {
 .bom-title {
   font-size: 15px;
   font-weight: 600;
-  color: var(--text-1);
+  color: var(--fg);
 }
 .bom-title .code {
   margin-left: 8px;
-  font-family: var(--font-num);
+  font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 400;
-  color: var(--text-3);
+  color: var(--muted);
 }
 .bom-sub {
   margin-top: 3px;
   font-size: 12px;
-  color: var(--text-2);
+  color: var(--fg-2);
 }
 .bom-sub .dot {
   margin: 0 5px;
-  color: var(--text-3);
+  color: var(--muted);
 }
 .bom-sub .muted {
-  color: var(--text-3);
+  color: var(--muted);
 }
 .bom-actions {
   display: flex;
@@ -442,20 +442,20 @@ onMounted(async () => {
 .bom-tip {
   margin: 8px 2px 10px;
   font-size: 12px;
-  color: var(--text-3);
+  color: var(--muted);
   line-height: 1.6;
 }
 .opt-code {
   display: inline-block;
   min-width: 78px;
-  font-family: var(--font-num);
+  font-family: var(--font-mono);
   font-size: 12px;
-  color: var(--text-3);
+  color: var(--muted);
 }
 .opt-unit {
   margin-left: 8px;
   font-size: 12px;
-  color: var(--text-3);
+  color: var(--muted);
 }
 .w-full {
   width: 100%;
@@ -465,9 +465,9 @@ onMounted(async () => {
 }
 .strong {
   font-weight: 600;
-  color: var(--text-1);
+  color: var(--fg);
 }
 .muted {
-  color: var(--text-3);
+  color: var(--muted);
 }
 </style>

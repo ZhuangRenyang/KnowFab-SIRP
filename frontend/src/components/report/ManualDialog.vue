@@ -258,20 +258,20 @@ function num(v: number | null | undefined, digits = 1) {
 </script>
 
 <style scoped>
-.hint { color: var(--muted); font-size: var(--fs-2); line-height: 1.7; }
+.hint { color: var(--muted); font-size: 12px; line-height: 1.7; }
 .lead { margin-bottom: var(--space-3); }
 .bar { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); }
-.lbl { font-size: var(--fs-2); color: var(--muted); }
+.lbl { font-size: 12px; color: var(--muted); }
 .spacer { flex: 1; }
-.sub { color: var(--muted); font-size: var(--fs-2); }
+.sub { color: var(--muted); font-size: 12px; }
 .empty { padding: 26px 0; color: var(--muted); text-align: center; }
 .mtable { width: 100%; border-collapse: collapse; table-layout: fixed; }
-.mtable th { text-align: left; font-weight: 500; color: var(--muted); font-size: var(--fs-2); padding: 6px 8px; border-bottom: 1px solid var(--border); }
-.mtable td { padding: 8px; border-bottom: 1px solid var(--border); vertical-align: top; font-size: var(--fs-2); }
+.mtable th { text-align: left; font-weight: 500; color: var(--muted); font-size: 12px; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.mtable td { padding: 8px; border-bottom: 1px solid var(--border); vertical-align: top; font-size: 12px; }
 .mtable tr.off { opacity: .5; }
 .mtable .r { text-align: right; }
 .reason { word-break: break-all; }
 .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: var(--space-3); }
-.field label { font-size: var(--fs-2); color: var(--muted); }
+.field label { font-size: 12px; color: var(--muted); }
 .grid2 { display: grid; grid-template-columns: 1.6fr 1fr 1fr; gap: var(--space-3); }
 </style>

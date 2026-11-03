@@ -3,6 +3,9 @@ import { createPinia } from 'pinia'
 import { ElMessage } from 'element-plus'
 import 'element-plus/theme-chalk/dark/css-vars.css'
 import './styles/tokens.css'
+/* 跨页面复用的布局骨架（.tab-toolbar 等）。必须放全局：
+   写在组件 scoped 里会编译成 [data-v-x]，别的页面用不到。 */
+import './styles/erp.css'
 /* 显式 import 的命令式组件需要手动补样式（unplugin 只处理模板里的组件） */
 import 'element-plus/es/components/message/style/css'
 import 'element-plus/es/components/message-box/style/css'

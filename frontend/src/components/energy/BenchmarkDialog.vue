@@ -326,16 +326,16 @@ async function del(b: EnergyBenchmark) {
 </script>
 
 <style scoped>
-.hint { color: var(--muted); font-size: var(--fs-2); line-height: 1.7; }
+.hint { color: var(--muted); font-size: 12px; line-height: 1.7; }
 .lead { margin-bottom: var(--space-3); }
 .empty { padding: 26px 0; color: var(--muted); text-align: center; }
 .btable { width: 100%; border-collapse: collapse; }
-.btable th { text-align: left; font-weight: 500; color: var(--muted); font-size: var(--fs-2); padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.btable th { text-align: left; font-weight: 500; color: var(--muted); font-size: 12px; padding: 6px 8px; border-bottom: 1px solid var(--border); }
 .btable td { padding: 10px 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
 .btable tr.off { opacity: .55; }
-.sub { color: var(--muted); font-size: var(--fs-2); margin-top: 2px; }
+.sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
 .vals { display: flex; gap: 6px; flex-wrap: wrap; }
-.v { font-size: var(--fs-2); padding: 1px 7px; border-radius: 10px; border: 1px solid var(--border); }
+.v { font-size: 12px; padding: 1px 7px; border-radius: 10px; border: 1px solid var(--border); }
 .v.adv { color: #2e8b57; border-color: #2e8b5755; }
 .v.acc { color: #236de9; border-color: #236de955; }
 .v.lim { color: #c77700; border-color: #c7770055; }
@@ -347,6 +347,6 @@ async function del(b: EnergyBenchmark) {
 .grid4 { grid-template-columns: repeat(4, 1fr); }
 .span2 { grid-column: span 1; }
 .field { display: flex; flex-direction: column; gap: 6px; }
-.field label { font-size: var(--fs-2); color: var(--muted); }
+.field label { font-size: 12px; color: var(--muted); }
 .field.inline { flex-direction: row; align-items: center; gap: 10px; margin-top: var(--space-3); }
 </style>
