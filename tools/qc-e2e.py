@@ -327,6 +327,32 @@ def run_checks(api, args_port):
     log("未核对（推算）方案 %d 条" % len(unverified))
 
     print()
+    print("--- ③b 抽样下拉只列有数据的组合（界面不制造必然失败）---")
+    r = api.get("/api/erp/qc/aql/levels")
+    check(r.get("ok"), "可用检验水平接口可调用", str(r.get("message", "")))
+    combos = as_rows(r.get("combos") if isinstance(r, dict) else r)
+    check(len(combos) >= 1, "至少有一个可用组合", "%d 个" % len(combos))
+    for c in combos:
+        check(bool(c.get("level")) and bool(c.get("strictLevel")),
+              "组合带水平与严格度", str(c))
+        check(int(c.get("planCount", 0)) > 0,
+              "组合的方案数大于 0（列出来的必须真有方案）", str(c))
+        # 列出来的组合必须真的查得到方案——否则界面还是在制造必然失败
+        rr = api.get("/api/erp/qc/aql/resolve?level=%s&strictLevel=%s&lotQty=800&aql=2.5"
+                     % (c.get("level"), c.get("strictLevel")))
+        check(rr.get("ok") is True,
+              "列出来的组合查得到方案（%s / %s）" % (c.get("level"), c.get("strictLevel")),
+              str(rr.get("message", ""))[:70])
+    # 反过来：表里没有的水平，查表必须报错而不是给个假 Ac
+    missing = "GENERAL_I"
+    have = [c.get("level") for c in combos]
+    if missing not in have:
+        rr = api.get("/api/erp/qc/aql/resolve?level=%s&strictLevel=NORMAL&lotQty=800&aql=2.5" % missing)
+        check(rr.get("ok") is False and rr.get("code") == "NO_AQL_PLAN",
+              "没导入的水平查表 → 报 NO_AQL_PLAN（绝不返回假 Ac）",
+              "code=%s" % rr.get("code"))
+
+    print()
     print("--- ④ 时间窗参数是毫秒时间戳（前端传日期串会 400 整页报错）---")
     r = api.get("/api/erp/qc/dashboard?from=%d&to=%d"
                 % (int(time.time() * 1000) - 30 * 86400000, int(time.time() * 1000)))

@@ -41,6 +41,12 @@
           <span class="num">{{ row.lotFrom }}~{{ row.lotTo }}</span>
         </template>
       </el-table-column>
+      <el-table-column :label="t('qc.dict.colCombo')" width="116">
+        <template #default="{ row }">
+          <span class="num">{{ t('qc.level.' + row.level) }}</span>
+          <span class="muted"> / {{ t('qc.strictLevel.' + row.strictLevel) }}</span>
+        </template>
+      </el-table-column>
       <el-table-column :label="t('qc.dict.colLetter')" width="72">
         <template #default="{ row }"><span class="num">{{ row.codeLetter }}</span></template>
       </el-table-column>
@@ -98,6 +104,18 @@
           </el-form-item>
         </div>
         <div class="frow">
+          <el-form-item :label="t('qc.dict.fLevel')" required>
+            <el-select v-model="planForm.level" class="w-full">
+              <el-option v-for="l in QC_LEVELS" :key="l" :value="l" :label="t('qc.level.' + l)" />
+            </el-select>
+          </el-form-item>
+          <el-form-item :label="t('qc.dict.fStrict')" required>
+            <el-select v-model="planForm.strictLevel" class="w-full">
+              <el-option v-for="s in STRICT_LEVELS" :key="s" :value="s" :label="t('qc.strictLevel.' + s)" />
+            </el-select>
+          </el-form-item>
+        </div>
+        <div class="frow">
           <el-form-item :label="t('qc.dict.fLetter')" required>
             <el-input v-model="planForm.codeLetter" maxlength="2" placeholder="J" />
           </el-form-item>
@@ -131,7 +149,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Refresh } from '@element-plus/icons-vue'
-import { qcAqlApi, type QcAqlPlan } from '@/api/qc'
+import { qcAqlApi, QC_LEVELS, STRICT_LEVELS, type QcAqlPlan } from '@/api/qc'
 import { useAuthStore } from '@/stores/auth'
 
 const { t } = useI18n()

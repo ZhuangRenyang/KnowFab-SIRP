@@ -5,7 +5,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * AQL 抽样方案查询（GB/T 2828.1-2012 表 2-A）。
@@ -55,6 +58,28 @@ public class ErpAqlService {
     public ErpAqlService(ErpQcAqlPlanRepository planRepo, com.factory.hub.audit.AuditService audit) {
         this.planRepo = planRepo;
         this.audit = audit;
+    }
+
+    /**
+     * 方案表里实际有哪些「检验水平 + 严格度」组合，以及各自的方案条数。
+     * <p>
+     * <b>前端抽样下拉按这个来</b>：界面不能列出没有数据的选择项——
+     * 用户选了必然撞上"没配方案"，那是界面在制造必然的失败。
+     * <p>
+     * 由接口返回真实存在的组合，主数据补齐后前端自动跟着多出选项，
+     * <b>不用改前端代码</b>。
+     */
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> availableCombos() {
+        List<Map<String, Object>> combos = new ArrayList<>();
+        for (Object[] row : planRepo.listAvailableCombos()) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("level", String.valueOf(row[0]));
+            m.put("strictLevel", String.valueOf(row[1]));
+            m.put("planCount", row[2] == null ? 0 : ((Number) row[2]).intValue());
+            combos.add(m);
+        }
+        return combos;
     }
 
     /**

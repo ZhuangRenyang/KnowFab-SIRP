@@ -33,5 +33,18 @@ public interface ErpQcAqlPlanRepository extends JpaRepository<ErpQcAqlPlan, Long
     @Query("select p from ErpQcAqlPlan p order by p.level, p.strictLevel, p.aql, p.lotFrom")
     List<ErpQcAqlPlan> findAllOrdered();
 
+    /**
+     * 方案表里实际存在的「检验水平 + 严格度」组合及其方案数。
+     * <p>
+     * 前端的抽样下拉要按这个来——界面不能列出没有数据的选择项，
+     * 让用户选了必然报"没配方案"。
+     * <p>
+     * 用 distinct 而不是 group by：组合数很少，扫一遍全表更简单，
+     * 而且顺带能把方案数带出来（界面上可以显示"共 N 条方案"）。
+     */
+    @Query("select p.level, p.strictLevel, count(p) from ErpQcAqlPlan p "
+           + "group by p.level, p.strictLevel order by p.level, p.strictLevel")
+    List<Object[]> listAvailableCombos();
+
     long countByLevelAndStrictLevel(String level, String strictLevel);
 }

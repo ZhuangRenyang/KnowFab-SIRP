@@ -48,6 +48,14 @@ const AC_MATRIX: readonly (readonly number[])[] = [
 
 /** 参考表的一行 */
 export interface AqlTableRow {
+  /**
+   * 检验水平与严格度（可选）。
+   *
+   * 本地内置参考表只有一般 II / 正常检验（表里写死），所以这两个字段是空的；
+   * 服务端方案表才有完整值。抽样下拉按「实际有哪些组合」列选项时就靠它们。
+   */
+  level?: string
+  strictLevel?: string
   lotFrom: number
   lotTo: number
   codeLetter: string

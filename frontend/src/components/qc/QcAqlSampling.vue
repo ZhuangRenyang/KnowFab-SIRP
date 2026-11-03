@@ -17,7 +17,7 @@
         <div>
           <label class="aq-lb">{{ t('qc.aql.level') }}</label>
           <el-select :model-value="level" class="w-full" @update:model-value="(v: QcLevel) => emitChange({ level: v })">
-            <el-option v-for="l in QC_LEVELS" :key="l" :value="l" :label="t('qc.level.' + l)" />
+            <el-option v-for="l in levelOptions" :key="l" :value="l" :label="t('qc.level.' + l)" />
           </el-select>
         </div>
       </div>
@@ -25,7 +25,7 @@
         <div>
           <label class="aq-lb">{{ t('qc.aql.strict') }}</label>
           <el-select :model-value="strictLevel" class="w-full" @update:model-value="(v: QcStrictLevel) => emitChange({ strictLevel: v })">
-            <el-option v-for="s in STRICT_LEVELS" :key="s" :value="s" :label="t('qc.strictLevel.' + s)" />
+            <el-option v-for="s in strictOptions" :key="s" :value="s" :label="t('qc.strictLevel.' + s)" />
           </el-select>
         </div>
         <div>
@@ -114,8 +114,10 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Edit, InfoFilled, Plus, Right } from '@element-plus/icons-vue'
 import { QC_LEVELS, STRICT_LEVELS, type QcLevel, type QcStrictLevel } from '@/api/qc'
-import { resolveSampling, type SamplingResult, type TraceStep } from '@/utils/aql'
+import type { SamplingResult, TraceStep } from '@/utils/aql'
+import { useAqlResult, acTextOf } from '@/composables/useAqlResult'
 import { AQL_VALUES, type AqlTableRow } from '@/utils/aqlTable'
+import { availableLevels, availableStrictLevels } from '@/utils/aqlCombos'
 import { qty } from '@/utils/format'
 
 const props = withDefaults(defineProps<{
@@ -148,6 +150,17 @@ const emit = defineEmits<{
 const { t, te } = useI18n()
 
 /**
+ * 下拉只列**实际有方案数据**的组合（推导规则见 utils/aqlCombos.ts）。
+ *
+ * 方案表补齐后选项自动多出来，不用改这里；方案表没加载时退回列全枚举，
+ * 不能让下拉空着把界面卡死。
+ */
+const levelOptions = computed<QcLevel[]>(() => availableLevels(props.plans, QC_LEVELS))
+const strictOptions = computed<QcStrictLevel[]>(() =>
+  availableStrictLevels(props.plans, props.level, STRICT_LEVELS)
+)
+
+/**
  * 查表语境说明：后端给代号，前端给文案。
  *
  * 未知代号退化成中性文案 + 不显示码本身——
@@ -170,33 +183,16 @@ const reasonText = computed(() => {
  *
  * trace（查表依据）用服务端方案表算，这样说明和结论来自同一份数据。
  */
-const result = computed<SamplingResult | null>(() => {
-  const local = resolveSampling({
-    lotQty: props.lotQty,
-    level: props.level || 'GENERAL_II',
-    strictLevel: props.strictLevel || 'NORMAL',
-    aql: props.aql ?? 1.0,
-    plans: props.plans
-  })
-  if (!props.resolved) return local
-  // 服务端结果 + 本地算出的查表依据
-  return { ...props.resolved, trace: local.trace }
+const { result, trace } = useAqlResult({
+  lotQty: props.lotQty,
+  level: props.level || 'GENERAL_II',
+  strictLevel: props.strictLevel || 'NORMAL',
+  aql: props.aql ?? 1.0,
+  plans: props.plans,
+  resolved: props.resolved
 })
 
-const trace = computed<TraceStep[]>(() => result.value?.trace || [])
-
-/**
- * Ac 的显示。
- * -1 = 零容忍（CR 致命缺陷），显示「0 件（零容忍）」——
- * 不能归一化成 0，否则判定岗看不出这批是"发现一件就整批退"。
- */
-const acText = computed(() => {
-  const r = result.value
-  if (!r || !r.found) return '--'
-  if (r.zeroTolerance) return t('qc.aql.acZeroTol')
-  if (r.ac === 0) return t('qc.aql.acNotSet')
-  return t('qc.aql.acValue', { ac: r.ac, re: r.re })
-})
+const acText = computed(() => acTextOf(result.value, t))
 
 /** 改任意一项就把整组参数发出去（父组件持有真值，这里不做局部状态） */
 function emitChange(p: Partial<{ lotQty: number; level: QcLevel; strictLevel: QcStrictLevel; aql: number }>) {

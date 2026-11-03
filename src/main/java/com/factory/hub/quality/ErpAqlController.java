@@ -70,6 +70,29 @@ public class ErpAqlController {
     }
 
     /** 方案表。默认全给；onlyUnverified=true 只看还没和纸本核对过的格子 */
+    /**
+     * 方案表里实际有哪些「检验水平 + 严格度」组合。
+     * <p>
+     * <b>为什么要有这个接口</b>：抽样界面的两个下拉（检验水平 / 严格度）
+     * 如果列全 GB/T 2828.1 的 8 个水平 × 3 个严格度，而方案表里只导入了
+     * 一般 II / 正常检验 —— 用户选其它组合就必然撞上"没配方案"。
+     * <b>界面在制造必然的失败</b>。
+     * <p>
+     * 由接口返回真实存在的组合，主数据补齐后前端自动跟着多出选项，
+     * <b>不用改前端代码</b>。每个组合带方案数，界面可以显示"共 N 条"。
+     */
+    @GetMapping("/levels")
+    public Map<String, Object> levels() {
+        try {
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("ok", true);
+            out.put("combos", service.availableCombos());
+            return out;
+        } catch (Exception e) {
+            return ErpQcBody.fail(e);
+        }
+    }
+
     @GetMapping("/plans")
     public Map<String, Object> plans(@RequestParam(required = false) String level,
                                      @RequestParam(required = false) String strictLevel,

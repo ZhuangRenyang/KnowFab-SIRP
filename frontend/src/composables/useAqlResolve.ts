@@ -32,6 +32,10 @@ export function useAqlResolve() {
     try {
       const r = await qcAqlApi.plans()
       plans.value = (r.rows || []).map((p) => ({
+        // level / strictLevel 必须带上：抽样下拉要按「实际有哪些组合」列选项，
+        // 丢了这两个字段就只能列全枚举 → 用户选到没数据的组合必然报"没配方案"
+        level: p.level,
+        strictLevel: p.strictLevel,
         lotFrom: p.lotFrom, lotTo: p.lotTo, codeLetter: p.codeLetter,
         sampleSize: p.sampleSize, ac: p.ac, re: p.re, aql: p.aql
       }))
