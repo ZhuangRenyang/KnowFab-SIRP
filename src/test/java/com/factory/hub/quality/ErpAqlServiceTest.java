@@ -106,31 +106,34 @@ class ErpAqlServiceTest {
     /* ==================== 播种表本身 ==================== */
 
     @Test
-    @DisplayName("播种 66 行：6 个 AQL × 11 个批量档，且没有重复的格子")
+    @DisplayName("播种 630 行：7 个水平 × 15 个批量档 × 6 个 AQL，且没有重复的格子")
     void seedTableShape() {
         List<ErpQcAqlPlan> table = ErpAqlSeeder.buildPlans();
-        assertEquals(66, table.size());
+        assertEquals(630, table.size());
         assertEquals(ErpAqlSeeder.plannedRowCount(), table.size());
         long distinct = table.stream()
                 .map(p -> p.getLevel() + "|" + p.getStrictLevel() + "|" + p.getLotFrom() + "|" + p.getAql())
                 .distinct().count();
-        assertEquals(66, distinct, "同一格不允许两行，否则查表会随机命中其中一行");
+        assertEquals(630, distinct, "同一格不允许两行，否则查表会随机命中其中一行");
     }
 
     @Test
-    @DisplayName("每一行都满足 Re = Ac + 1，且样本量与字码对应国标表 1")
+    @DisplayName("每一行都满足 Re = Ac + 1，且字码与样本量对应国标表 1")
     void seedTableInvariants() {
         for (ErpQcAqlPlan p : ErpAqlSeeder.buildPlans()) {
             assertEquals(p.getAc() + 1, p.getRe(), "Re 必须等于 Ac+1：" + p.getCodeLetter());
-            assertEquals(ErpQcAqlPlan.LEVEL_II, p.getLevel());
+            // 7 个水平都在（表 1 的前四列是特殊检验水平 S-1~S-4）
+            assertTrue(ErpAqlLevelMap.levelIndex(p.getLevel()) >= 0,
+                    "检验水平不认识：" + p.getLevel());
             assertEquals(ErpQcAqlPlan.STRICT_NORMAL, p.getStrictLevel());
         }
-        // 11 个批量档的样本量，国标表 1（一般检验水平 II）
-        int[] expectedSample = {2, 3, 5, 8, 13, 20, 32, 50, 80, 125, 200};
-        String[] expectedLetter = {"A", "B", "C", "D", "E", "F", "G", "H", "J", "K", "L"};
+        // 字码行的样本量（国标表 1 的字码列）
+        int[] expectedSample = {2, 3, 5, 8, 13, 20, 32, 50, 80, 125, 200, 315, 500, 800, 1250, 2000};
+        String[] expectedLetter = {"A", "B", "C", "D", "E", "F", "G", "H", "J", "K", "L",
+                "M", "N", "P", "Q", "R"};
         for (int i = 0; i < expectedSample.length; i++) {
-            assertEquals(expectedSample[i], ErpAqlSeeder.sampleOfBand(i));
-            assertEquals(expectedLetter[i], ErpAqlSeeder.letterOfBand(i));
+            assertEquals(expectedSample[i], ErpAqlSeeder.sampleOfLetterRow(i));
+            assertEquals(expectedLetter[i], ErpAqlSeeder.letterOfLetterRow(i));
         }
     }
 
@@ -142,7 +145,7 @@ class ErpAqlServiceTest {
         int[] expectedAc = {0, 0, 0, 0, 1, 1, 2, 3, 5, 7, 10};
         for (int i = 0; i < expectedAc.length; i++) {
             assertEquals(expectedAc[i], ErpAqlSeeder.acOf(i, col),
-                    "AQL 2.5 第 " + i + " 档（字码 " + ErpAqlSeeder.letterOfBand(i) + "）接收数不对");
+                    "AQL 2.5 第 " + i + " 档（字码 " + ErpAqlSeeder.letterOfLetterRow(i) + "）接收数不对");
         }
     }
 
@@ -241,7 +244,7 @@ class ErpAqlServiceTest {
                 boolean expect = ErpAqlSeeder.verifiedOf(band, col);
                 boolean actual = table.get(band * 6 + col).isVerified();
                 assertEquals(expect, actual,
-                        "格（档 " + ErpAqlSeeder.letterOfBand(band)
+                        "格（档 " + ErpAqlSeeder.letterOfLetterRow(band)
                                 + "，AQL " + ErpAqlSeeder.aqlTextOf(col) + "）的 verified 标记不对");
                 if (actual) {
                     verified++;
@@ -268,8 +271,20 @@ class ErpAqlServiceTest {
                 assertTrue(p.getRemark().contains("借"), "箭头格要写明借了哪一行：" + p.getRemark());
             }
         }
-        // 国标表 2-A 里有 27 个箭头格（各列 7/6/5/4/3/2 个，左上三角）
-        assertEquals(27, arrowCells, "应有 27 个箭头格");
+        // 国标表 2-A 的 96 格（16 字码行 × 6 AQL 列）里有 42 个箭头格。
+        // 注意：播种 630 行时同一字码会被多个水平/批量档引用，
+        // 所以"箭头行数"比"箭头格数"多——两个数都对，但含义不同。
+        int gridArrow = 0;
+        for (int i = 0; i < ErpAqlStandardGrid.LETTER.length; i++) {
+            for (int j = 0; j < ErpAqlStandardGrid.AQL_TEXT.length; j++) {
+                if (ErpAqlStandardGrid.isArrow(i, j)) {
+                    gridArrow++;
+                }
+            }
+        }
+        assertEquals(42, gridArrow, "国标表 2-A 里应有 42 个箭头格");
+        assertTrue(arrowCells > gridArrow,
+                "播种的箭头行数应多于箭头格数（同一字码被多个水平引用）");
     }
 
     @Test

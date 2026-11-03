@@ -150,19 +150,15 @@ class ErpAqlStandardGridTest {
     }
 
     @Test
-    @DisplayName("播种出的 66 行：样本量与解析结果一致，备注写明来源")
+    @DisplayName("播种出的 630 行（7 水平 × 15 批量档 × 6 AQL）：样本量与解析结果一致，备注写明来源")
     void seededRowsMatchResolution() {
         java.util.List<ErpQcAqlPlan> rows = ErpAqlSeeder.buildPlans();
-        assertEquals(66, rows.size());
+        // 7 个检验水平 × 15 个批量档 × 6 个 AQL
+        assertEquals(7 * 15 * 6, rows.size());
         for (ErpQcAqlPlan p : rows) {
-            int band = -1;
-            for (int i = 0; i < ErpAqlStandardGrid.LOT_FROM.length; i++) {
-                if (p.getLotFrom() == ErpAqlStandardGrid.LOT_FROM[i]) {
-                    band = i;
-                    break;
-                }
-            }
-            assertTrue(band >= 0, "批量档对不上：" + p.getLotFrom());
+            // 字码行下标：现在由「批量 + 水平」共同决定（表 1），不是批量档下标
+            int gridRow = ErpAqlLevelMap.gridRowOf(p.getLotFrom(), p.getLevel());
+            assertTrue(gridRow >= 0, "字码行对不上：" + p.getLevel() + " / " + p.getLotFrom());
             int col = -1;
             for (int i = 0; i < ErpAqlStandardGrid.AQL_TEXT.length; i++) {
                 if (p.getAql().compareTo(new java.math.BigDecimal(ErpAqlStandardGrid.AQL_TEXT[i])) == 0) {
@@ -171,7 +167,7 @@ class ErpAqlStandardGridTest {
                 }
             }
             assertTrue(col >= 0, "AQL 对不上：" + p.getAql());
-            ErpAqlStandardGrid.Cell c = ErpAqlStandardGrid.resolveCell(band, col);
+            ErpAqlStandardGrid.Cell c = ErpAqlStandardGrid.resolveCell(gridRow, col);
             assertEquals(c.sampleSize(), p.getSampleSize(), "样本量不一致");
             assertEquals(c.ac(), p.getAc(), "接收数不一致");
             assertEquals(c.re(), p.getRe(), "拒收数不一致");

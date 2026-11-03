@@ -58,14 +58,16 @@ class ErpAqlAvailableCombosTest {
     }
 
     @Test
-    @DisplayName("播种器的真实数据只有「一般 II / 正常检验」一个组合")
-    void seededTableHasOnlyOneCombo() {
+    @DisplayName("播种器的真实数据：7 个检验水平 × 正常检验")
+    void seededTableHasAllSevenLevels() {
         Set<String> combos = new HashSet<>();
         for (ErpQcAqlPlan p : ErpAqlSeeder.buildPlans()) {
             combos.add(p.getLevel() + "/" + p.getStrictLevel());
         }
-        assertEquals(1, combos.size(),
-                "播种器目前只导入了「一般 II / 正常检验」；若将来补其它水平，这条要改");
-        assertTrue(combos.contains("GENERAL_II/NORMAL"), combos.toString());
+        // 国标表 1 的 7 个检验水平全部导入（4 个特殊 + 3 个一般）
+        assertEquals(7, combos.size(), "7 个水平都要有：" + combos);
+        for (String level : ErpAqlLevelMap.LEVELS) {
+            assertTrue(combos.contains(level + "/NORMAL"), "缺水平 " + level);
+        }
     }
 }

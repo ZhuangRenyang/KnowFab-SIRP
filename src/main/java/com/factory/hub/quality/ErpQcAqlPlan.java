@@ -37,6 +37,14 @@ import java.math.BigDecimal;
 })
 public class ErpQcAqlPlan {
 
+    /** 特殊检验水平 S-1（鉴别力最低，样本量最小） */
+    public static final String LEVEL_S1 = "SPECIAL_S1";
+    /** 特殊检验水平 S-2 */
+    public static final String LEVEL_S2 = "SPECIAL_S2";
+    /** 特殊检验水平 S-3 */
+    public static final String LEVEL_S3 = "SPECIAL_S3";
+    /** 特殊检验水平 S-4 */
+    public static final String LEVEL_S4 = "SPECIAL_S4";
     /** 一般检验水平 I */
     public static final String LEVEL_I = "GENERAL_I";
     /** 一般检验水平 II（默认，绝大多数场景） */

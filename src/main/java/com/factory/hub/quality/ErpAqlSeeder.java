@@ -44,7 +44,15 @@ import java.util.List;
  * 与批量和检验水平都无关，放进这张表会得到 66 行完全相同的 Ac=-1，
  * 反而与"正常格子的 Ac=0"混淆。它由 {@link ErpAqlService#resolveForSeverity} 在运行时套用。
  * <p>
- * <b>只在表空时播种</b>：客户改过的方案不能被升级包覆盖。
+ * <b>按水平逐个补播种</b>：某个检验水平一行都没有才补那个水平，已有行的一律不动。
+ * <p>
+ * <b>为什么不是「表空才播」</b>：升级库里已经有老版本播的「一般 II / 正常检验」66 行，
+ * 按「表空才播」判断的话，其它 6 个水平永远补不上——用户选了「一般检验水平 III」
+ * 就撞上「没配方案」。
+ * <p>
+ * <b>为什么不是「整体重播」</b>：客户现场可能已经按自己的习惯改过某个水平的方案，
+ * 整体重播会覆盖人家的修改。<b>升级包不能覆盖客户数据</b>。
+ * <p>
  * 要恢复国标默认只能显式调 {@link #reseed()}（页面上是「恢复国标默认」按钮）。
  */
 @Component
@@ -53,10 +61,10 @@ public class ErpAqlSeeder implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(ErpAqlSeeder.class);
 
-    /** 批量档下限（含）——国标表 1，一般检验水平 II */
-    private static final int[] LOT_FROM = ErpAqlStandardGrid.LOT_FROM;
+    /** 批量档下限（含）——国标表 1（归 {@link ErpAqlLevelMap} 管：批量档是表 1 的概念） */
+    private static final int[] LOT_FROM = ErpAqlLevelMap.LOT_FROM;
     /** 批量档上限（含） */
-    private static final int[] LOT_TO = ErpAqlStandardGrid.LOT_TO;
+    private static final int[] LOT_TO = ErpAqlLevelMap.LOT_TO;
     /** 样本量字码 A~L */
     private static final String[] LETTER = ErpAqlStandardGrid.LETTER;
     /** 各字码行的样本量 n */
@@ -92,22 +100,51 @@ public class ErpAqlSeeder implements ApplicationRunner {
         return seedIfEmptyImpl();
     }
 
+    /**
+     * 缺哪个水平就补哪个水平。
+     * <p>
+     * <b>为什么不是「表空才播」</b>：升级库里已经有「一般 II / 正常检验」的 66 行
+     * （老版本播的），如果按「表空才播」判断，其它 6 个水平永远补不上——
+     * 用户选了「一般检验水平 III」就撞上「没配方案」。
+     * <p>
+     * <b>为什么不是「整体重播」</b>：客户现场可能已经按自己的习惯改过某个水平的方案，
+     * 整体重播会把人家的修改覆盖掉。<b>升级包不能覆盖客户数据</b>。
+     * <p>
+     * 所以：<b>按水平逐个补</b>——某个水平一行都没有才补那个水平，已有行的一律不动。
+     */
     private int seedIfEmptyImpl() {
-        if (planRepo.countByLevelAndStrictLevel(
-                ErpQcAqlPlan.LEVEL_II, ErpQcAqlPlan.STRICT_NORMAL) > 0) {
+        List<ErpQcAqlPlan> missing = new ArrayList<>();
+        for (String level : ErpAqlLevelMap.LEVELS) {
+            if (planRepo.countByLevelAndStrictLevel(level, ErpQcAqlPlan.STRICT_NORMAL) > 0) {
+                continue;   // 这个水平已有数据（可能是客户维护的），不动
+            }
+            missing.addAll(buildPlansOfLevel(level));
+        }
+        if (missing.isEmpty()) {
             return 0;
         }
-        return writeAll();
+        planRepo.saveAll(missing);
+        return missing.size();
     }
 
     /**
-     * 恢复国标默认：先删掉 GENERAL_II × NORMAL 的全部行，再重新播种。
-     * 只动这一个组合，客户自己加的加严/放宽方案、其他检验水平一律不碰。
+     * 恢复国标默认：删掉<b>全部 7 个检验水平</b>的正常检验行，再重新播种。
+     * <p>
+     * 只动「正常检验」这一个严格度——客户自己加的加严/放宽方案一律不碰
+     * （那是客户按自己的转移规则维护的，国标默认表里没有）。
+     * <p>
+     * <b>为什么连其它水平一起删</b>：客户的某个水平可能只改了几格，
+     * 「恢复默认」如果只重播水平 II，客户会以为其它水平也被重置了——
+     * 实际上它们还是改过的版本。<b>要么全恢复，要么不恢复</b>，
+     * 半恢复最让人困惑。
      */
     @Transactional
     public int reseed() {
-        List<ErpQcAqlPlan> old = planRepo.findByLevelAndStrictLevelOrderByAqlAscLotFromAsc(
-                ErpQcAqlPlan.LEVEL_II, ErpQcAqlPlan.STRICT_NORMAL);
+        List<ErpQcAqlPlan> old = new ArrayList<>();
+        for (String level : ErpAqlLevelMap.LEVELS) {
+            old.addAll(planRepo.findByLevelAndStrictLevelOrderByAqlAscLotFromAsc(
+                    level, ErpQcAqlPlan.STRICT_NORMAL));
+        }
         if (!old.isEmpty()) {
             planRepo.deleteAll(old);
         }
@@ -123,40 +160,68 @@ public class ErpAqlSeeder implements ApplicationRunner {
     }
 
     /**
-     * 生成 66 行方案对象（不落库）。
+     * 生成方案对象（不落库）：<b>7 个检验水平 × 15 个批量档 × 6 个 AQL = 630 行</b>。
      * <p>
-     * 抽成 public static 是为了让单测能直接拿到"将要写进库的那份数据"去验三个锚点——
+     * 抽成 public static 是为了让单测能直接拿到"将要写进库的那份数据"去验锚点——
      * 如果测试自己另抄一份期望值，抄错了也没人发现（测试和实现一起错，是最常见的假绿灯）。
+     * <p>
+     * <b>为什么要按水平展开 630 行，而不是只存"字码 × AQL"的 96 行</b>：
+     * ① 客户可以在维护页上直接看到「水平 II、批量 281~500、AQL 0.65 → 抽 80 件」，
+     *     不用自己拿表 1 去换算字码；<br>
+     * ② 客户现场完全可以只按自己的习惯维护某一个水平的方案，
+     *     其它水平照用国标默认——按行存才支持这种"局部覆盖"。<br>
+     * ③ 查表退化成一次索引查找（level + lot + aql），不需要在应用层做换算。
+     * <p>
+     * 同一个字码的行会有重复（不同水平/批量档可能落到同一字码），
+     * 这是有意的冗余：<b>每行都是一句完整的业务结论</b>，可读性换存储。
      */
     public static List<ErpQcAqlPlan> buildPlans() {
+        List<ErpQcAqlPlan> rows = new ArrayList<>(
+                ErpAqlLevelMap.LEVELS.length * ErpAqlLevelMap.LOT_FROM.length * AQL_TEXT.length);
+        for (String level : ErpAqlLevelMap.LEVELS) {
+            rows.addAll(buildPlansOfLevel(level));
+        }
+        return rows;
+    }
+
+    /** 某一个检验水平的全部方案行（15 批量档 × 6 AQL = 90 行） */
+    public static List<ErpQcAqlPlan> buildPlansOfLevel(String level) {
         long now = System.currentTimeMillis();
-        List<ErpQcAqlPlan> rows = new ArrayList<>(LOT_FROM.length * AQL_TEXT.length);
-        for (int i = 0; i < LOT_FROM.length; i++) {
-            for (int j = 0; j < AQL_TEXT.length; j++) {
-                // 国标 10.3：箭头格借相邻行的方案（Ac/Re 和样本量 n 一起借）
-                ErpAqlStandardGrid.Cell cell = ErpAqlStandardGrid.resolveCell(i, j);
-                if (cell == null) {
-                    // 箭头指向表外：GB/T 2828.1 表 2-A 里不会出现，
-                    // 真出现了说明标准原表被改动过 —— 宁可少播一格也不要播一个假方案。
-                    log.warn("AQL 方案表 {} 档 @ {} 的箭头指向表外，跳过该格", LETTER[i], AQL_TEXT[j]);
+        List<ErpQcAqlPlan> rows = new ArrayList<>(
+                ErpAqlLevelMap.LOT_FROM.length * AQL_TEXT.length);
+        for (int i = 0; i < ErpAqlLevelMap.LOT_FROM.length; i++) {
+                // 表 1：给定的批量 + 检验水平 → 样本量字码
+                int gridRow = ErpAqlLevelMap.gridRowOf(ErpAqlLevelMap.LOT_FROM[i], level);
+                if (gridRow < 0) {
+                    log.warn("AQL 方案表：水平 {} 的第 {} 批量档找不到字码，跳过", level, i);
                     continue;
                 }
-                ErpQcAqlPlan p = new ErpQcAqlPlan();
-                p.setLevel(ErpQcAqlPlan.LEVEL_II);
-                p.setStrictLevel(ErpQcAqlPlan.STRICT_NORMAL);
-                p.setLotFrom(LOT_FROM[i]);
-                p.setLotTo(LOT_TO[i]);
-                p.setCodeLetter(LETTER[i]);
-                p.setSampleSize(cell.sampleSize());
-                p.setAc(cell.ac());
-                p.setRe(cell.re());
-                p.setAql(new BigDecimal(AQL_TEXT[j]));
-                p.setRemark(remarkOf(i, j, cell));
-                p.setVerified(verifiedOf(i, j));
-                p.setCreatedAt(now);
-                p.setUpdatedAt(now);
-                rows.add(p);
-            }
+                for (int j = 0; j < AQL_TEXT.length; j++) {
+                    // 国标 10.3：箭头格借相邻行的方案（Ac/Re 和样本量 n 一起借）
+                    ErpAqlStandardGrid.Cell cell = ErpAqlStandardGrid.resolveCell(gridRow, j);
+                    if (cell == null) {
+                        // 箭头指向表外：GB/T 2828.1 表 2-A 里不会出现，
+                        // 真出现了说明标准原表被改动过 —— 宁可少播一格也不要播一个假方案。
+                        log.warn("AQL 方案表 {} 档 @ {} 的箭头指向表外，跳过该格",
+                                ErpAqlStandardGrid.LETTER[gridRow], AQL_TEXT[j]);
+                        continue;
+                    }
+                    ErpQcAqlPlan p = new ErpQcAqlPlan();
+                    p.setLevel(level);
+                    p.setStrictLevel(ErpQcAqlPlan.STRICT_NORMAL);
+                    p.setLotFrom(ErpAqlLevelMap.LOT_FROM[i]);
+                    p.setLotTo(ErpAqlLevelMap.LOT_TO[i]);
+                    p.setCodeLetter(ErpAqlStandardGrid.LETTER[gridRow]);
+                    p.setSampleSize(cell.sampleSize());
+                    p.setAc(cell.ac());
+                    p.setRe(cell.re());
+                    p.setAql(new BigDecimal(AQL_TEXT[j]));
+                    p.setRemark(remarkOf(gridRow, j, cell));
+                    p.setVerified(verifiedOf(gridRow, j));
+                    p.setCreatedAt(now);
+                    p.setUpdatedAt(now);
+                    rows.add(p);
+                }
         }
         return rows;
     }
@@ -196,16 +261,22 @@ public class ErpAqlSeeder implements ApplicationRunner {
 
     /** 供单测断言用：本播种器会写多少行 */
     public static int plannedRowCount() {
-        return LOT_FROM.length * AQL_TEXT.length;
+        return ErpAqlLevelMap.LEVELS.length * LOT_FROM.length * AQL_TEXT.length;
     }
 
-    /** 供单测断言用：某个批量档的字码 */
-    public static String letterOfBand(int index) {
+    /**
+     * 供单测断言用：某个<b>字码行</b>的字码。
+     * <p>
+     * ⚠️ 叫 "LetterRow" 而不是 "Band"：现在<b>字码行 ≠ 批量档</b>——
+     * 同一个批量在不同检验水平下对应不同字码（国标表 1），
+     * 所以按批量档取字码是错的，得先定水平再取。
+     */
+    public static String letterOfLetterRow(int index) {
         return LETTER[index];
     }
 
-    /** 供单测断言用：某个批量档的样本量 */
-    public static int sampleOfBand(int index) {
+    /** 供单测断言用：某个<b>字码行</b>的样本量 */
+    public static int sampleOfLetterRow(int index) {
         return SAMPLE[index];
     }
 

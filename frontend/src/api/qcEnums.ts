@@ -53,10 +53,15 @@ export const SEVERITIES: readonly QcSeverity[] = ['CR', 'MA', 'MI']
 /** 处置动作 */
 export const DISPOSITIONS: readonly QcDisposition[] = ['SCRAP', 'REWORK', 'CONCESSION']
 
-/** 检验水平 */
+/**
+ * 检验水平。
+ *
+ * **顺序 = 国标表 1 的列顺序**（特殊检验水平 S-1~S-4 在前，一般 I/II/III 在后）。
+ * 下拉按这个顺序显示，用户对照标准翻表时不用二次排序。
+ */
 export const QC_LEVELS: readonly QcLevel[] = [
-  'GENERAL_I', 'GENERAL_II', 'GENERAL_III',
-  'SPECIAL_S1', 'SPECIAL_S2', 'SPECIAL_S3', 'SPECIAL_S4'
+  'SPECIAL_S1', 'SPECIAL_S2', 'SPECIAL_S3', 'SPECIAL_S4',
+  'GENERAL_I', 'GENERAL_II', 'GENERAL_III'
 ]
 
 /** 检验严格度 */

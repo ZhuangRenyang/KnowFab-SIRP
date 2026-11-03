@@ -294,11 +294,17 @@ public class ErpAqlService {
         }
         String v = raw.trim().toUpperCase().replace("-", "_").replace(" ", "_");
         return switch (v) {
+            // 特殊检验水平 S-1~S-4（国标表 1 的前四列，鉴别力从低到高）
+            case "S1", "S_1", "SPECIAL_S1" -> ErpQcAqlPlan.LEVEL_S1;
+            case "S2", "S_2", "SPECIAL_S2" -> ErpQcAqlPlan.LEVEL_S2;
+            case "S3", "S_3", "SPECIAL_S3" -> ErpQcAqlPlan.LEVEL_S3;
+            case "S4", "S_4", "SPECIAL_S4" -> ErpQcAqlPlan.LEVEL_S4;
             case "I", "1", "GENERAL_1", "GENERAL_I" -> ErpQcAqlPlan.LEVEL_I;
             case "II", "2", "GENERAL_2", "GENERAL_II" -> ErpQcAqlPlan.LEVEL_II;
             case "III", "3", "GENERAL_3", "GENERAL_III" -> ErpQcAqlPlan.LEVEL_III;
             default -> throw new IllegalArgumentException(
-                    "不支持的检验水平：" + raw + "（可用 GENERAL_I / GENERAL_II / GENERAL_III）");
+                    "不支持的检验水平：" + raw + "（可用 "
+                            + String.join(" / ", ErpAqlLevelMap.LEVELS) + "）");
         };
     }
 

@@ -370,6 +370,35 @@ def run_checks(api, args_port):
         check(int(r.get("ac", -1)) == 21, "Ac=21", str(r.get("ac")))
 
     print()
+    print("--- ③a2 七个检验水平都能查表（国标表 1 的字码映射）---")
+    # 同一批量在不同水平下 → 不同字码 → 不同样本量。
+    # 这是「检验水平」存在的意义：水平越高，抽样量越大，鉴别力越高。
+    # 抽查 500 件这批：AQL 2.5 下各水平的结果
+    level_expect = {
+        "SPECIAL_S1": (8, 0),     # 批量 500 → 字码 D（n=8）… AQL 2.5 借 C 行 → n=5
+        "GENERAL_I": (13, 0),
+        "GENERAL_II": (20, 1),
+        "GENERAL_III": (50, 3),
+    }
+    for lv, (want_n, want_ac) in level_expect.items():
+        r = api.get("/api/erp/qc/aql/resolve?level=%s&strictLevel=NORMAL"
+                    "&lotQty=500&aql=2.5" % lv)
+        if not r.get("ok"):
+            check("%s 水平能查表" % lv, False, str(r.get("message"))[:80])
+            continue
+        check("%s 水平能查表" % lv, True, "n=%s letter=%s" % (r.get("sampleSize"), r.get("codeLetter")))
+        check("%s 水平样本量 = %d" % (lv, want_n),
+              int(r.get("sampleSize", 0)) == want_n, r.get("sampleSize"))
+        check("%s 水平 Ac = %d" % (lv, want_ac),
+              int(r.get("ac", -1)) == want_ac, r.get("ac"))
+    # 不认识的水平 → 必须报错，不能静默当成水平 II
+    r = api.get("/api/erp/qc/aql/resolve?level=GENERAL_IV&strictLevel=NORMAL"
+                "&lotQty=500&aql=2.5")
+    check("不认识的水平被拒（不静默当水平 II）",
+          r.get("ok") is False and "水平" in str(r.get("message", "")),
+          str(r.get("message"))[:80])
+
+    print()
     print("--- ③b 抽样下拉只列有数据的组合（界面不制造必然失败）---")
     r = api.get("/api/erp/qc/aql/levels")
     check(r.get("ok"), "可用检验水平接口可调用", str(r.get("message", "")))
