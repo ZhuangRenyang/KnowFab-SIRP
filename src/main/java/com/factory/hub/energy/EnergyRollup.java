@@ -57,6 +57,16 @@ public class EnergyRollup {
     /** 当前小时的累加桶，key = deviceCode|segType */
     private final Map<String, Bucket> current = new LinkedHashMap<>();
 
+    /**
+     * 当前小时<b>已落库</b>的基线（键同 current：code|segType）。
+     * <p>
+     * 服务重启后内存桶从零开始，而 persist 是覆盖写——不继承已落库的当前小时累计，
+     * 重启前那一段电量会被内存里的零值冲掉（这一小时直接少算，月底跟供电局对不上）。
+     * 产量侧 {@code ProdRollup.bucket()} 早就做了这个防护（注释里写着「防覆盖写冲掉已落库增量」），
+     * 能耗这边原来漏了。整点切换和进程启动时各加载一次。
+     */
+    private Map<String, EnergyRecord> baseline = new HashMap<>();
+
     private long currentHour = -1L;
     private long lastCleanupDay = -1L;
     private final Set<String> warnedUnpriced = ConcurrentHashMap.newKeySet();
@@ -87,11 +97,13 @@ public class EnergyRollup {
 
         if (currentHour < 0) {
             currentHour = hour;
+            baseline = loadBaseline(hour);
         } else if (hour != currentHour) {
             // 整点：上一小时的数据定稿，写库
             persist(currentHour);
             current.clear();
             currentHour = hour;
+            baseline = loadBaseline(hour);
             log.debug("能耗整点结算完成：{}", Instant.ofEpochMilli(currentHour - HOUR_MS));
         }
 
@@ -137,7 +149,7 @@ public class EnergyRollup {
                     price = seg.getPrice();
                 }
 
-                Bucket b = current.computeIfAbsent(code + "|" + segType, k -> new Bucket());
+                Bucket b = current.computeIfAbsent(code + "|" + segType, k -> newBucket(code, segType));
                 b.kwh += d.kwh();
                 b.cost += d.kwh() * price;
                 if (d.backfill()) {
@@ -160,6 +172,31 @@ public class EnergyRollup {
         if (currentHour > 0) {
             persist(currentHour);
         }
+    }
+
+    /** 新建内存桶时继承已落库的当前小时累计（重启后不丢那一段电量） */
+    private Bucket newBucket(String code, String segType) {
+        Bucket b = new Bucket();
+        EnergyRecord r = baseline.get(code + "|" + segType);
+        if (r != null) {
+            b.kwh = r.getKwh();
+            b.backfill = r.getBackfillKwh();
+            b.cost = r.getCost();
+        }
+        return b;
+    }
+
+    /** 读出这一小时已落库的行，作为重启后的基线 */
+    private Map<String, EnergyRecord> loadBaseline(long hour) {
+        Map<String, EnergyRecord> m = new HashMap<>();
+        try {
+            for (EnergyRecord r : repo.findByHourStart(hour)) {
+                m.put(r.getDeviceCode() + "|" + r.getSegType(), r);
+            }
+        } catch (Exception e) {
+            log.warn("读取当前小时已落库电量失败（{}），本小时从零开始累计", e.getMessage());
+        }
+        return m;
     }
 
     /** 把内存桶写成数据库行。同一小时重复写会更新已有行，不会重复插入 */

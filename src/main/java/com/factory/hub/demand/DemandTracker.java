@@ -65,7 +65,28 @@ public class DemandTracker {
             return;
         }
         long win = ts - (ts % WINDOW_MS);
-        live.merge(deviceCode + "|" + win, kwh, Double::sum);
+        String key = deviceCode + "|" + win;
+        // 重启后内存窗口从零开始，而 flush 是覆盖写——先把库里这一窗口已落的量继承过来，
+        // 否则重启前的电量会被零值冲掉（本月最大需量被低估 → 基本电费少算，
+        // 需量告警也可能不触发，峰值本已越限却没人知道）。
+        if (!live.containsKey(key)) {
+            live.putIfAbsent(key, windowBaseline(deviceCode, win));
+        }
+        live.merge(key, kwh, Double::sum);
+    }
+
+    /** 这一窗口已落库的电量（重启后继承用；查不到就当从零开始） */
+    private double windowBaseline(String deviceCode, long win) {
+        try {
+            for (DemandWindow w : repo.findByWindowStart(win)) {
+                if (deviceCode.equals(w.getDeviceCode())) {
+                    return w.getKwh();
+                }
+            }
+        } catch (Exception e) {
+            log.warn("读取需量窗口基线失败（{}），本窗口从零开始累计", e.getMessage());
+        }
+        return 0d;
     }
 
     /** 当前窗口的实时需量（kW），前端「当前负荷」用 */
