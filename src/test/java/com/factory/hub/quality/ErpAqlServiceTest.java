@@ -267,6 +267,8 @@ class ErpAqlServiceTest {
 
         ErpQcAqlPlan out = svc.verifyPlan(99L);
         assertTrue(out.isVerified(), "确认后必须变成已核对");
+        assertNotNull(out.getVerifiedAt(), "要记核对时间");
+        assertNotNull(out.getVerifiedBy(), "要记核对人（审计要能追到人）");
         org.mockito.Mockito.verify(audit).ok(
                 org.mockito.ArgumentMatchers.eq(com.factory.hub.audit.AuditLog.CAT_QUALITY),
                 org.mockito.ArgumentMatchers.anyString(),

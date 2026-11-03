@@ -163,7 +163,47 @@ EXECUTE stmt_wo_defect_no;
 
 DEALLOCATE PREPARE stmt_wo_defect_no;
 
--- ---------- ⑥ 索引兜底 ----------
+-- ---------- ⑥ erp_qc_aql_plan 的核对留痕 ----------
+-- verified 之外还要记"谁核对的、什么时候核的"：审计的价值是能追到人。
+-- 只记一个 verified=true，半年后说不清这一格是标准本来就对、还是有人拍过板——
+-- 而这一格直接决定一批货判合格还是拒收。两列都可空，不影响存量行。
+
+SET @has_aql_plan := (
+  SELECT COUNT(*) FROM information_schema.tables
+  WHERE table_schema = DATABASE() AND table_name = 'erp_qc_aql_plan'
+);
+
+SET @has_vby := (
+  SELECT COUNT(*) FROM information_schema.columns
+  WHERE table_schema = DATABASE() AND table_name = 'erp_qc_aql_plan' AND column_name = 'verified_by'
+);
+
+SET @ddl_vby := IF(@has_aql_plan > 0 AND @has_vby = 0,
+  'ALTER TABLE erp_qc_aql_plan ADD COLUMN verified_by VARCHAR(64) NULL COMMENT ''确认核对的人''',
+  'DO 0');
+
+PREPARE stmt_vby FROM @ddl_vby;
+
+EXECUTE stmt_vby;
+
+DEALLOCATE PREPARE stmt_vby;
+
+SET @has_vat := (
+  SELECT COUNT(*) FROM information_schema.columns
+  WHERE table_schema = DATABASE() AND table_name = 'erp_qc_aql_plan' AND column_name = 'verified_at'
+);
+
+SET @ddl_vat := IF(@has_aql_plan > 0 AND @has_vat = 0,
+  'ALTER TABLE erp_qc_aql_plan ADD COLUMN verified_at BIGINT NULL COMMENT ''确认核对的时间（epoch ms）''',
+  'DO 0');
+
+PREPARE stmt_vat FROM @ddl_vat;
+
+EXECUTE stmt_vat;
+
+DEALLOCATE PREPARE stmt_vat;
+
+-- ---------- ⑦ 索引兜底 ----------
 -- 工单列表与质量成本报表会按类型过滤。ddl-auto 有时不会补索引（表已存在的情况下
 -- 部分方言只加列不建索引），这里明确建一次。
 

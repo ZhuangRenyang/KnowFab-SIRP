@@ -115,6 +115,19 @@ public class ErpQcAqlPlan {
     @Column(name = "verified", nullable = false)
     private boolean verified = true;
 
+    /**
+     * 谁确认核对过（核对人）。null = 还没人确认。
+     * <p>
+     * <b>必须有这一列</b>：审计的价值是"能追到人"。只记一个 {@code verified=true} 的话，
+     * 半年后没人说得清这一格是标准本来就对、还是有人拍过板——而这一格直接决定一批货判合格还是拒收。
+     */
+    @Column(name = "verified_by", length = 64)
+    private String verifiedBy;
+
+    /** 确认核对的时间（epoch ms） */
+    @Column(name = "verified_at")
+    private Long verifiedAt;
+
     @Column(name = "created_at", nullable = false)
     private long createdAt = System.currentTimeMillis();
 
@@ -145,6 +158,10 @@ public class ErpQcAqlPlan {
     public void setRemark(String remark) { this.remark = remark; }
     public boolean isVerified() { return verified; }
     public void setVerified(boolean verified) { this.verified = verified; }
+    public String getVerifiedBy() { return verifiedBy; }
+    public void setVerifiedBy(String verifiedBy) { this.verifiedBy = verifiedBy; }
+    public Long getVerifiedAt() { return verifiedAt; }
+    public void setVerifiedAt(Long verifiedAt) { this.verifiedAt = verifiedAt; }
     public long getCreatedAt() { return createdAt; }
     public void setCreatedAt(long createdAt) { this.createdAt = createdAt; }
     public long getUpdatedAt() { return updatedAt; }

@@ -180,6 +180,9 @@ public class ErpAqlController {
         m.put("aql", p.getAql());
         // false = 由格子规律推算、还没对纸本核过；页面显示「推算」标记 + 确认按钮
         m.put("verified", p.isVerified());
+        // 核对留痕：谁核的、什么时候核的（审计要能追到人）
+        m.put("verifiedBy", p.getVerifiedBy());
+        m.put("verifiedAt", p.getVerifiedAt());
         m.put("zeroTolerance", p.isZeroTolerance());
         m.put("remark", p.getRemark());
         return m;

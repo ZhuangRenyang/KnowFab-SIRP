@@ -204,7 +204,7 @@ public class ErpAqlService {
     }
 
     /**
-     * 确认某一行已与纸本国标核对（{@code verified} 置 true，并写审计）。
+     * 确认某一行已与纸本国标核对（{@code verified} 置 true，记核对人与时间，并写审计）。
      * <p>
      * 播种表里 AQL 0.65 / 6.5 两列共 22 格是"由格子规律推算"的，页面标着「推算」。
      * 这个动作就是让人核完纸本后来点一下把它转正——<b>审计里记下是谁在什么时候认了这格</b>，
@@ -218,14 +218,32 @@ public class ErpAqlService {
             return p;
         }
         p.setVerified(true);
-        p.setUpdatedAt(System.currentTimeMillis());
+        p.setVerifiedBy(currentOperator());
+        p.setVerifiedAt(System.currentTimeMillis());
+        p.setUpdatedAt(p.getVerifiedAt());
         p = planRepo.save(p);
         audit.ok(com.factory.hub.audit.AuditLog.CAT_QUALITY, com.factory.hub.audit.AuditLog.ACT_UPDATE,
                 String.valueOf(id),
                 p.getLevel() + "/" + p.getStrictLevel() + " 批量 " + p.getLotFrom() + "~" + p.getLotTo()
                         + " AQL " + p.getAql().stripTrailingZeros().toPlainString(),
-                "确认抽样方案已与纸本 GB/T 2828.1 核对");
+                "确认抽样方案已与纸本 GB/T 2828.1 核对（核对人 " + p.getVerifiedBy() + "）");
         return p;
+    }
+
+    /** 当前操作人：核对人要落到 {@code verified_by} 上，审计追得到人 */
+    private static String currentOperator() {
+        try {
+            org.springframework.security.core.Authentication a =
+                    org.springframework.security.core.context.SecurityContextHolder
+                            .getContext().getAuthentication();
+            if (a != null && a.getName() != null && !a.getName().isBlank()
+                    && !"anonymousUser".equals(a.getName())) {
+                return a.getName();
+            }
+        } catch (Exception ignored) {
+            // 没有安全上下文（定时任务/单测）时不影响主流程
+        }
+        return "system";
     }
 
     /** 还有多少格没核对过（页面顶部提示"共 N 格待核对"） */
