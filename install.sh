@@ -249,8 +249,9 @@ fi
 if [ -n "${PUB:-}" ]; then
   {
     echo "-----BEGIN PUBLIC KEY-----"
-    printf '%s' "$PUB" | fold -w 64
-    echo
+    # printf 收尾：保证正文与 END 之间恰好一个换行。
+    # 直接折行会把 END 粘在正文尾巴上，openssl 解析失败（报的是"找不到公钥"，很难联想到是换行问题）。
+    printf '%s\n' "$(printf '%s' "$PUB" | tr -d '\r\n' | fold -w 64)"
     echo "-----END PUBLIC KEY-----"
   } > "$DIR/bin/update-pub.pem"
   chmod 644 "$DIR/bin/update-pub.pem"

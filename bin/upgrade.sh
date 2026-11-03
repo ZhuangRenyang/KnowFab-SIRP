@@ -101,10 +101,11 @@ if [ -n "${PKG:-}" ]; then
     unzip -p "$DIR/device-hub.jar" BOOT-INF/classes/application.yml 2>/dev/null \
       | grep -E '^[[:space:]]*public-key:' | head -1 | sed -E 's/.*"([^"]+)".*/\1/' > "$TMP/pub.key"
     [ -s "$TMP/pub.key" ] || { rm -rf "$TMP"; die "jar 里取不到验签公钥，拒绝升级"; }
-    {
-      echo "-----BEGIN PUBLIC KEY-----"
-      fold -w 64 "$TMP/pub.key"
-      echo
+    # 去掉所有换行再按 64 字符折行；用 printf 收尾，保证正文与 END 之间恰好一个换行。
+    # 直接折行会在正文里留空行、或者把 END 粘在正文尾巴上，两种都让 openssl 解析失败
+    # （报错还很难看出来：不是"格式错"，是"找不到公钥"）。
+    { echo "-----BEGIN PUBLIC KEY-----"
+      printf '%s\n' "$(tr -d '\r\n' < "$TMP/pub.key" | fold -w 64)"
       echo "-----END PUBLIC KEY-----"
     } > "$TMP/pub.pem"
     PUBKEY="$TMP/pub.pem"
@@ -119,6 +120,8 @@ if [ -n "${PKG:-}" ]; then
     rm -rf "$TMP"
     die "签名校验失败：这个包不是我们签的，或者被改过。拒绝升级"
   fi
+  # 验签用的公钥临时文件是我们自己放进解包目录的，不能算成"包里多出来的文件"
+  [ "$PUBKEY" = "$TMP/pub.pem" ] && rm -f "$TMP/pub.key" "$TMP/pub.pem"
 
   VER="$(sed -nE 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$TMP/manifest.json" | head -1)"
   [ -n "${VER:-}" ] || { rm -rf "$TMP"; die "manifest.json 里没有 version"; }
@@ -127,11 +130,52 @@ if [ -n "${PKG:-}" ]; then
   echo "$VER" | grep -Eq '^[0-9]+(\.[0-9]+)*$' || { rm -rf "$TMP"; die "manifest.json 里的版本号不合法：$VER"; }
 
   DEST="$UPD/staged/$VER"
+
+  # ① 逐个核对 manifest 里列出的文件。
+  #    签名只覆盖 manifest.json 本身，包里的文件内容必须再跟 manifest 记录的 sha256
+  #    逐一比对——不比对的话，「拿一份公开的合法包，把里面的 jar 换成自己的」
+  #    就是一份签名完全有效的恶意包：签名过了，装进去的却是攻击者的代码。
+  CHECKED=0
+  while read -r P WANT; do
+    [ -n "${P:-}" ] || continue
+    case "$P" in
+      /*|..|../*|*/../*|*/..) rm -rf "$TMP"; die "manifest 里的路径不合法：$P" ;;
+    esac
+    [ -f "$TMP/$P" ] || { rm -rf "$TMP"; die "manifest 里列了 $P，但包里没有这个文件"; }
+    # tr -d '\\'：Git Bash（Windows 开发者本机）的 sha256sum 会在哈希前面加一个
+    # 二进制标记反斜杠，不去掉就永远对不上（Linux 上没有这个标记）。
+    GOT="$(sha256sum "$TMP/$P" | awk '{print $1}' | tr -d '\\')"
+    [ "$GOT" = "$WANT" ] || { rm -rf "$TMP"; die "文件 $P 校验不通过（内容和签名过的 manifest 对不上），拒绝升级"; }
+    CHECKED=$((CHECKED+1))
+  done < <(sed -n 's/.*"path"[[:space:]]*:[[:space:]]*"\([^"]*\)"[[:space:]]*,[[:space:]]*"sha256"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1 \2/p' "$TMP/manifest.json")
+  [ "$CHECKED" -gt 0 ] || { rm -rf "$TMP"; die "manifest 里没有文件清单，拒绝升级"; }
+  ok "包内文件逐一核对通过（$CHECKED 个）"
+
+  # ② 包里不能有多余文件：manifest 列的 + manifest 本身与签名，就这些。
+  #    多出来的东西（比如没列的 migration.sql）会在下次启动被当成正式迁移执行，
+  #    等于在客户生产库上跑攻击者选定的 SQL。
+  ALLOWED="$(mktemp)"
+  { echo "manifest.json"; echo "manifest.sig"; \
+    sed -n 's/.*"path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$TMP/manifest.json"; } \
+    | sort -u > "$ALLOWED"
+  EXTRA="$(cd "$TMP" && find . -type f | sed 's|^\./||' | sort -u | comm -23 - "$ALLOWED")"
+  rm -f "$ALLOWED"
+  if [ -n "$EXTRA" ]; then
+    rm -rf "$TMP"
+    die "升级包里有多余文件（manifest 里没列）：$(echo "$EXTRA" | tr '\n' ' ')。拒绝升级"
+  fi
+
+  # ③ 只拷核对过的文件（不再整目录 cp -r——那会把没列的文件一起带进来）
   rm -rf "$DEST"
   mkdir -p "$DEST"
-  cp -r "$TMP"/. "$DEST"/
+  cp "$TMP/manifest.json" "$TMP/manifest.sig" "$DEST"/
+  while read -r P _; do
+    [ -n "${P:-}" ] || continue
+    mkdir -p "$DEST/$(dirname "$P")"
+    cp "$TMP/$P" "$DEST/$P"
+  done < <(sed -n 's/.*"path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$TMP/manifest.json")
 
-  SHA="$(sha256sum "$DEST/device-hub.jar" 2>/dev/null | awk '{print $1}')"
+  SHA="$(sha256sum "$DEST/device-hub.jar" 2>/dev/null | awk '{print $1}' | tr -d '\\')"
   [ -n "$SHA" ] || { rm -rf "$TMP"; die "升级包里没有 device-hub.jar"; }
 
   {
