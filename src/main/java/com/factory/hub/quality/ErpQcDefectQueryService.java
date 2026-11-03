@@ -44,6 +44,7 @@ public class ErpQcDefectQueryService {
     private final ErpQcDefectRepository defectRepo;
     private final ErpQcDispositionRepository dispRepo;
     private final ErpQcDefectCodeRepository codeRepo;
+    private final com.factory.hub.erp.ErpSkuRepository skuRepo;
     private final ErpQcDefectService defectService;
     private final ErpWorkOrderRepository workOrderRepo;
     private final ProdHourlyRepository prodRepo;
@@ -53,6 +54,7 @@ public class ErpQcDefectQueryService {
     public ErpQcDefectQueryService(ErpQcDefectRepository defectRepo,
                                    ErpQcDispositionRepository dispRepo,
                                    ErpQcDefectCodeRepository codeRepo,
+                                   com.factory.hub.erp.ErpSkuRepository skuRepo,
                                    ErpQcDefectService defectService,
                                    ErpWorkOrderRepository workOrderRepo,
                                    ProdHourlyRepository prodRepo,
@@ -61,6 +63,7 @@ public class ErpQcDefectQueryService {
         this.defectRepo = defectRepo;
         this.dispRepo = dispRepo;
         this.codeRepo = codeRepo;
+        this.skuRepo = skuRepo;
         this.defectService = defectService;
         this.workOrderRepo = workOrderRepo;
         this.prodRepo = prodRepo;
@@ -166,6 +169,19 @@ public class ErpQcDefectQueryService {
         d.setRemark(str(body.get("remark")));
         d.setCreatedAt(System.currentTimeMillis());
         d.setUpdatedAt(d.getCreatedAt());
+        // 产品与来源：skuId 一定要有——让步放行校验是按 SKU 匹配的，
+        // 没有 SKU 的人工补录在禁发仓放行时查不到依据，会被当成"无流水"拦掉
+        Long skuId = longOf(body.get("skuId"));
+        if (skuId != null) {
+            d.setSkuId(skuId);
+            skuRepo.findById(skuId).ifPresent(s -> {
+                d.setSkuCode(s.getCode());
+                d.setSkuName(s.getName());
+            });
+        }
+        d.setLotNo(str(body.get("lotNo")));
+        d.setWorkOrderNo(str(body.get("workOrderNo")));
+        d.setInspectionNo(str(body.get("inspectionNo")));
         if (code != null) {
             d.setDefectCodeId(code.getId());
             d.setDefectCode(code.getCode());
