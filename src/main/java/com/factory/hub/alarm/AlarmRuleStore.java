@@ -61,16 +61,23 @@ public class AlarmRuleStore {
     }
 
     private List<AlarmRule> load() {
-        try {
-            AppSetting s = repo.findById(KEY).orElse(null);
-            if (s != null && s.getValue() != null && !s.getValue().isBlank()) {
+        AppSetting s = repo.findById(KEY).orElse(null);
+        if (s != null && s.getValue() != null && !s.getValue().isBlank()) {
+            try {
                 AlarmRule[] arr = mapper.readValue(s.getValue(), AlarmRule[].class);
                 if (arr != null) {
                     return new ArrayList<>(List.of(arr));
                 }
+            } catch (Exception e) {
+                // 解析失败：只用内存里的默认规则兜底，**绝不把默认值写回 DB**。
+                // 写回去等于把客户配的规则永久覆盖掉（配置一坏，规则就没了），
+                // 而且恢复阶段会按「规则已删除或停用」把正在发生的告警全关掉——
+                // 那个理由是假的，规则根本没被删过。被覆盖掉的原文会留在 app_setting 里，
+                // 修好 JSON 或从备份恢复都能找回来。
+                log.error("告警规则解析失败（{}），本轮用默认规则兜底，**原配置未改动**。"
+                        + "请到「报警 → 规则」检查规则内容", e.getMessage());
+                return defaults();
             }
-        } catch (Exception e) {
-            log.warn("告警规则解析失败，回退到默认规则：{}", e.getMessage());
         }
         List<AlarmRule> def = defaults();
         persist(def);

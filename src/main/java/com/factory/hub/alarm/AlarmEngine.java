@@ -129,7 +129,16 @@ public class AlarmEngine {
     }
 
     /** 注意：组件不能叫 notify / wait / equals，会和 Object 的方法冲突 */
-    private record ClearPending(String key, AlarmEvent event, boolean shouldNotify) {
+    private record ClearPending(String key, AlarmEvent event, boolean shouldNotify, String prevState) {
+    }
+
+    /**
+     * 一次「清除」的结果：改好的事件 + 它原来的状态。
+     * <p>
+     * 原来的状态要留着：落库失败时要把事件还原回未关闭的状态并放回内存继续跟踪，
+     * 一律还原成 ACTIVE 会丢掉「已被确认」这个信息。
+     */
+    private record Cleared(AlarmEvent event, String prevState) {
     }
 
     public AlarmEngine(AlarmRuleStore ruleStore, AlarmEventRepository repo, SnapshotStore snapshot,
@@ -213,6 +222,11 @@ public class AlarmEngine {
             boolean inWindow = rule.activeAt(now);
 
             for (DeviceEntity d : devices.values()) {
+                // 停用的设备不参与告警评估：采集线程已经停了，采样值不会再更新，
+                // 拿最后一个旧值去判定，等于让它的告警永远挂着、还反复通知。
+                if (!Boolean.TRUE.equals(d.getEnabled())) {
+                    continue;
+                }
                 if (!rule.covers(d.getCode())) {
                     continue;
                 }
@@ -224,7 +238,8 @@ public class AlarmEngine {
                     // 但不算「设备修好了」，所以不发恢复通知
                     AlarmEvent cur = open.get(k);
                     if (cur != null) {
-                        clears.add(new ClearPending(k, clear(cur, "已离开生效时段", w, now), false));
+                        Cleared cl = clear(cur, "已离开生效时段", w, now);
+                        clears.add(new ClearPending(k, cl.event(), false, cl.prevState()));
                     }
                     w.reset();
                     continue;
@@ -265,7 +280,8 @@ public class AlarmEngine {
                             w.okSince = now;
                         }
                         if (now - w.okSince >= rule.getRecoverSeconds() * 1000L) {
-                            clears.add(new ClearPending(k, clear(cur, "条件已恢复", w, now), true));
+                            Cleared cl = clear(cur, "条件已恢复", w, now);
+                            clears.add(new ClearPending(k, cl.event(), true, cl.prevState()));
                         }
                     } else {
                         w.okSince = 0;
@@ -425,14 +441,31 @@ public class AlarmEngine {
         }
     }
 
-    private AlarmEvent clear(AlarmEvent e, String reason, Watch w, long now) {
+    /**
+     * 把一条告警标记为已恢复。
+     * <p>
+     * 这里<b>不</b>把它从 {@code open} 里摘掉——摘除必须等落库成功。
+     * 以前是先摘内存再落库：落库一失败，内存里已经没有它、库里还是 ACTIVE，
+     * 下一轮会按同一条规则同一台设备重建一条新告警，旧的那条永远挂在库里
+     * （既多出一条重复告警，又留下一条永远关不掉的孤儿行，页头未处理数也一直虚高）。
+     */
+    private Cleared clear(AlarmEvent e, String reason, Watch w, long now) {
+        String prev = e.getState();
         e.setState(AlarmEvent.STATE_CLEARED);
         e.setClearedAt(now);
         e.setClearReason(reason);
-        open.remove(key(e.getRuleId(), e.getDeviceCode()));
         w.reset();
         w.lastFireAt = now;               // 冷却从恢复时刻开始算，防止刚修好又抖回来
-        return e;
+        return new Cleared(e, prev);
+    }
+
+    /** 落库失败时把告警还原回原来的状态，并放回内存继续跟踪 */
+    private void restore(Cleared c, String key) {
+        AlarmEvent ev = c.event();
+        ev.setState(c.prevState() == null ? AlarmEvent.STATE_ACTIVE : c.prevState());
+        ev.setClearedAt(0L);
+        ev.setClearReason(null);
+        open.putIfAbsent(key, ev);
     }
 
     /** 到了重复提醒的时间点没有。纯判断，不改任何状态 */
@@ -514,8 +547,17 @@ public class AlarmEngine {
             }
             try {
                 repo.saveAll(rows);
+                // 落库成功了才从内存摘掉：摘早了遇上写库失败，
+                // 内存里没了、库里还是 ACTIVE，就会留下一条永远关不掉的孤儿行
+                for (ClearPending c : clears) {
+                    open.remove(c.key());
+                }
             } catch (Exception e) {
-                log.error("告警恢复写库失败: {}", e.getMessage());
+                log.error("告警恢复写库失败（{} 条），已还原为未关闭并继续跟踪: {}",
+                        rows.size(), e.getMessage());
+                for (ClearPending c : clears) {
+                    restore(new Cleared(c.event(), c.prevState()), c.key());
+                }
             }
         }
     }
@@ -603,13 +645,24 @@ public class AlarmEngine {
             if (SystemAlarms.isSystem(e.getRuleId())) {
                 continue;
             }
+            // 本轮已经清过、还没落库的那条不要再清一遍，
+            // 否则同一条会被塞进 clears 两次，落库后只剩最后一个理由。
+            if (AlarmEvent.STATE_CLEARED.equals(e.getState())) {
+                continue;
+            }
             boolean deviceGone = !devices.containsKey(e.getDeviceCode());
+            // 设备还在、但被停用了：采集线程已停，采样值不会再更新，
+            // 它的告警不会再「自己恢复」，要在这儿收掉——但理由要说真话：
+            // 不是「设备已删除」（设备还在），是「设备已停用」。
+            boolean deviceDisabled = !deviceGone
+                    && !Boolean.TRUE.equals(devices.get(e.getDeviceCode()).getEnabled());
             boolean ruleGone = !ruleIds.contains(e.getRuleId());
-            if (deviceGone || ruleGone) {
-                clears.add(new ClearPending(en.getKey(),
-                        clear(e, deviceGone ? "设备已删除" : "规则已删除",
-                                watches.computeIfAbsent(en.getKey(), x -> new Watch()), now),
-                        false));
+            if (deviceGone || deviceDisabled || ruleGone) {
+                String reason = deviceGone ? "设备已删除"
+                        : deviceDisabled ? "设备已停用" : "规则已删除";
+                Cleared cl = clear(e, reason,
+                        watches.computeIfAbsent(en.getKey(), x -> new Watch()), now);
+                clears.add(new ClearPending(en.getKey(), cl.event(), false, cl.prevState()));
             }
         }
     }
@@ -709,12 +762,14 @@ public class AlarmEngine {
         for (Map.Entry<String, AlarmEvent> en : new ArrayList<>(open.entrySet())) {
             AlarmEvent e = en.getValue();
             if (ruleId.equals(e.getRuleId())) {
-                AlarmEvent c = clear(e, reason,
+                Cleared cl = clear(e, reason,
                         watches.computeIfAbsent(en.getKey(), x -> new Watch()), now);
                 try {
-                    repo.save(c);
+                    repo.save(cl.event());
+                    open.remove(en.getKey());       // 落库成功才摘
                 } catch (Exception ex) {
-                    log.debug("关闭规则告警失败: {}", ex.getMessage());
+                    restore(cl, en.getKey());       // 失败就还原，继续跟踪
+                    log.debug("关闭规则告警失败（已还原为未关闭）: {}", ex.getMessage());
                 }
             }
         }
