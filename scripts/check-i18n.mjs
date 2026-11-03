@@ -109,7 +109,10 @@ const EXPANSIONS = [
   { prefix: 'alarmDict.ruleType.', values: ['offline', 'stop', 'flag', 'threshold'] },
   { prefix: 'energyTariff.seg',    values: ['TIP', 'PEAK', 'FLAT', 'VALLEY'] },
   { prefix: 'auditDict.cat.',      values: ['DEVICE', 'ENERGY', 'ALARM', 'REPORT', 'SYSTEM', 'MANUAL', 'USER', 'QUALITY'] },
-  { prefix: 'auditDict.act.',      values: ['CREATE', 'UPDATE', 'DELETE', 'WRITE', 'PURGE', 'REVOKE', 'RESET', 'LOGIN', 'JUDGE', 'DISPOSE', 'TRIAGE', 'AQL_MANUAL', 'VERIFY', 'CONCESSION_ACK', 'RECON_RESOLVE'] },
+  // auditDict.act. **不新增质量域的码**：后端核对实际写入的 action 全是现有码
+  // （UPDATE 判定/核对/定责、WRITE 处置、REVOKE 撤销/作废），只新增分类 QUALITY。
+  // 所以这里只列现有的 8 个。
+  { prefix: 'auditDict.act.',      values: ['CREATE', 'UPDATE', 'DELETE', 'WRITE', 'PURGE', 'REVOKE', 'RESET', 'LOGIN'] },
   // ↓ 以下 6 组来自 components/system/SettingsPanel.vue 的本地 tr(key, fallback)：
   //   function tr(key, fallback) { const full = 'sys.' + key; return te(full) ? t(full) : fallback }
   // 键的后缀是**后端下发的中文设置项名**，所以值集含中文。
@@ -138,8 +141,15 @@ const EXPANSIONS = [
   { prefix: 'qc.blockReason.',   values: ['NO_ACK', 'NO_RELEASE', 'unknown'] },
   { prefix: 'qc.blockAction.',   values: ['ack', 'dispose', 'unknown'] },
   { prefix: 'qc.returnReason.',  values: ['QUALITY', 'OTHER'] },
-  { prefix: 'qc.skipReason.',    values: ['DISPOSED', 'CONFLICT', 'NOT_FOUND', 'INVALID_STATE'] },
+  { prefix: 'qc.skipReason.',    values: ['DISPOSED', 'CONFLICT', 'ERROR'] },
   { prefix: 'qc.enum.',          values: ['unknown'] },
+  // ↓ 后端返回的「代号 + 参数」型文案（后端不返回面向用户的句子，只返回代号）。
+  // 前端按代号拼自己的 i18n 文案 —— 这样英文界面不会蹦中文。
+  { prefix: 'qc.aql.reason.',     values: ['LOT_TOO_SMALL', 'SAMPLE_GE_LOT', 'ZERO_TOLERANCE'] },
+  { prefix: 'qc.disp.warn.',      values: ['REWORK_NEED_ISSUE', 'CONCESSION_NEED_ACK'] },
+  { prefix: 'qc.recon.source.',   values: ['DEVICE_PRIORITY', 'MANUAL_ONLY', 'NO_DEVICE'] },
+  { prefix: 'qc.release.actionHint.', values: ['REGISTER_ACK', 'DISPOSE_FIRST'] },
+  { prefix: 'qc.release.limit.',  values: ['SKU_LEVEL_MATCH'] },
   // ↓ 来自 composables/useErpLabel.ts（模板字符串 + 中文 fallback）
   { prefix: 'erpPurStatus.',     values: ['DRAFT', 'CONFIRMED', 'PARTIAL', 'DONE', 'CANCELLED'] },
   { prefix: 'erpSalesStatus.',   values: ['DRAFT', 'CONFIRMED', 'PARTIAL', 'DONE', 'CANCELLED'] },
