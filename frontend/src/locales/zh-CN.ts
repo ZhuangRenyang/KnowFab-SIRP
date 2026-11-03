@@ -2208,6 +2208,8 @@ base: {
   }
 ,
 erpRpt: {
+    colCustomer: '客户',
+    colSupplier: '供应商',
     startDate: '开始日期',
     endDate: '结束日期',
     allWarehouses: '全部仓库',

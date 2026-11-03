@@ -258,9 +258,9 @@ async function loadCustomTpls() {
 async function saveAsTpl() {
   try {
     const { value: name } = await ElMessageBox.prompt(
-      props.editCode ? t('devForm.saveTplFor', { code: props.editCode }) : t('devForm.saveTplCurrent'),
-      t('devForm.saveTplTitle'),
-      { inputPlaceholder: t('devForm.tplNamePh'), inputValidator: (v) => (!!v && !!v.trim()) || t('devForm.tplNameRequired') }
+      props.editCode ? t('common.saveTplFor', { code: props.editCode }) : t('common.saveTplCurrent'),
+      t('common.saveTplTitle'),
+      { inputPlaceholder: t('common.tplNamePh'), inputValidator: (v) => (!!v && !!v.trim()) || t('common.tplNameRequired') }
     )
     let r
     if (props.editCode) {
@@ -275,12 +275,12 @@ async function saveAsTpl() {
         pointsJson: f.pointsText, note: ''
       })
     }
-    if (!r.ok) { ElMessage.warning(r.message || t('devForm.saveFailed')); return }
-    ElMessage.success(r.message || t('devForm.tplSaved'))
+    if (!r.ok) { ElMessage.warning(r.message || t('common.saveFailed')); return }
+    ElMessage.success(r.message || t('common.tplSaved'))
     await loadCustomTpls()
   } catch (e: any) {
     if (e === 'cancel' || e === 'close') return
-    ElMessage.warning(e?.message || t('devForm.saveFailed'))
+    ElMessage.warning(e?.message || t('common.saveFailed'))
   }
 }
 
@@ -288,11 +288,11 @@ async function delTpl() {
   const id = Number(tplId.value.slice(1))
   if (!id) return
   try {
-    await ElMessageBox.confirm(t('devForm.delTplConfirm'), t('devForm.delTpl'), { type: 'warning' })
+    await ElMessageBox.confirm(t('common.delTplConfirm'), t('devForm.delTpl'), { type: 'warning' })
   } catch { return }
   const r = await deviceTplApi.remove(id).catch(() => null)
-  if (!r?.ok) { ElMessage.warning(r?.message || t('devForm.delFailed')); return }
-  ElMessage.success(t('devForm.tplDeleted'))
+  if (!r?.ok) { ElMessage.warning(r?.message || t('common.delFailed')); return }
+  ElMessage.success(t('common.tplDeleted'))
   tplId.value = ''
   tplNote.value = ''
   await loadCustomTpls()
@@ -402,13 +402,13 @@ function useTpl(k: string) {
 async function save() {
   if (busy.value) return
   const code = f.code.trim()
-  if (!code) { ElMessage.warning(t('devForm.codeRequired')); return }
+  if (!code) { ElMessage.warning(t('common.codeRequired')); return }
   let points: any
   try {
     points = JSON.parse(f.pointsText || '[]')
-    if (!Array.isArray(points) || !points.length) { ElMessage.warning(t('devForm.pointsRequired')); return }
+    if (!Array.isArray(points) || !points.length) { ElMessage.warning(t('common.pointsRequired')); return }
   } catch (e: any) {
-    ElMessage.warning(t('devForm.pointsJsonError') + e.message)
+    ElMessage.warning(t('common.pointsJsonError') + e.message)
     return
   }
   const body = {
@@ -442,7 +442,7 @@ async function save() {
   try {
     if (props.editCode) {
       const d = store.list.find((x: any) => x.code === props.editCode)
-      if (!d) { ElMessage.error(t('devForm.deviceNotFound')); return }
+      if (!d) { ElMessage.error(t('common.deviceNotFound')); return }
       await devicesApi.update(d.id, body)
     } else {
       await devicesApi.save(body)
@@ -450,9 +450,9 @@ async function save() {
     emit('saved')
   } catch (e: any) {
     if (e instanceof ApiError) {
-      ElMessage.error(t('devForm.saveFailedHttp', { status: e.status }) + (typeof e.body === 'string' ? e.body : e.message))
+      ElMessage.error(t('common.saveFailedHttp', { status: e.status }) + (typeof e.body === 'string' ? e.body : e.message))
     } else {
-      ElMessage.error(e?.message || t('devForm.saveFailed'))
+      ElMessage.error(e?.message || t('common.saveFailed'))
     }
   } finally {
     busy.value = false

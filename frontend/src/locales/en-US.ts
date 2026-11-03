@@ -2204,6 +2204,8 @@ base: {
   }
 ,
 erpRpt: {
+    colCustomer: 'Customer',
+    colSupplier: 'Supplier',
     startDate: 'From',
     endDate: 'to',
     allWarehouses: 'All warehouses',
