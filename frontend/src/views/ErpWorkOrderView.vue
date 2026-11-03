@@ -324,6 +324,41 @@
             <template #default="{ row }"><span class="num">{{ dt(row.createdAt) }}</span></template>
           </el-table-column>
         </el-table>
+
+        <!-- 成本：料 / 工 / 费。算不出来的项显示 --，不显示 0 -->
+        <div class="dt-sec">
+          <span class="dt-sec-title">{{ t('cost.secTitle') }}</span>
+          <span class="dt-sec-sub">{{ cost ? cost.hoursSourceLabel + ' ' + qty(cost.hours, 2) + ' h' : '' }}</span>
+        </div>
+        <template v-if="cost">
+          <div class="cost-grid">
+            <div class="cost-cell">
+              <span class="cc-label">{{ t('cost.material') }}</span>
+              <span class="cc-val num">{{ money(cost.materialCost) }}</span>
+              <span class="cc-sub" v-if="cost.materialVariance != null">
+                {{ t('cost.variance') }}
+                <b :class="cost.materialVariance > 0 ? 'down' : 'up'">{{ money(cost.materialVariance) }}</b>
+              </span>
+            </div>
+            <div class="cost-cell">
+              <span class="cc-label">{{ t('cost.labor') }}</span>
+              <span class="cc-val num" :class="{ muted: cost.laborCost == null }">{{ cost.laborCost == null ? '--' : money(cost.laborCost) }}</span>
+              <span class="cc-sub">{{ t('cost.rateHint', { r: cost.laborRate }) }}</span>
+            </div>
+            <div class="cost-cell">
+              <span class="cc-label">{{ t('cost.overhead') }}</span>
+              <span class="cc-val num">{{ money(cost.overheadCost) }}</span>
+              <span class="cc-sub">{{ t('cost.elecIncl', { amt: money(cost.electricityCost) }) }}</span>
+            </div>
+            <div class="cost-cell cc-total">
+              <span class="cc-label">{{ t('cost.colUnitCost') }}</span>
+              <span class="cc-val num">{{ cost.unitCost == null ? '--' : money(cost.unitCost) }}</span>
+              <span class="cc-sub">{{ money(cost.totalCost) }} / {{ qty(cost.doneQty, 0) }}</span>
+            </div>
+          </div>
+          <p v-if="cost.note" class="cost-note">{{ cost.note }}</p>
+        </template>
+        <p v-else class="cost-note">{{ t('cost.noCost') }}</p>
       </template>
     </el-drawer>
 
@@ -453,8 +488,9 @@ import {
 import { skuApi, warehouseApi, type ErpSku, type ErpWarehouse } from '../api/erp'
 import { lineApi } from '../api/lines'
 import { devicesApi } from '../api/devices'
+import { costApi, type OrderCost } from '../api/cost'
 import { useAuthStore } from '../stores/auth'
-import { qty } from '../utils/format'
+import { money, qty } from '../utils/format'
 
 const { t } = useI18n()
 const auth = useAuthStore()
@@ -476,6 +512,7 @@ const sLoading = ref(false)
 
 const drawer = ref(false)
 const detail = ref<WorkOrderDetail | null>(null)
+const cost = ref<OrderCost | null>(null)
 
 const dlg = ref(false)
 const editing = ref(false)
@@ -559,6 +596,13 @@ async function openDetail(orderNo: string) {
       return
     }
     detail.value = d
+    // 成本单独拉：算不出来（没配工价/没开工）时不该让整个详情打不开
+    try {
+      const c = await costApi.order(orderNo)
+      cost.value = c && c.ok ? c : null
+    } catch {
+      cost.value = null
+    }
   } catch (e) {
     ElMessage.error((e as Error)?.message || t('common.reqFail'))
   }
@@ -915,6 +959,48 @@ onMounted(async () => {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
+}
+.cost-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.cost-cell {
+  border: 1px solid var(--line-1);
+  border-radius: var(--r-sm);
+  padding: 8px 10px;
+  background: var(--bg-2);
+}
+.cost-cell.cc-total {
+  border-color: var(--brand);
+  background: var(--brand-weak);
+}
+.cc-label {
+  display: block;
+  font-size: 11px;
+  color: var(--text-3);
+}
+.cc-val {
+  display: block;
+  margin-top: 2px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-1);
+}
+.cc-sub {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--text-3);
+}
+.cc-sub b {
+  font-family: var(--font-num);
+}
+.cost-note {
+  margin: 6px 2px 0;
+  font-size: 11px;
+  color: var(--text-3);
+  line-height: 1.5;
 }
 .issue-head {
   display: flex;

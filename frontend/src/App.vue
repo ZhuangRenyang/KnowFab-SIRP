@@ -96,7 +96,7 @@ import { useRoute, useRouter } from 'vue-router'
 import {
   Monitor, Bell, Lightning, DataLine, Sunrise,
   OfficeBuilding, Box, Sell, ChatDotRound, Setting,
-  Expand, Fold, Sunny, Moon, ArrowDown, User, Goods, ShoppingCart, Search, Money, TrendCharts, Tickets
+  Expand, Fold, Sunny, Moon, ArrowDown, User, Goods, ShoppingCart, Search, Money, TrendCharts, Tickets, Coin
 } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
@@ -176,6 +176,7 @@ const baseGroups = computed<{ title: string; items: NavItem[] }[]>(() => [
     { path: '/erp/stock', label: t('nav.stock'), icon: Box, disabled: false, tip: '' },
     { path: '/erp/finance', label: t('nav.finance'), icon: Money, disabled: false, tip: '' },
     { path: '/erp/reports', label: t('nav.erpReports'), icon: TrendCharts, disabled: false, tip: '' },
+    { path: '/erp/cost', label: t('nav.erpCost'), icon: Coin, disabled: false, tip: '' },
     { path: '/erp/sales-query', label: t('nav.salesQuery'), icon: Search, disabled: false, tip: '' }
   ] },
   ...(auth.isAdmin

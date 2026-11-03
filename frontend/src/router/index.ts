@@ -24,6 +24,7 @@ export const router = createRouter({
     { path: '/erp/stock', component: () => import('@/views/ErpStockView.vue'), meta: { title: '库存管理' } },
     { path: '/erp/finance', component: () => import('@/views/ErpFinanceView.vue'), meta: { title: '财务管理' } },
     { path: '/erp/reports', component: () => import('@/views/ErpReportView.vue'), meta: { title: '经营报表' } },
+    { path: '/erp/cost', component: () => import('@/views/ErpCostView.vue'), meta: { title: '成本核算' } },
     // 销售角色唯一可进的页面
     { path: '/erp/sales-query', component: () => import('@/views/SalesQueryView.vue'),
       meta: { title: '销售查询', roles: ['ADMIN', 'MANAGER', 'LEADER', 'SALES'] } },
