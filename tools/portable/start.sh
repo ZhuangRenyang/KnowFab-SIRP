@@ -82,8 +82,11 @@ port_busy() { # port
 }
 
 rand_pwd() {
-  # 16 位，去掉易混字符
-  LC_ALL=C tr -dc 'a-km-zA-HJ-NP-Z2-9' </dev/urandom | head -c 16
+  # 16 位，去掉易混字符。
+  # 注意：管道接 head -c 时，head 读够就退出会给上游发 SIGPIPE，
+  # tr 因此退出码 141；配合开头的 set -euo pipefail，整个脚本会在这里直接终止
+  # （便携版 Linux 首次启动必崩）。改成把 tr 放进进程替换，让 head 去截断它。
+  LC_ALL=C head -c 16 < <(tr -dc 'a-km-zA-HJ-NP-Z2-9' </dev/urandom)
 }
 
 [ -f "$JAR" ] || die "找不到 device-hub.jar（请把脚本放在解压后的目录里）"

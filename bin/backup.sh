@@ -32,7 +32,11 @@ DB_PORT="${DB_PORT:-$(read_yml url | sed -n 's|jdbc:[a-z]*://[^:/]*:\([0-9]*\).*
 DB_NAME="${DB_NAME:-$(read_yml url | sed -n 's|jdbc:[a-z]*://[^/]*/\([a-zA-Z0-9_-]*\).*|\1|p')}"
 DB_USER="${DB_USER:-$(read_yml username)}"
 DB_PASS="${DB_PASS:-$(read_yml password)}"
-ENGINE="$(read_yml url | sed -n 's|jdbc:/([a-z]*/):.*|/1|p')"
+# 引擎识别：原来写的是 sed -n 's|jdbc:/([a-z]*/):.*|/1|p'
+# （少一个斜杠、捕获组写成了 /1），实测对 jdbc:mysql://… 输出空串 → 落到「不认识的数据库引擎」
+# 就 exit 1 —— 结果是这个备份脚本从来没跑成功过，生产库其实一直没有备份。
+# 现在用不带分组的 POSIX 写法，Linux/macOS/BusyBox 的 sed 都能用。
+ENGINE="$(printf '%s' "$(read_yml url)" | sed -n 's|^jdbc:||p' | cut -d: -f1)"
 
 [ -n "$DB_NAME" ] || { echo "读不到数据库名，请检查 $YML 或设置 DB_NAME 环境变量" >&2; exit 1; }
 [ -n "$DB_PASS" ] || { echo "读不到数据库密码，请设置 DB_PASS 环境变量" >&2; exit 1; }
