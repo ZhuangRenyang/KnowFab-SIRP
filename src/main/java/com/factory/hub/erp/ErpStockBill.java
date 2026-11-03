@@ -39,6 +39,14 @@ public class ErpStockBill {
 
     /** 生产入库：设备计数点每 +N 自动生成（系统单据） */
     public static final String TYPE_PROD_IN = "PROD_IN";
+    /**
+     * 生产领料：按工单从仓库领出原材料，负数出库（DH-70）。
+     * <p>
+     * <b>这一项缺了很久</b>：在此之前只有「设备产出 → 成品入库」，原料那一侧一分不动，
+     * 客户买 100 吨钢做完 80 个零件卖掉，仓库里钢还是 100 吨。
+     * 进销存「期初+入-出=期末」算术上永远对，但那是单边账。
+     */
+    public static final String TYPE_MATERIAL_OUT = "MATERIAL_OUT";
     /** 采购入库 */
     public static final String TYPE_PO_IN = "PO_IN";
     /** 采购退货：退回供应商，负数出库（DH-52） */

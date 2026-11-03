@@ -117,7 +117,17 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/device-templates/**").hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.PUT, "/api/device-templates/**").hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.DELETE, "/api/device-templates/**").hasAnyRole("ADMIN", "MANAGER")
-                        // ERP：读 = 登录即可（班组长要看基础资料），写 = ADMIN/MANAGER
+                        // ERP：读 = 登录即可（班组长要看基础资料），写 = ADMIN/MANAGER。
+                        // 下面两条是例外，必须排在通配之前，否则会被 /api/erp/** 吞掉：
+                        //   · 生产工单的开工/完工/领料 —— 班组长在车间现场做，让他找经理点一下
+                        //     不现实，现场就会绕开系统记在纸上，反而更查不清
+                        //   · 只放行这三个动作，建单/改单/下达/取消仍然是 ADMIN/MANAGER
+                        .requestMatchers(HttpMethod.POST,
+                                "/api/erp/work-orders/*/start",
+                                "/api/erp/work-orders/*/finish",
+                                "/api/erp/work-orders/*/issue",
+                                "/api/erp/work-orders/*/auto-issue")
+                        .hasAnyRole("ADMIN", "MANAGER", "LEADER")
                         .requestMatchers(HttpMethod.POST, "/api/erp/**").hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.PUT, "/api/erp/**").hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.DELETE, "/api/erp/**").hasAnyRole("ADMIN", "MANAGER")

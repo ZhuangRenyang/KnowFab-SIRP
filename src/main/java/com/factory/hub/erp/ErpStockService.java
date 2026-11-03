@@ -51,11 +51,13 @@ public class ErpStockService {
     public static final List<String> MANUAL_TYPES = List.of(
             ErpStockBill.TYPE_PO_IN, ErpStockBill.TYPE_SO_OUT,
             ErpStockBill.TYPE_OTHER_IN, ErpStockBill.TYPE_OTHER_OUT,
-            ErpStockBill.TYPE_TRANSFER, ErpStockBill.TYPE_PO_RETURN, ErpStockBill.TYPE_SO_RETURN);
+            ErpStockBill.TYPE_TRANSFER, ErpStockBill.TYPE_PO_RETURN, ErpStockBill.TYPE_SO_RETURN,
+            ErpStockBill.TYPE_MATERIAL_OUT);
 
     /**
      * 库存页「新建单据」能选的类型：采购退货必须从采购订单发起（这样订单进度才对得上），
-     * 所以不出现在这里，但仍在 MANUAL_TYPES 里供采购服务内部生成。
+     * 生产领料必须从工单发起（这样需求量与已领量才对得上），所以都不出现在这里，
+     * 但仍在 MANUAL_TYPES 里供各服务内部生成。
      */
     public static final List<String> MANUAL_UI_TYPES = List.of(
             ErpStockBill.TYPE_PO_IN, ErpStockBill.TYPE_SO_OUT,
@@ -74,6 +76,7 @@ public class ErpStockService {
         m.put(ErpStockBill.TYPE_PO_RETURN, "采购退货");
         m.put(ErpStockBill.TYPE_STOCKTAKE, "盘点调整");
         m.put(ErpStockBill.TYPE_PROD_IN, "生产入库");
+        m.put(ErpStockBill.TYPE_MATERIAL_OUT, "生产领料");
         TYPE_LABELS = java.util.Collections.unmodifiableMap(m);
 
         TYPE_PREFIX.put(ErpStockBill.TYPE_PO_IN, "CGRK");
@@ -85,6 +88,7 @@ public class ErpStockService {
         TYPE_PREFIX.put(ErpStockBill.TYPE_PO_RETURN, "POTH");
         TYPE_PREFIX.put(ErpStockBill.TYPE_STOCKTAKE, "PD");
         TYPE_PREFIX.put(ErpStockBill.TYPE_PROD_IN, "SCRK");
+        TYPE_PREFIX.put(ErpStockBill.TYPE_MATERIAL_OUT, "SCLL");
     }
 
     private final ErpStockBillRepository billRepo;
@@ -140,7 +144,7 @@ public class ErpStockService {
         }
         boolean transfer = ErpStockBill.TYPE_TRANSFER.equals(type);
         boolean out = ErpStockBill.TYPE_SO_OUT.equals(type) || ErpStockBill.TYPE_OTHER_OUT.equals(type)
-                || ErpStockBill.TYPE_PO_RETURN.equals(type);
+                || ErpStockBill.TYPE_PO_RETURN.equals(type) || ErpStockBill.TYPE_MATERIAL_OUT.equals(type);
 
         ErpWarehouse wh = whRepo.findById(whId == null ? -1L : whId)
                 .orElseThrow(() -> new IllegalArgumentException("请选择仓库"));
@@ -296,12 +300,29 @@ public class ErpStockService {
     @Transactional
     public Created createProdInbound(String deviceCode, Long skuId, Long whId, BigDecimal qty,
                                      boolean backfill) {
+        return createProdInbound(deviceCode, skuId, whId, qty, backfill, null);
+    }
+
+    /**
+     * 同上，额外带上工单号（DH-71）。
+     * <p>
+     * 工单号落在 {@code src_order_no} 上——这一列的语义本来就是「这张单是哪个来源单据产生的」，
+     * 采购入库记采购单号、销售出库记销售单号、生产入库记工单号，用 bill_type 就能区分。
+     * 不另开一列，是因为「来源单号」这件事在报表和单据列表里已经有一整套渲染，
+     * 多一列会让「按来源单号追溯」变成两种查法。
+     */
+    @Transactional
+    public Created createProdInbound(String deviceCode, Long skuId, Long whId, BigDecimal qty,
+                                     boolean backfill, String workOrderNo) {
         long ts = System.currentTimeMillis();
         String billNo = nextBillNo(ErpStockBill.TYPE_PROD_IN);
         ErpStockBillHdr hdr = newHdr(billNo, ErpStockBill.TYPE_PROD_IN, ts, "system",
                 backfill ? "断线补记" : null);
         hdr.setDeviceCode(deviceCode);
         hdr.setDstWhId(whId);
+        if (workOrderNo != null) {
+            hdr.setSrcOrderNo(workOrderNo);
+        }
         ErpSku sku = skuRepo.findById(skuId).orElse(null);
         BigDecimal price = sku == null ? null : sku.getPurchasePrice();
 
@@ -314,6 +335,7 @@ public class ErpStockService {
                 qty, price, ts);
         line.setHeaderId(hdr.getId());
         line.setDeviceCode(deviceCode);
+        line.setSrcOrderNo(workOrderNo);
         billRepo.save(line);
         return new Created(billNo, 1);
     }
@@ -870,7 +892,10 @@ public class ErpStockService {
                 // 采购退货也是出库（退给供应商，货要离开库存）。
                 // 原来漏在这里，于是采购退货能把库存做成负数还不报错——
                 // 单据层面看不出问题，账实从这儿开始对不上。
-                || ErpStockBill.TYPE_PO_RETURN.equals(type);
+                || ErpStockBill.TYPE_PO_RETURN.equals(type)
+                // 生产领料同样是出库：料从仓库领到车间，库存必须真的减。
+                // 漏了它，领料单能开出比库存还多的数（DH-70 的坑就在这儿）。
+                || ErpStockBill.TYPE_MATERIAL_OUT.equals(type);
         boolean transfer = ErpStockBill.TYPE_TRANSFER.equals(type);
         if (!out && !transfer) {
             return;
