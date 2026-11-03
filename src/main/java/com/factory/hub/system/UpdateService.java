@@ -22,9 +22,11 @@ import java.security.spec.X509EncodedKeySpec;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
@@ -216,7 +218,7 @@ public class UpdateService {
         Path dest = staged().resolve(vr.manifest.getVersion());
         deleteRecursively(dest);
         Files.createDirectories(dest);
-        extract(zip, dest);
+        extract(zip, dest, allowedEntries(vr.manifest));
 
         String jarSha = sha256(dest.resolve("device-hub.jar"));
         Map<String, String> kv = new LinkedHashMap<>();
@@ -491,14 +493,17 @@ public class UpdateService {
 
     private byte[] httpGetBytes(String url, int timeoutMs) throws Exception {
         try {
-            return httpGetBytes(url, timeoutMs, false);
+            return httpGetBytesRaw(url, timeoutMs);
         } catch (Exception e) {
-            // 企业代理常做证书替换，Java 证书库不认就报 PKIX/SSLHandshake，下载直接失败。
-            // 升级包本身有 sha256 + 私钥签名两道校验（verify()），传输层降级不降低安全性，
-            // 所以这里只对更新源降级重试一次。
             if (isTlsError(e)) {
-                log.warn("TLS 校验失败，跳过证书校验重试一次：{}", e.getMessage());
-                return httpGetBytes(url, timeoutMs, true);
+                // 证书有问题只能显式失败，<b>不能降级</b>。
+                // 以前这里会退到「信任任意证书」重试一次，等于把 TLS 身份认证关掉：
+                // 中间人可以整个换掉升级包，而 manifest 的签名只管 manifest 里列出的那几个文件，
+                // 塞进来的 migration.sql 从那道缝里就进去了（任意 SQL 落在客户生产库上）。
+                // 企业代理换证书的正解是把企业 CA 导入 JVM 信任库，不是关掉校验。
+                throw new IOException("更新源的 TLS 证书校验失败：证书不是受信任 CA 签发的，"
+                        + "或企业代理替换了证书。若是企业网络，请把企业 CA 导入 JVM 信任库"
+                        + "（-Djavax.net.ssl.trustStore=...），不要关闭证书校验", e);
             }
             throw e;
         }
@@ -521,28 +526,10 @@ public class UpdateService {
         return false;
     }
 
-    private byte[] httpGetBytes(String url, int timeoutMs, boolean insecure) throws Exception {
+    private byte[] httpGetBytesRaw(String url, int timeoutMs) throws Exception {
         java.net.http.HttpClient.Builder builder = java.net.http.HttpClient.newBuilder()
                 .connectTimeout(java.time.Duration.ofMillis(Math.min(timeoutMs, 8000)))
                 .followRedirects(java.net.http.HttpClient.Redirect.NORMAL);
-        if (insecure) {
-            javax.net.ssl.SSLContext ctx = javax.net.ssl.SSLContext.getInstance("TLS");
-            ctx.init(null, new javax.net.ssl.TrustManager[]{new javax.net.ssl.X509TrustManager() {
-                @Override
-                public void checkClientTrusted(java.security.cert.X509Certificate[] chain, String authType) {
-                }
-
-                @Override
-                public void checkServerTrusted(java.security.cert.X509Certificate[] chain, String authType) {
-                }
-
-                @Override
-                public java.security.cert.X509Certificate[] getAcceptedIssuers() {
-                    return new java.security.cert.X509Certificate[0];
-                }
-            }}, new java.security.SecureRandom());
-            builder.sslContext(ctx);
-        }
         java.net.http.HttpClient client = builder.build();
         // GitHub API 没有 User-Agent 直接 403；Accept 声明 vnd.github+json，对其他源无害
         java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder(java.net.URI.create(url))
@@ -776,8 +763,30 @@ public class UpdateService {
         return s.replace("\r", "").replace("\n", " / ");
     }
 
-    /** 解压，逐条防 zip slip：条目必须落在目标目录内 */
-    private void extract(Path zip, Path dest) throws IOException {
+    /**
+     * 允许解压的条目白名单：manifest 里列出的文件 + manifest 自身与签名文件。
+     * <p>
+     * 为什么要白名单：以前是把 zip 里<b>全部</b>条目都解出来，而验签只覆盖 manifest
+     * 里列出的那几个文件——于是可以塞一个 manifest 没写的 {@code migration.sql} 进来，
+     * 它会被下次启动当成正式迁移执行（任意 SQL 落在客户生产库上）。
+     * 打包脚本（tools/PackUpdate.java）写出来的包内容恰好就是这份白名单，不会误伤。
+     */
+    private Set<String> allowedEntries(UpdateManifest manifest) {
+        Set<String> allowed = new HashSet<>();
+        allowed.add("manifest.json");
+        allowed.add("manifest.sig");
+        if (manifest.getFiles() != null) {
+            for (UpdateManifest.FileEntry f : manifest.getFiles()) {
+                if (f.getPath() != null && !f.getPath().isBlank()) {
+                    allowed.add(f.getPath().replace('\\', '/'));
+                }
+            }
+        }
+        return allowed;
+    }
+
+    /** 解压：逐条防 zip slip + 白名单，包里有 manifest 没列的文件直接拒掉整个包 */
+    private void extract(Path zip, Path dest, Set<String> allowed) throws IOException {
         try (ZipFile zf = new ZipFile(zip.toFile())) {
             var en = zf.entries();
             while (en.hasMoreElements()) {
@@ -785,7 +794,12 @@ public class UpdateService {
                 if (e.isDirectory()) {
                     continue;
                 }
-                Path target = dest.resolve(e.getName()).normalize();
+                String name = e.getName().replace('\\', '/');
+                if (!allowed.contains(name)) {
+                    throw new IOException("升级包里有多余文件（manifest 里没列）：" + name
+                            + "。为安全起见拒绝整个包");
+                }
+                Path target = dest.resolve(name).normalize();
                 if (!target.startsWith(dest)) {
                     throw new IOException("包内路径非法：" + e.getName());
                 }

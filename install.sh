@@ -236,20 +236,27 @@ else
 fi
 warn "确认库已建好且账号 $DB_USER 对 $DB_NAME 有全部权限（GRANT ALL ON $DB_NAME.* TO '$DB_USER'@'%';）"
 
-# 升级包验签用的公钥：从 application.yml 里抽出来转成 PEM，
-# 这样停机升级时 upgrade.sh 自己就能验签，不用等服务起来
-PUB="$(grep -E '^[[:space:]]*public-key:' "$DIR/application.yml" 2>/dev/null \
-        | head -1 | sed -E 's/.*"([^"]+)".*/\1/')"
-if [ -n "${PUB:-}" ] && [ "$PUB" != "$(grep -E 'public-key:' "$DIR/application.yml" | head -1)" ]; then
+# 升级包验签用的公钥：从 jar 内置的 application.yml 里抽出来转成 PEM，
+# 这样停机升级时 upgrade.sh 自己就能验签，不用等服务起来。
+# 原来是从「自己生成的 $DIR/application.yml」里找 public-key——而那份文件里
+# 根本没有这个段（它只写数据库和 admin 密码），于是 update-pub.pem 永远生成不出来，
+# 离线升级只能 warn 一句跳过验签。现在直接从 jar 里取（jar 里那份 application.yml 才有）。
+PUB=""
+if [ -f "$DIR/device-hub.jar" ] && command -v unzip >/dev/null; then
+  PUB="$(unzip -p "$DIR/device-hub.jar" BOOT-INF/classes/application.yml 2>/dev/null \
+        | grep -E '^[[:space:]]*public-key:' | head -1 | sed -E 's/.*"([^"]+)".*/\1/')"
+fi
+if [ -n "${PUB:-}" ]; then
   {
     echo "-----BEGIN PUBLIC KEY-----"
     printf '%s' "$PUB" | fold -w 64
     echo
     echo "-----END PUBLIC KEY-----"
   } > "$DIR/bin/update-pub.pem"
+  chmod 644 "$DIR/bin/update-pub.pem"
   ok "已生成升级验签公钥 $DIR/bin/update-pub.pem"
 else
-  warn "application.yml 里没找到 system.update.public-key，离线升级将跳过签名校验"
+  warn "取不到升级验签公钥（jar 里没有 public-key 或没装 unzip）；离线升级会从 jar 内置配置里取，取不到就拒绝升级"
 fi
 
 # ---------- 3. systemd ----------

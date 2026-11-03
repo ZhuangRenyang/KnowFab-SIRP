@@ -88,21 +88,43 @@ if [ -n "${PKG:-}" ]; then
   TMP="$(mktemp -d)"
   unzip -q "$PKG" -d "$TMP" || die "解压失败，包可能损坏"
 
-  # 验签：公钥在 $DIR/bin/update-pub.pem，没配就跳过（并明确警告）
-  if [ -f "$DIR/bin/update-pub.pem" ] && [ -f "$TMP/manifest.sig" ] && command -v openssl >/dev/null; then
-    if openssl dgst -sha256 -verify "$DIR/bin/update-pub.pem" \
-        -signature "$TMP/manifest.sig" "$TMP/manifest.json" >/dev/null 2>&1; then
-      ok "签名校验通过"
-    else
-      rm -rf "$TMP"
-      die "签名校验失败：这个包不是我们签的，或者被改过。拒绝升级"
-    fi
+  # 验签：公钥在 $DIR/bin/update-pub.pem；没有就从 jar 内置的 application.yml 里取
+  # （公钥本来就是公开的，只用来验签、不能签发）。
+  # 以前这里是「没公钥就 warn 一句然后继续装」——而 install.sh 生成的 application.yml
+  # 里压根没有 public-key 段，于是 update-pub.pem 永远生成不出来，
+  # 结果这条路径 100% 跳过验签：谁都能拿个 zip 让 root 装进去。
+  # 现在改成：缺公钥、缺 openssl、缺签名文件，一律拒绝升级。
+  PUBKEY="$DIR/bin/update-pub.pem"
+  if [ ! -f "$PUBKEY" ]; then
+    [ -f "$DIR/device-hub.jar" ] || { rm -rf "$TMP"; die "找不到 device-hub.jar，取不到验签公钥，拒绝升级"; }
+    command -v unzip >/dev/null || { rm -rf "$TMP"; die "需要 unzip 才能从 jar 取验签公钥（apt install unzip），拒绝升级"; }
+    unzip -p "$DIR/device-hub.jar" BOOT-INF/classes/application.yml 2>/dev/null \
+      | grep -E '^[[:space:]]*public-key:' | head -1 | sed -E 's/.*"([^"]+)".*/\1/' > "$TMP/pub.key"
+    [ -s "$TMP/pub.key" ] || { rm -rf "$TMP"; die "jar 里取不到验签公钥，拒绝升级"; }
+    {
+      echo "-----BEGIN PUBLIC KEY-----"
+      fold -w 64 "$TMP/pub.key"
+      echo
+      echo "-----END PUBLIC KEY-----"
+    } > "$TMP/pub.pem"
+    PUBKEY="$TMP/pub.pem"
+    say "已从 jar 内置配置取出验签公钥"
+  fi
+  [ -f "$TMP/manifest.sig" ] || { rm -rf "$TMP"; die "升级包里没有 manifest.sig（签名文件），拒绝升级"; }
+  command -v openssl >/dev/null || { rm -rf "$TMP"; die "需要 openssl 才能验签（apt install openssl），拒绝升级"; }
+  if openssl dgst -sha256 -verify "$PUBKEY" \
+      -signature "$TMP/manifest.sig" "$TMP/manifest.json" >/dev/null 2>&1; then
+    ok "签名校验通过"
   else
-    warn "没有公钥或 openssl，跳过签名校验（生产环境应当配上）"
+    rm -rf "$TMP"
+    die "签名校验失败：这个包不是我们签的，或者被改过。拒绝升级"
   fi
 
   VER="$(sed -nE 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$TMP/manifest.json" | head -1)"
   [ -n "${VER:-}" ] || { rm -rf "$TMP"; die "manifest.json 里没有 version"; }
+  # 版本号只允许数字和点：它会拼进路径（$UPD/staged/$VER）并被 rm -rf，
+  # 带着 ../ 的版本号能让 root 权限的 rm -rf 打到任意目录。
+  echo "$VER" | grep -Eq '^[0-9]+(\.[0-9]+)*$' || { rm -rf "$TMP"; die "manifest.json 里的版本号不合法：$VER"; }
 
   DEST="$UPD/staged/$VER"
   rm -rf "$DEST"
