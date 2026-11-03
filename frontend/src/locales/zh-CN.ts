@@ -292,7 +292,7 @@ export default {
       LOG: '仅记录日志（调试用）'
     },
     chUrlPh: '地址',
-    minLevel: { critical: '只推停机的', major: '告警及以上', minor: '全部级别' },
+    minLevel: { CRITICAL: '只推停机的', MAJOR: '告警及以上', MINOR: '全部级别' },
     levelOpt: { all: '全部级别', critical: '停机', major: '告警', minor: '预警' },
     stateOpt: { open: '待处理', active: '仅未确认', acked: '仅已确认', cleared: '已恢复', all: '全部' },
     rangeOpt: { today: '今日', '7d': '近 7 天', '30d': '近 30 天', all: '全部' },

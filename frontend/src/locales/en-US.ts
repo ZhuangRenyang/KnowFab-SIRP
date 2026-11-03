@@ -288,7 +288,7 @@ export default {
       LOG: 'Log only (debug)'
     },
     chUrlPh: 'URL',
-    minLevel: { critical: 'Critical only', major: 'Alarm and above', minor: 'All levels' },
+    minLevel: { CRITICAL: 'Critical only', MAJOR: 'Alarm and above', MINOR: 'All levels' },
     levelOpt: { all: 'All levels', critical: 'Critical', major: 'Alarm', minor: 'Warning' },
     stateOpt: { open: 'Open', active: 'Open only', acked: 'Acknowledged only', cleared: 'Recovered', all: 'All' },
     rangeOpt: { today: 'Today', '7d': 'Last 7 days', '30d': 'Last 30 days', all: 'All time' },
