@@ -77,6 +77,22 @@ public class ErpQcDefectController {
         }
     }
 
+    /**
+     * 分诊：给一条不良记录补缺陷分类。
+     * <p>
+     * 设备通道采来的记录天生没有缺陷代码（机器只知道坏了几件，不知道为什么坏），
+     * 全部落在帕累托的「未分类」行里。没有这个入口，那批记录永远分不掉。
+     */
+    @PostMapping("/{no}/triage")
+    public Map<String, Object> triage(@PathVariable String no,
+                                      @RequestBody Map<String, Object> body) {
+        try {
+            return queryService.triage(no, body, operator());
+        } catch (IllegalArgumentException e) {
+            return ErpQcBody.fail(e);
+        }
+    }
+
     /** 人工补录不良记录 */
     @PostMapping
     public Map<String, Object> register(@RequestBody Map<String, Object> body) {

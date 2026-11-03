@@ -32,6 +32,26 @@ public class ErpQcInspectionController {
     }
 
     /** 建单（草稿）。抽样参数在这一步抄成快照 */
+    /**
+     * 检验单列表。
+     * <p>
+     * {@code from}/{@code to} 是毫秒时间戳。
+     */
+    @GetMapping
+    public Map<String, Object> list(@RequestParam(required = false) String type,
+                                    @RequestParam(required = false) String status,
+                                    @RequestParam(required = false) Long from,
+                                    @RequestParam(required = false) Long to,
+                                    @RequestParam(required = false) String kw,
+                                    @RequestParam(defaultValue = "1") int page,
+                                    @RequestParam(defaultValue = "20") int size) {
+        try {
+            return service.list(type, status, from, to, kw, page, size);
+        } catch (Exception e) {
+            return ErpQcBody.fail(e);
+        }
+    }
+
     @PostMapping
     public Map<String, Object> create(@RequestBody Map<String, Object> body) {
         try {

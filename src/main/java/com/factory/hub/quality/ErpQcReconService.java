@@ -47,15 +47,18 @@ public class ErpQcReconService {
     private final ProdHourlyRepository prodRepo;
     private final ErpQcDefectRepository defectRepo;
     private final com.factory.hub.audit.AuditService audit;
+    private final com.factory.hub.service.DeviceService deviceService;
 
     public ErpQcReconService(ErpWorkOrderRepository workOrderRepo,
                               ProdHourlyRepository prodRepo,
                               ErpQcDefectRepository defectRepo,
-                              com.factory.hub.audit.AuditService audit) {
+                              com.factory.hub.audit.AuditService audit,
+                              com.factory.hub.service.DeviceService deviceService) {
         this.workOrderRepo = workOrderRepo;
         this.prodRepo = prodRepo;
         this.defectRepo = defectRepo;
         this.audit = audit;
+        this.deviceService = deviceService;
     }
 
     /**
@@ -80,6 +83,11 @@ public class ErpQcReconService {
             BigDecimal deviceQty = deviceQtyOf(o.getDeviceCode(), start, end);
             BigDecimal qcQty = qcQtyOf(o.getOrderNo());   // 人工判的数
             BigDecimal gap = qcQty.subtract(deviceQty);
+            // 生效值：走统一口径（未定责时设备优先，人工不叠加；定责后以定责为准）
+            BigDecimal effective = effectiveQtyOf(o.getOrderNo());
+            // 这台设备到底能不能采：没配 reject 点位，"设备数"就是不存在的数
+            boolean deviceConfigured = o.getDeviceCode() != null
+                    && deviceService.hasRejectPoint(o.getDeviceCode());
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("workOrderNo", o.getOrderNo());
             m.put("deviceCode", o.getDeviceCode());
@@ -87,6 +95,10 @@ public class ErpQcReconService {
             m.put("manualQty", qcQty);
             m.put("gap", gap);
             m.put("challenged", gap.signum() != 0);
+            m.put("effectiveQty", effective);
+            m.put("deviceConfigured", deviceConfigured);
+            m.put("deviceCollected", deviceQty.signum() > 0);
+            m.put("source", sourceCode(o.getDeviceCode(), deviceConfigured, deviceQty, qcQty));
             out.add(m);
         }
         out.sort((a, b) -> {
@@ -177,6 +189,25 @@ public class ErpQcReconService {
         out.put("effectiveQtyBefore", before);
         out.put("effectiveQtyAfter", after);
         return out;
+    }
+
+    /**
+     * 对账条的来源代号（前端按它渲染，不给中文文案）。
+     * <ul>
+     *   <li>{@code NO_DEVICE}：工单没设备，或设备没配 reject 点位——没有设备数这一说</li>
+     *   <li>{@code DEVICE_PRIORITY}：设备采到了数，按设备优先（人工不叠加）</li>
+     *   <li>{@code MANUAL_ONLY}：设备没数，人工是唯一来源</li>
+     * </ul>
+     */
+    private String sourceCode(String deviceCode, boolean deviceConfigured,
+                              BigDecimal deviceQty, BigDecimal manualQty) {
+        if (deviceCode == null || !deviceConfigured) {
+            return "NO_DEVICE";
+        }
+        if (deviceQty.signum() > 0) {
+            return "DEVICE_PRIORITY";
+        }
+        return "MANUAL_ONLY";
     }
 
     /**

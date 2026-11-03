@@ -2,6 +2,8 @@ package com.factory.hub.quality;
 
 import com.factory.hub.erp.ErpSku;
 import com.factory.hub.erp.ErpSkuRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -9,6 +11,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -467,6 +470,38 @@ public class ErpQcInspectionService {
     }
 
     /* ==================== 查询 ==================== */
+
+    /**
+     * 检验单列表。
+     * <p>
+     * 排序：未判定的排前面（待办优先），同态按创建时间倒序。
+     * <p>
+     * 每行只给单头字段（{@link ErpQcInspectionView#header}）——明细与不良记录
+     * 是详情页的事，列表上拉明细会让这个查询变成 N+1。
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Object> list(String type, String status, Long from, Long to,
+                                    String kw, int page, int size) {
+        int p = Math.max(1, page);
+        int s = Math.max(1, Math.min(200, size));
+        long toTs = to == null ? System.currentTimeMillis() : to;
+        long fromTs = from == null ? 0L : from;
+        Page<ErpQcInspection> res = insRepo.search(
+                str(type), str(status), fromTs, toTs, str(kw),
+                PageRequest.of(p - 1, s));
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (ErpQcInspection i : res.getContent()) {
+            rows.add(ErpQcInspectionView.header(i));
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("ok", true);
+        out.put("rows", rows);
+        out.put("total", res.getTotalElements());
+        out.put("page", p);
+        out.put("size", s);
+        out.put("pages", res.getTotalPages());
+        return out;
+    }
 
     @Transactional(readOnly = true)
     public Map<String, Object> detail(String no) {

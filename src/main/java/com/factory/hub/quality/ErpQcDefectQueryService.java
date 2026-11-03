@@ -50,6 +50,7 @@ public class ErpQcDefectQueryService {
     private final ProdHourlyRepository prodRepo;
     private final ManualEntryRepository manualRepo;
     private final DeviceService deviceService;
+    private final com.factory.hub.audit.AuditService audit;
 
     public ErpQcDefectQueryService(ErpQcDefectRepository defectRepo,
                                    ErpQcDispositionRepository dispRepo,
@@ -59,7 +60,8 @@ public class ErpQcDefectQueryService {
                                    ErpWorkOrderRepository workOrderRepo,
                                    ProdHourlyRepository prodRepo,
                                    ManualEntryRepository manualRepo,
-                                   DeviceService deviceService) {
+                                   DeviceService deviceService,
+                                   com.factory.hub.audit.AuditService audit) {
         this.defectRepo = defectRepo;
         this.dispRepo = dispRepo;
         this.codeRepo = codeRepo;
@@ -68,6 +70,7 @@ public class ErpQcDefectQueryService {
         this.workOrderRepo = workOrderRepo;
         this.prodRepo = prodRepo;
         this.manualRepo = manualRepo;
+        this.audit = audit;
         this.deviceService = deviceService;
     }
 
@@ -204,6 +207,58 @@ public class ErpQcDefectQueryService {
         }
         defectRepo.save(d);
         return ok("已登记不良记录 " + d.getDefectNo());
+    }
+
+    /* ==================== 分诊（补缺陷分类） ==================== */
+
+    /**
+     * 给一条不良记录补缺陷分类（分诊）。
+     *
+     * <p><b>为什么必须有它</b>：设备通道采来的记录<b>天生没有缺陷代码</b>——
+     * 机器只知道"坏了几件"，不知道为什么坏。所以它们全部落在帕累托的「未分类」行里。
+     * 没有分诊入口，那 23 张（乃至更多）未分类记录就<b>永远分不掉</b>，
+     * 帕累托永远有一大行是"未分类"，图就废了。
+     *
+     * <p><b>已处置的不能改</b>：已报废/已让步的记录是既成事实，
+     * 事后改它的分类会跟处置流水对不上（流水记的是当时的分类）。
+     *
+     * <p><b>批量怎么办</b>：前端逐条调用。批量处置有专门的端点（要处理"部分失败"），
+     * 分诊不会失败一半——失败的只会是"这条已处置"，逐条报错更好定位。
+     */
+    @Transactional
+    public Map<String, Object> triage(String defectNo, Map<String, Object> body, String operator) {
+        ErpQcDefect d = defectRepo.findByDefectNo(defectNo)
+                .orElseThrow(() -> new IllegalArgumentException("不良单不存在：" + defectNo));
+        if (d.isVoided()) {
+            throw new IllegalArgumentException("不良单已作废，不能分诊：" + defectNo);
+        }
+        if (!ErpQcDefect.ST_PENDING.equals(d.getStatus())) {
+            throw new IllegalArgumentException("不良单已处置，不能改分类（那是既成事实）：" + defectNo);
+        }
+        Long codeId = longOf(body == null ? null : body.get("defectCodeId"));
+        if (codeId == null) {
+            throw new IllegalArgumentException("请选择缺陷分类");
+        }
+        ErpQcDefectCode code = codeRepo.findById(codeId)
+                .orElseThrow(() -> new IllegalArgumentException("缺陷分类不存在：" + codeId));
+        d.setDefectCodeId(code.getId());
+        d.setDefectCode(code.getCode());
+        d.setDefectName(code.getName());
+        // 等级优先取分类自带的；分类没带等级才看请求里传的
+        d.setSeverity(code.getSeverity() != null ? code.getSeverity() : str(body.get("severity")));
+        d.setUpdatedAt(System.currentTimeMillis());
+        defectRepo.save(d);
+        audit.ok(com.factory.hub.audit.AuditLog.CAT_QUALITY,
+                com.factory.hub.audit.AuditLog.ACT_UPDATE, defectNo,
+                "不良记录分诊：补缺陷分类",
+                code.getCode() + " " + code.getName());
+        Map<String, Object> out = ok("已分诊：" + defectNo);
+        out.put("defectNo", defectNo);
+        out.put("defectCodeId", code.getId());
+        out.put("defectCode", code.getCode());
+        out.put("defectName", code.getName());
+        out.put("severity", d.getSeverity());
+        return out;
     }
 
     /* ==================== 批量处置 ==================== */
