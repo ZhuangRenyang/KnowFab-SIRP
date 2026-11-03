@@ -487,6 +487,7 @@ output=100, defect=3
 | 组件类名 | `.tab-toolbar` / `.kpi-row` / `.cell-main` 等布局类在 `styles/erp.css` 全局定义，页面里**不要**再写 scoped 版 |
 | 反冲按良品算 | 见 F4。材料成本永久少计，不报错 |
 | **判定不建不良记录** | 检验单判 FAIL/CONDITIONAL 时必须建 `source=INSPECTION` 的 NCR。**不建的话，质检判了不合格、货却按良品入库可以直接发货**——而且看板待处置、帕累托、未分类三个数全偏低，看着还挺正常 |
+| **改了核心语义要回头查注释** | F1 改了「不良品不进成品仓」的语义，但 `ErpQcDefect` 的类注释还写着「FQC 之后才判的 = 已入账」。照它实现 → 报废时去扣一批不存在的货 → **库存做成负数，且不报错**。**代码会报错，注释只会静静地骗人** |
 | FQC 回写 `defect_qty` 不校验状态 | 已 DONE 的工单被回写会让已完工成本分母事后变化，月报对不上。必须校验 `RUNNING` |
 | 兜底归属静默入库 | 工单结束后设备仍在转 → 回退固定 SKU 会凭空多一笔收入。至少 `log.warn` 写清设备和数量 |
 | `afterCommit` 靠事件转同步 | 要用 `TransactionSynchronizationManager.registerSynchronization` 显式注册，不保证重新开事务 |
