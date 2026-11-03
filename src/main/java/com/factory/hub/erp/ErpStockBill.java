@@ -59,6 +59,23 @@ public class ErpStockBill {
     public static final String TYPE_OTHER_IN = "OTHER_IN";
     /** 其他出库（领用、报废、盘亏调整等） */
     public static final String TYPE_OTHER_OUT = "OTHER_OUT";
+    /**
+     * 报废出库：不良品处置「报废」时产生，负数出库（QC-SPEC §2.1 裁决新增）。
+     * <p>
+     * <b>为什么必须单独一个类型，不能复用 {@code OTHER_OUT}</b>：
+     * 质量成本报表要回答"这个月报废损失多少"，如果靠
+     * {@code bill_type = 'OTHER_OUT' and remark like '%报废%'} 去匹配，
+     * 客户自己手填的其他出库单只要备注带"报废"两个字就会被误计进质量成本。
+     * 报表口径靠备注文本匹配，是迟早要出事的设计。
+     * <p>
+     * 新增出库类型的风险是"漏登记到出库白名单 → 方向反了、库存凭空涨且不报错"
+     * （本项目踩过两次）。这个风险已由 {@code ErpStockService.isOutbound()} 收敛成
+     * 单一事实来源，并由单测遍历所有 {@code TYPE_*} 常量兜底。
+     * <p>
+     * 它<b>不在</b> {@code MANUAL_UI_TYPES} 里：报废必须从不良品记录发起，
+     * 不允许在库存页手搓一张报废单——否则不良单与出库单会分家，处置状态永远结不了案。
+     */
+    public static final String TYPE_SCRAP_OUT = "SCRAP_OUT";
     /** 调拨：源仓负数行 + 目标仓正数行，同一单号 */
     public static final String TYPE_TRANSFER = "TRANSFER";
     /** 盘点调整：只落有差异的行（盘盈正数、盘亏负数） */

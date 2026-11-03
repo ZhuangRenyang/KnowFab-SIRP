@@ -393,7 +393,8 @@ public class DeviceController {
                 return at + "（" + p.getKey() + "）：dataType 只能是 u16/s16/u32/s32/f32/bool";
             }
             if (p.getRole() != null && !p.getRole().isBlank() && !VALID_ROLE.contains(p.getRole())) {
-                return at + "（" + p.getKey() + "）：role 只能是 status/value/count/alarm/power/energy/cost";
+                return at + "（" + p.getKey()
+                        + "）：role 只能是 status/value/count/alarm/power/energy/cost/reject";
             }
         }
         return null;
@@ -428,6 +429,12 @@ public class DeviceController {
         d.setDailyTarget(req.dailyTarget() == null || req.dailyTarget() <= 0 ? null : req.dailyTarget());
         // DH-15 理想节拍：<=0 当作没配（0 秒/件会让理论产量除零）
         d.setIdealCycleSec(req.idealCycleSec() == null || req.idealCycleSec() <= 0 ? null : req.idealCycleSec());
+        // 主计数器口径：只认 TOTAL / GOOD，其他值（含空）一律回到默认 TOTAL。
+        // 这一项配错的后果是库存多算或少算，但不会报错，所以宁可静默回默认也不让脏值落库
+        d.setCounterMode(com.factory.hub.model.DeviceEntity.COUNTER_GOOD
+                .equalsIgnoreCase(req.counterMode())
+                ? com.factory.hub.model.DeviceEntity.COUNTER_GOOD
+                : com.factory.hub.model.DeviceEntity.COUNTER_TOTAL);
         if (req.points() != null) {
             d.setPointsJson(mapper.writeValueAsString(req.points()));
         }
@@ -458,7 +465,7 @@ public class DeviceController {
                 rt.online, rt.lastOkTs == 0 ? null : rt.lastOkTs, rt.lastError,
                 rt.successCount, rt.failCount, rt.lastCostMs,
                 d.getProdLineId(), lineName, d.getLineSeq(),
-                d.getDailyTarget(), d.getIdealCycleSec(),
+                d.getDailyTarget(), d.getIdealCycleSec(), d.getCounterMode(),
                 Math.round(todayOutput * 100d) / 100d, points);
     }
 }

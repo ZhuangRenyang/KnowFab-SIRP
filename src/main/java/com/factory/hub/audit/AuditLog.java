@@ -33,6 +33,8 @@ public class AuditLog {
     public static final String CAT_SYSTEM = "SYSTEM";
     public static final String CAT_MANUAL = "MANUAL";
     public static final String CAT_USER = "USER";
+    /** 质量域：缺陷分类、抽样方案（含"确认已核对纸本国标"这类需要留痕的动作） */
+    public static final String CAT_QUALITY = "QUALITY";
 
     public static final String ACT_CREATE = "CREATE";
     public static final String ACT_UPDATE = "UPDATE";

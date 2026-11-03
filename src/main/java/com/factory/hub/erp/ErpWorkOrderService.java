@@ -313,6 +313,12 @@ public class ErpWorkOrderService {
         o.setWarehouseId(longOf(body.get("warehouseId")));
         o.setMaterialWhId(longOf(body.get("materialWhId")));
         o.setSrcOrderNo(str(body.get("srcOrderNo")));
+        // 工单类型：只认 REWORK，其余（含空）一律 PROD。
+        // 返工单由不良品处置生成，指向原工单；原工单号可以为空（客户退回的旧货常常找不到原单，
+        // 强制必填会让人随便编一个填进去，那比留空更糟——假追溯链比断链危险）
+        o.setOrderType(ErpWorkOrder.TYPE_REWORK.equalsIgnoreCase(str(body.get("orderType")))
+                ? ErpWorkOrder.TYPE_REWORK : ErpWorkOrder.TYPE_PROD);
+        o.setSrcWorkOrderNo(str(body.get("srcWorkOrderNo")));
         o.setAutoBackflush(bool(body.get("autoBackflush"), true));
         o.setPlanStart(longOf(body.get("planStart")));
         o.setPlanEnd(longOf(body.get("planEnd")));
@@ -608,7 +614,9 @@ public class ErpWorkOrderService {
      * 落库重试都会撞到唯一键，这里先 {@code existsByBillNo} 快速返回。
      * 不靠"我记得我写过"这种应用层判断——那个在进程重启后就失效了。
      *
-     * @param defectQty 不良品数量，只记数不进良品库存
+     * @param qty       良品数量（进 {@code PROD_IN} 入库、累加 doneQty）
+     * @param defectQty 不良品数量（只记数不进良品库存，累加到 defectQty；
+     *                  <b>但反冲领料要按 qty + defectQty 扣</b>，见方法内注释）
      * @return 生成的入库单号；工单已不是 RUNNING 时返回 null（调用方应回退到无工单逻辑）
      */
     @Transactional
@@ -656,9 +664,15 @@ public class ErpWorkOrderService {
         o.setUpdatedAt(System.currentTimeMillis());
         woRepo.save(o);
 
-        // 自动反冲：产出多少就按 BOM 扣多少料
+        // 自动反冲：<b>按总产出扣料，不是按良品</b>。
+        // 不良件的料是真实消耗掉了（料已经变成那件废品），按良品扣等于这部分料永远不扣，
+        // 材料成本永久少计——账面一切正常，只是每个产品的成本都偏低，客户拿它去报价就赔了，
+        // 而且不会有任何报错。
+        // 返工单不展开 BOM（用料清单为空），所以这里不会重复扣。
+        // ↓ 这一行不要"顺手修正"成 backflush(o, qty)。
         if (o.isAutoBackflush()) {
-            backflush(o, qty);
+            BigDecimal totalProduced = qty.add(defectQty == null ? BigDecimal.ZERO : defectQty);
+            backflush(o, totalProduced);
         }
         return billNo;
     }

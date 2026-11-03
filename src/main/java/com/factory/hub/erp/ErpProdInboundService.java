@@ -47,6 +47,12 @@ import java.util.concurrent.ConcurrentHashMap;
  * 工单路径<b>不记「未成单余额」</b>：工单驱动的产出一律 10 秒内落单，余额由单据汇总接管，
  * 比"秒级可见"更重要的是"余额和单据永远对得上"——上一轮把这两者分开记，
  * 结果同屏出现 101 和 100 两个库存数，那种不一致比晚 10 秒难解释得多。
+ * <p>
+ * <b>不良品不进良品仓（QC-SPEC §7 F1）</b>：{@code role=reject} 计数器的小时增量也进这个缓冲
+ * （{@link #onRejected}），落单时按 {@code device.counter_mode} 把「计数增量」换成「良品入库量」：
+ * TOTAL → 总产出 − 不良；GOOD → 总产出。此前这里把 {@code BigDecimal.ZERO} 当不良数、
+ * 直接把总产出入库，于是不良品被当良品进了成品仓——账面上比现实永远多一截，
+ * 而且一个异常都不报。换算是纯函数（{@link ErpInboundQty}），单测钉死。
  */
 @Component
 public class ErpProdInboundService {
@@ -63,6 +69,11 @@ public class ErpProdInboundService {
      * 两者必须分开记：没有仓库时只涨 qty（进不了余额），落单后也就不用去减余额。
      * 这样「余额 = 单据汇总 + 未成单增量」在任何时刻都闭合。
      * <p>
+     * {@code defect} 是这一批里的不良件数（来自 role=reject 计数器）。
+     * <b>它与 {@code qty} 分别累加</b>，落单时才按设备口径换算成良品量——
+     * 因为不良计数器和主计数器是<b>两次独立采样</b>，谁先到都有可能，
+     * 当场折算一定会两边打架（见 {@link ErpInboundQty}）。
+     * <p>
      * {@code workOrderNo} 非空 = 这批量属于某张工单（工单路径，不碰余额）。
      */
     private static final class Buf {
@@ -72,6 +83,7 @@ public class ErpProdInboundService {
         String workOrderNo;              // 非空 = 工单驱动的产量
         boolean backfill;
         BigDecimal qty = BigDecimal.ZERO;
+        BigDecimal defect = BigDecimal.ZERO;
         BigDecimal onStock = BigDecimal.ZERO;
     }
 
@@ -85,6 +97,14 @@ public class ErpProdInboundService {
     /** 每台设备上次告警的时间：同一台 5 分钟内不重复刷屏 */
     private final Map<String, Long> warnedAt = new ConcurrentHashMap<>();
     private Map<String, Cfg> cfgCache = new ConcurrentHashMap<>();
+    /**
+     * 主计数器口径缓存（设备码 → TOTAL / GOOD），与配置缓存同一次刷新。
+     * <p>
+     * 单独一张表是因为工单路径也需要口径，而 {@link #cfgCache} 只收
+     * "启用了自动入库且绑了产品"的设备——工单驱动的设备不一定绑了固定产品，
+     * 拿 cfgCache 查口径会查不到，然后按默认 TOTAL 算，把 GOOD 口径的良品数又减一遍不良。
+     */
+    private Map<String, String> counterModes = new ConcurrentHashMap<>();
     private volatile long cfgLoadedAt = 0;
 
     public ErpProdInboundService(DeviceService deviceService,
@@ -142,13 +162,65 @@ public class ErpProdInboundService {
         }
     }
 
+    /**
+     * 不良品计数增量（{@code role=reject} 点位）发生时调用。
+     * <p>
+     * <b>与 {@link #onProduced} 分开两个入口，而不是给 onProduced 加一个 defect 参数</b>：
+     * 不良计数器和主计数器是两次独立采样（不同的点、不同的时间戳），
+     * 一个 10 秒批次里常常只有其中一个有增量。硬塞进一个方法就得让调用方造一个
+     * "本次产出 0 件、不良 3 件"的假增量，那等于把两个信号混成一个。
+     * 分开之后，缓冲里 qty 和 defect 各自累加，落单时才按口径换算（见 {@link ErpInboundQty}）。
+     * <p>
+     * 归属规则与产量完全一致：有在产工单就记到工单，否则记到设备固定产品；
+     * 两者都没有就直接忽略（这台设备根本没接 ERP，不良数在 {@code prod_hourly} 里仍然有，
+     * 报表照样能看，不影响质量看板的设备通道）。
+     */
+    public void onRejected(String deviceCode, double delta, long ts) {
+        if (delta <= 0) {
+            return;
+        }
+        BigDecimal q = BigDecimal.valueOf(delta).setScale(4, RoundingMode.HALF_UP);
+
+        ErpWorkOrderService.ActiveOrder ao = workOrderService.activeOrderOf(deviceCode);
+        Buf b;
+        if (ao != null) {
+            Long whId = ao.whId() != null ? ao.whId() : defaultWh();
+            String key = deviceCode + "@" + (whId == null ? "-1" : whId) + "@" + ao.orderNo();
+            b = buffer.computeIfAbsent(key, k -> new Buf());
+            b.deviceCode = deviceCode;
+            b.skuId = ao.skuId();
+            b.workOrderNo = ao.orderNo();
+            if (whId != null) {
+                b.whId = whId;
+            }
+        } else {
+            Cfg c = configs().get(deviceCode);
+            if (c == null || c.skuId() == null) {
+                return;
+            }
+            Long whId = c.whId() != null ? c.whId() : c.defaultWhId();
+            String key = deviceCode + "@" + (whId == null ? "-1" : whId);
+            b = buffer.computeIfAbsent(key, k -> new Buf());
+            b.deviceCode = deviceCode;
+            b.skuId = c.skuId();
+            b.workOrderNo = null;
+            if (whId != null) {
+                b.whId = whId;
+            }
+        }
+        b.defect = b.defect.add(q);
+    }
+
     private synchronized Map<String, Cfg> configs() {
         long now = System.currentTimeMillis();
         if (now - cfgLoadedAt > 60_000) {
             Map<String, Cfg> m = new HashMap<>();
+            Map<String, String> modes = new HashMap<>();
             try {
                 Long defaultWh = defaultWh();
                 for (DeviceEntity d : deviceService.all()) {
+                    // 口径要全量收：工单路径不看 prod_sku_id，但一样要看口径
+                    modes.put(d.getCode(), d.getCounterMode());
                     if (d.isProdAutoStockin() && d.getProdSkuId() != null) {
                         m.put(d.getCode(), new Cfg(d.getProdSkuId(), d.getProdWhId(), defaultWh));
                     }
@@ -157,9 +229,17 @@ public class ErpProdInboundService {
                 log.warn("刷新生产入库配置失败（沿用旧缓存）: {}", e.getMessage());
             }
             cfgCache = m;
+            counterModes = modes;
             cfgLoadedAt = now;
         }
         return cfgCache;
+    }
+
+    /** 这台设备的主计数器口径；查不到按默认 TOTAL（与全系统历史假设一致） */
+    private String counterModeOf(String deviceCode) {
+        configs();
+        String v = counterModes.get(deviceCode);
+        return v == null ? DeviceEntity.COUNTER_TOTAL : v;
     }
 
     @Scheduled(fixedDelay = 10_000L)
@@ -170,7 +250,10 @@ public class ErpProdInboundService {
         for (Map.Entry<String, Buf> e : new HashMap<>(buffer).entrySet()) {
             String key = e.getKey();
             Buf b = e.getValue();
-            if (b.qty.signum() <= 0) {
+            // 只有「既没产出也没不良」才丢弃这批。
+            // 单看 qty 会在「不良先到、产出后到」的那个批次里把不良数一起扔掉，
+            // 而 prod_hourly 里那份不良数又已经在账上 —— 两边就永远对不上
+            if (b.qty.signum() <= 0 && b.defect.signum() <= 0) {
                 buffer.remove(key);
                 continue;
             }
@@ -196,11 +279,24 @@ public class ErpProdInboundService {
                 moved.whId = whId;
                 moved.backfill = b.backfill;
                 moved.qty = moved.qty.add(b.qty);
+                moved.defect = moved.defect.add(b.defect);
                 continue;               // 下一轮正式落库
             }
             try {
+                // 按设备口径把「计数增量」换成「良品入库量」（QC-SPEC §2.3）：
+                // TOTAL → 总产出 − 不良；GOOD → 总产出（不再减）。
+                // 这就是 F1 的正中间：原来这里直接把 b.qty（总产出）入库，
+                // 不良品被当成良品进了成品仓，账面库存永远比现实多一截。
+                ErpInboundQty q = ErpInboundQty.resolve(
+                        counterModeOf(b.deviceCode), b.qty, b.defect);
+                if (q.clamped()) {
+                    log.warn("设备 {} 本批不良数 {} 大于产出 {}（两个计数器采样错位），"
+                                    + "本批入库按 0 处理，差额留待下一批产出补回",
+                            b.deviceCode, q.defect().stripTrailingZeros().toPlainString(),
+                            q.total().stripTrailingZeros().toPlainString());
+                }
                 // 走统一单据服务：生成单头 + 明细行，单据列表里与手工单同一套结构
-                stockService.createProdInbound(b.deviceCode, b.skuId, b.whId, b.qty, b.backfill);
+                stockService.createProdInbound(b.deviceCode, b.skuId, b.whId, q.good(), b.backfill);
                 // 已经写进单据了：从「未成单增量」里扣掉，余额由单据汇总接管。
                 // 扣的量必须和当初加上去的量一模一样（逐笔 round4 后累加），否则余额会漂。
                 if (b.onStock.signum() != 0) {
@@ -228,8 +324,20 @@ public class ErpProdInboundService {
      */
     private void flushByWorkOrder(String key, Buf b) {
         try {
+            // 口径换算与设备路径完全一致：工单要记的良品量同样是「总产出 − 不良」，
+            // 而 defect 作为独立参数交给 produce()（它内部写 erp_work_order_output.defect_qty
+            // 并累加工单的不良数，良品量只加 doneQty —— 两边不能混）
+            ErpInboundQty q = ErpInboundQty.resolve(
+                    counterModeOf(b.deviceCode), b.qty, b.defect);
+            if (q.clamped()) {
+                log.warn("设备 {} 工单 {} 本批不良数 {} 大于产出 {}（两个计数器采样错位），"
+                                + "本批入库按 0 处理，差额留待下一批产出补回",
+                        b.deviceCode, b.workOrderNo,
+                        q.defect().stripTrailingZeros().toPlainString(),
+                        q.total().stripTrailingZeros().toPlainString());
+            }
             String billNo = workOrderService.produce(b.workOrderNo, b.deviceCode, b.whId,
-                    b.qty, BigDecimal.ZERO, b.backfill);
+                    q.good(), q.defect(), b.backfill);
             if (billNo != null) {
                 buffer.remove(key);
                 return;
@@ -251,6 +359,7 @@ public class ErpProdInboundService {
             moved.workOrderNo = null;
             moved.backfill = b.backfill;
             moved.qty = moved.qty.add(b.qty);
+            moved.defect = moved.defect.add(b.defect);
             if (whId != null) {
                 moved.whId = whId;
                 // 转成「设备固定产品」路径后，这批量要补进未成单余额，

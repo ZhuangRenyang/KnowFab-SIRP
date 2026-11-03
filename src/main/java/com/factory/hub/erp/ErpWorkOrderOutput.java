@@ -49,13 +49,27 @@ public class ErpWorkOrderOutput {
     @Column(name = "device_code", length = 64)
     private String deviceCode;
 
-    /** 良品数量（已进库存的那部分） */
+    /**
+     * 良品数量（<b>已进库存</b>的那部分，与 {@code PROD_IN} 单据的数量一致）。
+     * <p>
+     * 口径钉死在这里：{@code qty} = 良品数，{@link #defectQty} = 不良数，
+     * 两者相加 = 总产出。这样 {@code sum(qty)} 与工单的 {@code doneQty} 永远相等，
+     * 客户拿两个数一对就能验证。
+     * <p>
+     * <b>注意反冲不按这个数</b>：领料要按 {@code qty + defectQty} 扣，因为不良件的料
+     * 也是真消耗掉了。写在 {@code ErpWorkOrderService.produce()} 里。
+     */
     @Column(name = "qty", nullable = false, precision = 18, scale = 4)
     private BigDecimal qty = BigDecimal.ZERO;
 
     /** 不良品数量：只记数，不进良品库存（报废/待处理走各自的单据） */
     @Column(name = "defect_qty", nullable = false, precision = 18, scale = 4)
     private BigDecimal defectQty = BigDecimal.ZERO;
+
+    /** 本批总产出 = 良品 + 不良。只存在于计算里，不落列（免得两份真值） */
+    public BigDecimal totalQty() {
+        return qty.add(defectQty);
+    }
 
     @Column(name = "created_at", nullable = false)
     private long createdAt = System.currentTimeMillis();

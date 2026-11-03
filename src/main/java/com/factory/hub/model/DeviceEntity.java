@@ -121,6 +121,28 @@ public class DeviceEntity {
     private boolean prodAutoStockin = false;
 
     /**
+     * 主计数器口径（DH-15 补）：{@link #COUNTER_TOTAL} / {@link #COUNTER_GOOD}，默认 TOTAL。
+     * <p>
+     * <b>这一列解决的是一个"代码永远猜不出来"的事实</b>：{@code prod_hourly.output}
+     * 到底是"总产出（含不良）"还是"良品数"，取决于现场计数器接在哪——
+     * 有的机床主计数器算全部行程（含废件），有的只算合格品。
+     * 系统无法从数据上判断，只能由配设备的人声明。
+     * <p>
+     * 默认 {@code TOTAL} 是因为全系统早就在按"output 含不良"算：
+     * OEE 的良率公式是 {@code (output − defect) / output}，入库量历史口径也是 output。
+     * 选错会导致库存多算（把 GOOD 当 TOTAL 会再减一次不良）或少算
+     * （把 TOTAL 当 GOOD 会把不良也入库），所以设备配置页必须把这一项摆在显眼位置。
+     */
+    @Column(name = "counter_mode", nullable = false, length = 8)
+    private String counterMode = COUNTER_TOTAL;
+
+    /** 主计数器算的是总产出（含不良）：入库量 = output − defect */
+    public static final String COUNTER_TOTAL = "TOTAL";
+    /** 主计数器算的已经是良品数：入库量 = output（不再减不良） */
+    public static final String COUNTER_GOOD = "GOOD";
+
+
+    /**
      * 日目标产量（件）。null/0 = 未设目标。
      * 设备卡片与车间大屏按「今日产量 / 目标」显示完成率红绿灯；
      * 口径与产量统计一致（按清零时刻的统计日），改这里不影响采集。
@@ -334,4 +356,12 @@ public class DeviceEntity {
 
     public boolean isProdAutoStockin() { return prodAutoStockin; }
     public void setProdAutoStockin(boolean prodAutoStockin) { this.prodAutoStockin = prodAutoStockin; }
+
+    public String getCounterMode() { return counterMode; }
+    public void setCounterMode(String counterMode) { this.counterMode = counterMode; }
+
+    /** 主计数器口径是否只算良品（决定入库量要不要减不良数） */
+    public boolean isCounterGoodOnly() {
+        return COUNTER_GOOD.equalsIgnoreCase(counterMode);
+    }
 }

@@ -120,7 +120,11 @@ public class ReportService {
         // DH-15 OEE：计划生产时间 = 当天的班次总时长
         double planned = plan.plannedSecOf(date);
         attachOee(dayDevices, manual, planned);
-        out.put("oee", oeeTotals(dayDevices, manual, planned));
+        // 厂级合计不良数取设备行之和：与合计 OEE 用的是同一份数，
+        // 也和趋势图/月报同一口径（采集 + 人工按双通道规则合并，不是两份相加）
+        Map<String, Object> totals = (Map<String, Object>) out.get("totals");
+        totals.put("defect", round1(defectOfRows(dayDevices)));
+        out.put("oee", oeeTotals(dayDevices, planned));
         out.put("warnings", plan.validate());
         return out;
     }
@@ -186,19 +190,19 @@ public class ReportService {
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("date", d.toString());
             row.putAll(sum.toMap());
-            double manualOut = 0, manualDefect = 0;
+            double manualOut = 0;
             for (ManualEntry e : dayManual) {
                 manualOut += e.getOutput();
-                if (e.getDefect() != null) {
-                    manualDefect += e.getDefect();
-                }
             }
             row.put("output", round1(sum.output + manualOut));
-            row.put("defect", round1(sum.defect + manualDefect));
+            // 厂级不良数取「设备行之和」，与合计 OEE 用的完全是同一份数。
+            // 原来这里是 sum.defect + manualDefect（采集 + 人工直接相加），
+            // 设备配了 reject 点位时就会和逐台的数对不上 —— 客户一行行加过去必然发现
+            row.put("defect", round1(defectOfRows(devRows)));
             if (manualOut != 0d) {
                 row.put("manualOutput", round1(manualOut));
             }
-            row.put("oee", oeeTotals(devRows, dayManual, planned));
+            row.put("oee", oeeTotals(devRows, planned));
             rows.add(row);
 
             // 单设备趋势：每台设备一条与 dates 对齐的序列，缺的那天留 null
@@ -321,7 +325,10 @@ public class ReportService {
             planned += shiftStore.current().plannedSecOf(d);
         }
         attachOee(devices, manual, planned);
-        Map<String, Object> monthOee = oeeTotals(devices, manual, planned);
+        // 厂级合计的不良数同样取设备行之和（同一天的逐日行也是这么算的），
+        // 否则「按设备」sheet 与「总计」在同一个页面上给出两个不同的不良数
+        monthTotals.put("defect", round1(defectOfRows(devices)));
+        Map<String, Object> monthOee = oeeTotals(devices, planned);
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("ok", true);
@@ -447,9 +454,29 @@ public class ReportService {
     /**
      * 给设备明细行补上 OEE（DH-15）。
      * <p>
-     * 不良数 = 自动采集的（prod_hourly.defect）+ 人工补录的。
-     * 「有没有不良数数据」看的是：设备配了 reject 点位，**或者**本期有人补录过不良数——
-     * 不是看不良数是不是 0。没采到和真的是零不良，两回事。
+     * <b>不良数走"双通道合并"，不是两份相加</b>（QC-SPEC §2.5）：
+     * <ul>
+     *   <li>设备配了 {@code reject} 点位<b>且本期采集值 &gt; 0</b> → 以设备为准，
+     *       人工补录只作对照<b>不叠加</b>（叠加等于同一批不良算两遍，良率被压低）；</li>
+     *   <li>设备没有数据 → 用人工补录（这是车间真实场景：没接机床的老设备只能人填）；</li>
+     *   <li>两边都 &gt; 0 → 取设备值，并打 {@code defectChallenged} 标记，
+     *       让人去做一次核对，而不是系统悄悄替人做决定。</li>
+     * </ul>
+     * <p>
+     * <b>算出来的人均值必须写回 {@code row}</b>（F2 修的正是这里）：
+     * 原来 {@code defect} 只是个局部变量，{@code oeeTotals} 累加设备行时读的是
+     * {@code row.get("defect")}（只有采集值，不含人工），于是厂级良率偏高。
+     * 写回之后，"设备行显示的不良数"和"合计用的不良数"是同一个数，
+     * 客户一行行加过去也必然等于合计。原始采集值另存 {@code rawDefect} 以便追溯。
+     * <p>
+     * {@code defectSource} 告诉人这个数从哪来（device / manual / mixed / none）——
+     * 客户问"这台设备的不良数为什么和机床面板不一样"时，这一列就是答案。
+     * <p>
+     * <b>这段没有单测覆盖</b>（依赖 DeviceService 与数据库，纯单测造不出来）。
+     * 改动此方法时请手工验证一遍：造一个「设备有采集不良 + 同一台设备有人工补录不良」的场景，
+     * 断言 <b>厂级良率与设备明细算出来的良率一致</b>、设备行显示的 defect 等于合计用的 defect。
+     * 下一轮计划把双通道合并抽成 {@code ErpDefectDualChannel.resolve(deviceQty, manualQty, hasRejectPoint)}
+     * 纯函数并补单测，届时本方法只负责调它。
      */
     private void attachOee(List<Map<String, Object>> rows, List<ManualEntry> manual, double plannedSec) {
         Map<String, Double> manualDefect = new HashMap<>();
@@ -460,8 +487,36 @@ public class ReportService {
         }
         for (Map<String, Object> row : rows) {
             String code = String.valueOf(row.get("code"));
-            double defect = d(row.get("defect")) + manualDefect.getOrDefault(code, 0d);
-            boolean hasDefectData = deviceService.hasRejectPoint(code) || manualDefect.containsKey(code);
+            double raw = d(row.get("defect"));                  // 设备自动采集值
+            double manualQty = manualDefect.getOrDefault(code, 0d);  // 人工补录值
+            boolean hasRejectPoint = deviceService.hasRejectPoint(code);
+
+            double defect;
+            String defectSource;
+            boolean challenged = false;
+            if (hasRejectPoint && raw > 0) {
+                // 设备为准：人工补录只作对照，不叠加
+                defect = raw;
+                defectSource = "device";
+                challenged = manualQty > 0;
+            } else if (manualQty > 0) {
+                // 设备没有数据，只能人工补；两边都有（极少见）就相加并说明是混合来源
+                defect = raw + manualQty;
+                defectSource = raw > 0 ? "mixed" : "manual";
+            } else {
+                defect = raw;
+                defectSource = raw > 0 ? "device" : "none";
+            }
+
+            row.put("rawDefect", round1(raw));
+            row.put("manualDefect", round1(manualQty));
+            row.put("defect", round1(defect));
+            row.put("defectSource", defectSource);
+            row.put("defectChallenged", challenged);
+
+            // 「有没有不良数数据」看的是配没配点位 / 有没有补录过，不是看这个数是不是 0：
+            // 没采到和真的是零不良，两回事
+            boolean hasDefectData = hasRejectPoint || manualDefect.containsKey(code);
             Double cycle = deviceService.idealCycleSecOf(code);
             OeeCalculator.Result r = oeeCalc.compute(OeeCalculator.forDevice(
                     d(row.get("runSec")), d(row.get("output")), defect, hasDefectData,
@@ -478,8 +533,21 @@ public class ReportService {
      * 少一台就不给合计良率和合计 OEE（并说清楚缺哪几台）。
      * 单台设备的 OEE 不受影响，照常给。
      */
-    private Map<String, Object> oeeTotals(List<Map<String, Object>> deviceRows,
-                                          List<ManualEntry> manual, double plannedSec) {
+    /**
+     * 设备行不良数之和。
+     * <p>
+     * 用这个方法而不是各自累加 {@code prod_hourly.defect}，是为了让"逐台"和"合计"
+     * 只有一个算法：客户拿计算器把设备明细加一遍，必须等于合计。
+     */
+    private static double defectOfRows(List<Map<String, Object>> rows) {
+        double sum = 0d;
+        for (Map<String, Object> r : rows) {
+            sum += d(r.get("defect"));
+        }
+        return sum;
+    }
+
+    private Map<String, Object> oeeTotals(List<Map<String, Object>> deviceRows, double plannedSec) {
         int n = deviceRows.size();
         double run = 0, output = 0, defect = 0, counted = 0, theoretical = 0;
         int noCycle = 0, noDefect = 0;
@@ -507,12 +575,9 @@ public class ReportService {
                 noDefect++;
             }
         }
-        // 人工补录的不良数也要进合计（逐台那步加的是各台的，这里加总）
-        for (ManualEntry e : manual) {
-            if (e.getDefect() != null) {
-                defect += e.getDefect();
-            }
-        }
+        // 这里<b>不再</b>另外累加人工补录的不良数：
+        // attachOee 已经按双通道规则把最终值写回了每行的 "defect"（设备为准时不含人工）。
+        // 再在这里加一遍 = 人工补录的不良被算两次，良率反而偏低（F2 的另一半）
         Double theoreticalAll = (noCycle > 0 || n == 0) ? null : theoretical;
         boolean hasDefectData = noDefect == 0 && n > 0;
         String note;

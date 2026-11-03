@@ -142,6 +142,10 @@ public class ErpBaseController {
             m.put("manager", w.getManager());
             m.put("phone", w.getPhone());
             m.put("remark", w.getRemark());
+            // 仓类型给字符串而不是布尔：前端要区分 STANDARD / BLOCKED，
+            // 而且下一个仓类型（比如"在检仓"）加进来时不用改前端字段
+            m.put("kind", w.getKind() == null ? ErpWarehouse.KIND_STANDARD : w.getKind());
+            m.put("blocked", w.isBlocked());
             m.put("default", w.isDefaultWarehouse());
             m.put("enabled", w.isEnabled());
             m.put("updatedAt", w.getUpdatedAt());
@@ -194,6 +198,14 @@ public class ErpBaseController {
         if (body.get("manager") != null || !update) w.setManager(str(body.get("manager")));
         if (body.get("phone") != null || !update) w.setPhone(str(body.get("phone")));
         if (body.get("remark") != null || !update) w.setRemark(str(body.get("remark")));
+        // 仓类型：只认 STANDARD / BLOCKED，其余（含空）落回 STANDARD。
+        // 这一项配错的后果不对称——误设 BLOCKED 那个仓发不出货（当场发现），
+        // 误设 STANDARD 会放行不该放的货（事后对账才发现），所以输入校验从严。
+        if (body.get("kind") != null || !update) {
+            String kind = str(body.get("kind"));
+            w.setKind(ErpWarehouse.KIND_BLOCKED.equalsIgnoreCase(kind)
+                    ? ErpWarehouse.KIND_BLOCKED : ErpWarehouse.KIND_STANDARD);
+        }
         if (body.get("default") != null) w.setDefaultWarehouse(Boolean.parseBoolean(String.valueOf(body.get("default"))));
         if (body.get("enabled") != null) w.setEnabled(Boolean.parseBoolean(String.valueOf(body.get("enabled"))));
     }

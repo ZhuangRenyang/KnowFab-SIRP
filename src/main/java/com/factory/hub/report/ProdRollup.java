@@ -167,6 +167,11 @@ public class ProdRollup {
                     }
                     if (delta > 0) {
                         bucket(code, ts).addDefect(delta);
+                        // 不良数也要进 ERP（QC-SPEC §2.3/§7 F1）：
+                        // 主计数器算的是总产出（含不良），入库时得把这一批的不良扣掉，
+                        // 否则不良品会被当良品入成品仓。走独立入口而不是塞进 onProduced，
+                        // 因为两个计数器是独立采样，增量常常不在同一拍上
+                        inbound.onRejected(code, delta, ts);
                     }
                 }
                 st.rejectCount = cur;

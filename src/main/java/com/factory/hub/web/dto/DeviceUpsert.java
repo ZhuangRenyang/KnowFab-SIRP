@@ -36,6 +36,8 @@ public record DeviceUpsert(
         Boolean prodAutoStockin,
         Integer dailyTarget,
         /* DH-15：理想节拍（秒/件），OEE 性能因子用 */
-        Double idealCycleSec
+        Double idealCycleSec,
+        /* 主计数器口径 TOTAL / GOOD：决定入库量要不要减不良数，配错会多算或少算库存 */
+        String counterMode
 ) {
 }

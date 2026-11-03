@@ -52,7 +52,34 @@ public class ErpStockService {
             ErpStockBill.TYPE_PO_IN, ErpStockBill.TYPE_SO_OUT,
             ErpStockBill.TYPE_OTHER_IN, ErpStockBill.TYPE_OTHER_OUT,
             ErpStockBill.TYPE_TRANSFER, ErpStockBill.TYPE_PO_RETURN, ErpStockBill.TYPE_SO_RETURN,
-            ErpStockBill.TYPE_MATERIAL_OUT);
+            ErpStockBill.TYPE_MATERIAL_OUT, ErpStockBill.TYPE_SCRAP_OUT);
+
+    /**
+     * 方向判定：这张单是不是"货从仓库出去"（qty 记为负数）。
+     * <p>
+     * <b>为什么收敛成一个方法</b>：出库白名单原来在 {@code createManual} 与
+     * {@code checkStockForOut} 里各写了一份。两份必然漂移——新增一个出库类型（比如报废出库），
+     * 只改了一处，另一处就当它是入库：qty 变正数（库存凭空涨一笔），
+     * 并且因为"出库才查可用量"这条判断没命中，还能开出比库存还多的数，
+     * <b>整个过程一个异常都不报</b>。本项目已经在采购退货和生产领料上各踩过一次。
+     * 现在只剩这一处，新增类型只改这里（并由 {@code ErpStockOutboundTest} 遍历
+     * 所有 {@code ErpStockBill.TYPE_*} 常量兜底：漏登记会立刻红）。
+     * <p>
+     * <b>调拨与盘点不算在内</b>：调拨是"源仓负数行 + 目标仓正数行"，方向由行自己带；
+     * 盘点是按差异正负落行，两者都不走"整单一个方向"这条路。
+     */
+    public static boolean isOutbound(String type) {
+        return ErpStockBill.TYPE_SO_OUT.equals(type)
+                || ErpStockBill.TYPE_OTHER_OUT.equals(type)
+                // 采购退货也是出库（退给供应商，货要离开库存）。
+                // 原来漏在这里，于是采购退货能把库存做成负数还不报错——账实从这儿开始对不上。
+                || ErpStockBill.TYPE_PO_RETURN.equals(type)
+                // 生产领料同样是出库：料从仓库领到车间，库存必须真的减。
+                // 漏了它，领料单能开出比库存还多的数（DH-70 的坑就在这儿）。
+                || ErpStockBill.TYPE_MATERIAL_OUT.equals(type)
+                // 报废出库：不良品处置产生，货真的没了，必须扣所在仓（QC-SPEC §3.4）
+                || ErpStockBill.TYPE_SCRAP_OUT.equals(type);
+    }
 
     /**
      * 库存页「新建单据」能选的类型：采购退货必须从采购订单发起（这样订单进度才对得上），
@@ -77,6 +104,7 @@ public class ErpStockService {
         m.put(ErpStockBill.TYPE_STOCKTAKE, "盘点调整");
         m.put(ErpStockBill.TYPE_PROD_IN, "生产入库");
         m.put(ErpStockBill.TYPE_MATERIAL_OUT, "生产领料");
+        m.put(ErpStockBill.TYPE_SCRAP_OUT, "报废出库");
         TYPE_LABELS = java.util.Collections.unmodifiableMap(m);
 
         TYPE_PREFIX.put(ErpStockBill.TYPE_PO_IN, "CGRK");
@@ -89,6 +117,7 @@ public class ErpStockService {
         TYPE_PREFIX.put(ErpStockBill.TYPE_STOCKTAKE, "PD");
         TYPE_PREFIX.put(ErpStockBill.TYPE_PROD_IN, "SCRK");
         TYPE_PREFIX.put(ErpStockBill.TYPE_MATERIAL_OUT, "SCLL");
+        TYPE_PREFIX.put(ErpStockBill.TYPE_SCRAP_OUT, "BFCK");
     }
 
     private final ErpStockBillRepository billRepo;
@@ -143,8 +172,7 @@ public class ErpStockService {
             throw new IllegalArgumentException("不支持的单据类型：" + type);
         }
         boolean transfer = ErpStockBill.TYPE_TRANSFER.equals(type);
-        boolean out = ErpStockBill.TYPE_SO_OUT.equals(type) || ErpStockBill.TYPE_OTHER_OUT.equals(type)
-                || ErpStockBill.TYPE_PO_RETURN.equals(type) || ErpStockBill.TYPE_MATERIAL_OUT.equals(type);
+        boolean out = isOutbound(type);
 
         ErpWarehouse wh = whRepo.findById(whId == null ? -1L : whId)
                 .orElseThrow(() -> new IllegalArgumentException("请选择仓库"));
@@ -316,8 +344,15 @@ public class ErpStockService {
                                      boolean backfill, String workOrderNo) {
         long ts = System.currentTimeMillis();
         String billNo = nextBillNo(ErpStockBill.TYPE_PROD_IN);
-        ErpStockBillHdr hdr = newHdr(billNo, ErpStockBill.TYPE_PROD_IN, ts, "system",
-                backfill ? "断线补记" : null);
+        // 零数量单只在"这一批产出全是不良"时出现（TOTAL 口径下 output == defect）。
+        // 单据要留着：它把不良数记到了工单上，也是"这一批为什么没有良品入库"的唯一痕迹。
+        // 但一定要在备注里说明白，否则查单的人会以为是系统出错。
+        String remark = backfill ? "断线补记" : null;
+        if (qty == null ? Boolean.TRUE : qty.signum() == 0) {
+            remark = (remark == null ? "" : remark + "；")
+                    + "仅记不良，库存未动（本批产出全部判为不良，良品入库 0 件）";
+        }
+        ErpStockBillHdr hdr = newHdr(billNo, ErpStockBill.TYPE_PROD_IN, ts, "system", remark);
         hdr.setDeviceCode(deviceCode);
         hdr.setDstWhId(whId);
         if (workOrderNo != null) {
@@ -636,7 +671,7 @@ public class ErpStockService {
 
     /** 单据列表（分页） */
     public Map<String, Object> bills(String type, Long fromTs, Long toTs, boolean withProd,
-                                     String kw, int page, int size) {
+                                     boolean includeZeroQty, String kw, int page, int size) {
         int p = Math.max(1, page);
         int s = Math.max(1, Math.min(200, size));
         String k = kw == null || kw.trim().isEmpty() ? ""
@@ -649,7 +684,9 @@ public class ErpStockService {
         var res = hdrRepo.search(type == null || type.isBlank() ? "" : type,
                 fromTs == null ? 0L : fromTs, toTs == null ? 0L : toTs,
                 // 明确筛生产入库时当然要显示，不能又被"隐藏生产单"的默认口径过滤掉
-                withProd || ErpStockBill.TYPE_PROD_IN.equals(type), k, pageable);
+                withProd || ErpStockBill.TYPE_PROD_IN.equals(type),
+                // 零数量的生产入库单默认不展示（数据留着，见 hdrRepo.search 注释）
+                includeZeroQty, k, pageable);
 
         Map<Long, String> whNames = new HashMap<>();
         for (ErpWarehouse w : whRepo.findAll()) {
@@ -888,14 +925,9 @@ public class ErpStockService {
 
     /** 出库/调拨前查可用量，负数库存直接拒绝并说清差多少 */
     private void checkStockForOut(String type, List<LineReq> lines, Long whId, ErpWarehouse wh) {
-        boolean out = ErpStockBill.TYPE_SO_OUT.equals(type) || ErpStockBill.TYPE_OTHER_OUT.equals(type)
-                // 采购退货也是出库（退给供应商，货要离开库存）。
-                // 原来漏在这里，于是采购退货能把库存做成负数还不报错——
-                // 单据层面看不出问题，账实从这儿开始对不上。
-                || ErpStockBill.TYPE_PO_RETURN.equals(type)
-                // 生产领料同样是出库：料从仓库领到车间，库存必须真的减。
-                // 漏了它，领料单能开出比库存还多的数（DH-70 的坑就在这儿）。
-                || ErpStockBill.TYPE_MATERIAL_OUT.equals(type);
+        // 方向判定只有 isOutbound 一份，别再在这里抄一遍白名单——
+        // 两份一定会漂移，而漂移那天不会有任何报错（见 isOutbound 的注释）
+        boolean out = isOutbound(type);
         boolean transfer = ErpStockBill.TYPE_TRANSFER.equals(type);
         if (!out && !transfer) {
             return;
@@ -944,7 +976,15 @@ public class ErpStockService {
     }
 
     private String nextBillNo(String type) {
-        String prefix = TYPE_PREFIX.getOrDefault(type, "BILL");
+        // 前缀缺失就抛异常，<b>不做 getOrDefault(..., "BILL") 兜底</b>：
+        // 兜底会让"新增单据类型忘了登记前缀"从报错退化成悄悄生成 BILL20261103-0001，
+        // 事后翻单据列表谁也看不出那是报废单；而且多个类型同时漏会撞号。
+        // 配置缺失就该炸，这是"不做字面量兜底"这条通则的第一个具体案例。
+        String prefix = TYPE_PREFIX.get(type);
+        if (prefix == null) {
+            throw new IllegalStateException("单据类型 " + type
+                    + " 没有登记单号前缀（TYPE_PREFIX），请先在 ErpStockService 静态块里补上");
+        }
         String base = prefix + LocalDate.now(ZONE).format(DAY) + "-";
         long n = billRepo.countByBillNoPrefix(base + "%") + 1;
         String no;

@@ -50,8 +50,10 @@ public class ErpSalesQueryService {
             }
         }
         Map<Long, String> whNames = new HashMap<>();
+        Map<Long, String> whKinds = new HashMap<>();
         for (ErpWarehouse w : whRepo.findAll()) {
             whNames.put(w.getId(), w.getName());
+            whKinds.put(w.getId(), w.getKind());
         }
         Map<Long, BigDecimal> allocated = new HashMap<>();
         for (Object[] a : itemRepo.openOrderQtyBySku()) {
@@ -59,7 +61,12 @@ public class ErpSalesQueryService {
         }
 
         // 按 SKU 汇总（多仓合并），同时留一份分仓明细
+        // <b>禁发仓的货不计入可承诺量</b>：让步待发的货和待判定的退货都在禁发仓里，
+        // 它们的可用量不能算进"可承诺"。否则销售看到"可用 12 件"（含 2 件让步品）→
+        // 承诺客户 → 出库时被硬拦 → 交不了货。这不是数据错误，是销售被系统坑了。
+        // 禁发仓的存量单独给 blockedQty 字段，让销售知道"另有 N 件，需客户同意/待判定"。
         Map<Long, BigDecimal> total = new LinkedHashMap<>();
+        Map<Long, BigDecimal> blockedBySku = new LinkedHashMap<>();
         Map<Long, List<Map<String, Object>>> byWh = new HashMap<>();
         for (Object[] a : billRepo.aggregateStock()) {
             Long skuId = ((Number) a[0]).longValue();
@@ -74,11 +81,18 @@ public class ErpSalesQueryService {
             if (!skus.containsKey(skuId)) {
                 continue;
             }
-            total.merge(skuId, qty, BigDecimal::add);
+            boolean blockedWh = ErpWarehouse.KIND_BLOCKED.equals(whKinds.get(warehouseId));
+            if (blockedWh) {
+                // 分仓明细里照常显示（仓管要知道货在哪），但不算进可承诺量
+                blockedBySku.merge(skuId, qty, BigDecimal::add);
+            } else {
+                total.merge(skuId, qty, BigDecimal::add);
+            }
             Map<String, Object> w = new LinkedHashMap<>();
             w.put("id", warehouseId);
             w.put("name", whNames.getOrDefault(warehouseId, "仓库#" + warehouseId));
             w.put("qty", scale(qty));
+            w.put("blocked", blockedWh);
             byWh.computeIfAbsent(skuId, k -> new ArrayList<>()).add(w);
         }
 
@@ -124,6 +138,8 @@ public class ErpSalesQueryService {
             m.put("category", s.getCategory());
             m.put("salePrice", s.getSalePrice());
             m.put("onHand", scale(onHand));
+            // 禁发仓里的量：不参与可承诺，但要让销售看见（"另有 2 件让步品/待判定"）
+            m.put("blockedQty", scale(blockedBySku.getOrDefault(skuId, BigDecimal.ZERO)));
             m.put("allocated", scale(alloc));
             m.put("available", scale(avail));
             m.put("shortage", scale(shortage));

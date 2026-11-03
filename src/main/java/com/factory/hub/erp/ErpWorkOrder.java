@@ -47,6 +47,7 @@ import java.math.BigDecimal;
         @Index(name = "idx_wo_status", columnList = "status"),
         @Index(name = "idx_wo_device", columnList = "device_code"),
         @Index(name = "idx_wo_product", columnList = "product_sku_id"),
+        @Index(name = "idx_wo_type", columnList = "order_type"),
         @Index(name = "idx_wo_created", columnList = "created_at")
 })
 public class ErpWorkOrder {
@@ -59,6 +60,11 @@ public class ErpWorkOrder {
 
     public static final java.util.List<String> STATUSES = java.util.List.of(
             ST_DRAFT, ST_RELEASED, ST_RUNNING, ST_DONE, ST_CANCELLED);
+
+    /** 正常生产工单 */
+    public static final String TYPE_PROD = "PROD";
+    /** 返工工单：不良品处置「返工」产生，指向原工单 */
+    public static final String TYPE_REWORK = "REWORK";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -126,6 +132,26 @@ public class ErpWorkOrder {
     @Column(name = "src_order_no", length = 40)
     private String srcOrderNo;
 
+    /**
+     * 工单类型 {@link #TYPE_PROD} / {@link #TYPE_REWORK}，默认正常生产。
+     * <p>
+     * <b>为什么必须是独立一列而不是靠"有没有 src_work_order_no"判断</b>：
+     * 返工单在没有原工单时也可能存在（客户寄回来一批不良品，找不到当年的工单号），
+     * 这时它就是返工单但没有来源；反过来，手工建单时也可能填了来源单号做备注。
+     * 用"有没有来源"推类型，两种边界都会判错，而判错的后果是成本统计把返工算进正常生产。
+     */
+    @Column(name = "order_type", nullable = false, length = 16)
+    private String orderType = TYPE_PROD;
+
+    /**
+     * 返工单指向的原工单号（可空）。
+     * <p>
+     * 让它可空是刻意的：客户退回的不良品往往找不到原工单（跨年、跨系统导入），
+     * 强制必填会让现场随便编一个单号填进去——那比留空更糟，因为假的追溯链比断的更危险。
+     */
+    @Column(name = "src_work_order_no", length = 40)
+    private String srcWorkOrderNo;
+
     /** 是否在产出时按 BOM 自动反冲领料（1 = 自动扣料，0 = 只记产出，料由人工领） */
     @Column(name = "auto_backflush", nullable = false)
     private boolean autoBackflush = true;
@@ -182,6 +208,21 @@ public class ErpWorkOrder {
     public void setMaterialWhId(Long materialWhId) { this.materialWhId = materialWhId; }
     public String getSrcOrderNo() { return srcOrderNo; }
     public void setSrcOrderNo(String srcOrderNo) { this.srcOrderNo = srcOrderNo; }
+    public String getOrderType() { return orderType; }
+    public void setOrderType(String orderType) { this.orderType = orderType; }
+    public String getSrcWorkOrderNo() { return srcWorkOrderNo; }
+    public void setSrcWorkOrderNo(String srcWorkOrderNo) { this.srcWorkOrderNo = srcWorkOrderNo; }
+
+    /**
+     * 是否返工单。
+     * <p>
+     * <b>判空要稳</b>：升级上来的老行 order_type 由 1.7.0 迁移脚本回填成 PROD，
+     * 但万一某个环境脚本没跑到（例如迁移被关掉），null 也必须当 PROD 处理，
+     * 不能在这里抛 NPE——工单列表一崩，整个 ERP 都进不去。
+     */
+    public boolean isRework() {
+        return TYPE_REWORK.equals(orderType);
+    }
     public boolean isAutoBackflush() { return autoBackflush; }
     public void setAutoBackflush(boolean autoBackflush) { this.autoBackflush = autoBackflush; }
     public Long getPlanStart() { return planStart; }

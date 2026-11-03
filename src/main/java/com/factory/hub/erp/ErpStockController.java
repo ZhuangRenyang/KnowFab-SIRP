@@ -86,10 +86,13 @@ public class ErpStockController {
                                      @RequestParam(required = false) Long from,
                                      @RequestParam(required = false) Long to,
                                      @RequestParam(defaultValue = "false") boolean withProd,
+                                     /* 零数量的生产入库单默认不展示：那种单只在"这批产出全是不良"时出现，
+                                        库存一分没动，摆在日常列表里只会让人打电话问 */
+                                     @RequestParam(defaultValue = "false") boolean includeZeroQty,
                                      @RequestParam(required = false) String kw,
                                      @RequestParam(defaultValue = "1") int page,
                                      @RequestParam(defaultValue = "20") int size) {
-        return service.bills(type, from, to, withProd, kw, page, size);
+        return service.bills(type, from, to, withProd, includeZeroQty, kw, page, size);
     }
 
     @GetMapping("/bills/{billNo}")

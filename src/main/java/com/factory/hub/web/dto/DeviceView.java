@@ -36,6 +36,8 @@ public record DeviceView(
         Integer dailyTarget,
         /* DH-15：理想节拍（秒/件） */
         Double idealCycleSec,
+        /* 主计数器口径 TOTAL / GOOD：决定入库量要不要减不良数 */
+        String counterMode,
         Double todayOutput,
         List<PointValue> points
 ) {
