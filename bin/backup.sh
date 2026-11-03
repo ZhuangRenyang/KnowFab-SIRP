@@ -58,7 +58,9 @@ esac
 
 echo "[$(date '+%F %T')] 备份 $DB_NAME@$DB_HOST:$DB_PORT → $FILE"
 if [ "$ENGINE" = "mysql" ]; then
-  "$MYSQL" -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" -p"$DB_PASS" \
+  # 密码用 MYSQL_PWD 环境变量传，不放命令行：ps 能看见同机的全部命令行参数，
+  # `-p密码` 等于把库密码写在墙上。
+  MYSQL_PWD="$DB_PASS" "$MYSQL" -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" \
     --single-transaction --routines --triggers --set-gtid-purged=OFF \
     --default-character-set=utf8mb4 "$DB_NAME" | gzip > "$FILE"
 else

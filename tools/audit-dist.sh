@@ -11,9 +11,18 @@
 # 这些都靠人眼看，迟早会漏一次。所以做成脚本，打包流程里强制跑。
 set -uo pipefail
 
-TARGET="${1:-}"
+TARGET=""
+PORTABLE=0
+for a in "$@"; do
+  case "$a" in
+    --portable) PORTABLE=1 ;;
+    -*) echo "未知参数：$a"; exit 1 ;;
+    *) TARGET="$a" ;;
+  esac
+done
 if [ -z "$TARGET" ]; then
-  echo "用法：$0 <交付包目录|交付包.zip>"
+  echo "用法：$0 [--portable] <交付包目录|交付包.zip>"
+  echo "  --portable  便携版包：内容与安装包不同，跳过「必需文件」清单，禁检项照查"
   exit 1
 fi
 
@@ -55,7 +64,13 @@ echo
 
 # ---------- 1. 必需文件 ----------
 echo "一、必需文件"
-for f in device-hub.jar install.sh bin/apply-pending.sh bin/upgrade.sh README.md; do
+# 便携版包的内容与安装包不同（没有 install.sh / upgrade.sh），跳过这份清单；
+# 禁检项（私钥、源码、演示数据、CRLF）照查不误。
+REQUIRED="device-hub.jar install.sh bin/apply-pending.sh bin/upgrade.sh README.md"
+if [ "$PORTABLE" = "1" ]; then
+  REQUIRED="device-hub.jar"
+fi
+for f in $REQUIRED; do
   if [ -f "$ROOT/$f" ]; then
     pass "$f"
   else
@@ -71,7 +86,8 @@ BLOCK_START=$FAIL
 while IFS= read -r p; do
   [ -n "$p" ] && fail "发现私钥：${p#$ROOT/}（泄露=任何人可自签授权）"
 done <<EOF
-$(find "$ROOT" -type f \( -iname 'private.key' -o -iname '*private*key*' -o -iname '*.p12' -o -iname '*.jks' -o -iname '*.pfx' \) 2>/dev/null)
+$(find "$ROOT" -type f \( -iname 'private.key' -o -iname '*private*key*' -o -iname '*.p12' -o -iname '*.jks' -o -iname '*.pfx' -o -iname '*.pem' -o -iname '*.key' -o -iname '*.der' -o -iname '*.pkcs12' \) 2>/dev/null)
+$(find "$ROOT" -type d \( -name '.git' -o -name 'config' -o -name 'keys' -o -name 'private' \) 2>/dev/null | sed 's|$|/.x|')
 EOF
 
 # 签发工具与源码

@@ -45,6 +45,13 @@ chmod +x "$STAGE/start.sh" "$STAGE/stop.sh" 2>/dev/null || true
 mv "$STAGE/README-portable.txt" "$STAGE/使用说明.txt"
 
 rm -f "$ZIP"
+# 打包前先审计：私钥/源码/演示数据混进便携包一样是事故
+if ! bash "$HERE/audit-dist.sh" --portable "$STAGE"; then
+  echo "便携包审计不通过，已删除暂存目录，不产出 zip" >&2
+  rm -rf "$STAGE"
+  exit 1
+fi
+
 if command -v zip >/dev/null 2>&1; then
   (cd dist && zip -qr "$(basename "$ZIP")" "$(basename "$STAGE")")
 else
