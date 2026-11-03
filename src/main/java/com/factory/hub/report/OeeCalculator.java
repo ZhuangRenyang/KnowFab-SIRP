@@ -133,7 +133,10 @@ public class OeeCalculator {
         /* ---------- OEE ---------- */
         Double oee = null;
         if (availability != null && performance != null && quality != null) {
-            oee = round2(availability * performance * quality / 100d);
+            // 三个因子都是「百分数」（0~100），相乘要除两次 100：
+            // 50% × 83% × 97% = 0.5 × 0.83 × 0.97 = 40.3%
+            // 写成 a×p×q/100 会得到 4034（大了 100 倍），页面上直接显示成 4034.0%
+            oee = round2(availability * performance * quality / 10000d);
         }
 
         return new Result(availability, performance, quality, oee,

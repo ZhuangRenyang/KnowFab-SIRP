@@ -494,6 +494,21 @@ def main():
     rows = [d for d in devs if d.get("oee")]
     check("L2 设备明细每一行都带 OEE", len(rows) == len(devs) and len(devs) >= 1,
           "%d 台设备 / %d 台带 OEE" % (len(devs), len(rows)))
+    # OEE 必须是 0~100 的百分数：三个因子都是百分数，相乘要除两次 100。
+    # 早先实现写成 a×p×q/100，OEE 一律大了 100 倍（页面上显示 4034.0% 这种），
+    # 而单测断言的是同一个错公式，等于把 bug 焊死了。这里从接口层再钉一道。
+    def _oee_vals():
+        vs = []
+        o = body.get("oee") or {}
+        if o.get("oee") is not None:
+            vs.append(("全厂", o.get("oee")))
+        for d in rows:
+            v = (d.get("oee") or {}).get("oee")
+            if v is not None:
+                vs.append((d.get("code") or d.get("deviceCode"), v))
+        return vs
+    bad_oee = [(who, v) for who, v in _oee_vals() if v is not None and not (0 <= float(v) <= 100)]
+    check("L2b OEE 在 0~100 之间（早先公式错了 100 倍）", not bad_oee, bad_oee[:5])
     no_cycle = [d for d in rows if (d.get("oee") or {}).get("idealCycleSec") is None]
     if no_cycle:
         o = no_cycle[0].get("oee") or {}

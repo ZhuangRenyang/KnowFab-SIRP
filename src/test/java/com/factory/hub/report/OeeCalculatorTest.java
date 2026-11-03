@@ -35,7 +35,11 @@ class OeeCalculatorTest {
         assertEquals(83.33d, r.performance(), 0.01);          // 400 / (14400/30 = 480)
         assertEquals(97.5d, r.quality(), 0.01);               // (400-10)/400
         assertNotNull(r.oee());
-        assertEquals(50 * 83.33 * 97.5 / 100, r.oee(), 0.05);
+        // 50% × 83.33% × 97.5% = 40.62%（三个因子都是百分数，要除两次 100；
+        // 早先这里写的是 /100，等于把同一个错公式钉死在测试里，OEE 一路大了 100 倍）
+        assertEquals(50 * 83.33 * 97.5 / 10000d, r.oee(), 0.05);
+        assertTrue(r.oee() >= 0d && r.oee() <= 100d,
+                "OEE 必须是 0~100 的百分数，实际算出来 " + r.oee());
     }
 
     @Test
