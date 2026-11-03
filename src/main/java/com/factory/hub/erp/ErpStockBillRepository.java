@@ -96,6 +96,20 @@ public interface ErpStockBillRepository extends JpaRepository<ErpStockBill, Long
      * 某张采购订单已发生的库存流水（按 SKU + 单据类型汇总）。
      * 订单进度就靠它重算：PO_IN 正数、PO_RETURN 负数，作废行天然被排除。
      */
+    /**
+     * 某工单的领料金额（成本核算用）——只算有效的 MATERIAL_OUT 行。
+     * <p>
+     * 出库行 qty 是负数，所以要 abs；单价缺失按 0 算（不能把 null 当异常，
+     * 手工建单时确实可能没填价，成本会偏低但不会崩）。
+     * <p>
+     * 不按 BOM 标准成本算，按<b>实际领料</b>算：领多少算多少，超领也进成本——
+     * 标准成本适合报价，实际成本才是月底对账要的那个数。
+     */
+    @Query("select coalesce(sum(abs(b.qty) * coalesce(b.unitPrice, 0)), 0) from ErpStockBill b " +
+           "where b.voidedAt is null and b.billType = :type and b.srcOrderNo = :orderNo")
+    java.math.BigDecimal amountByOrderAndType(@Param("orderNo") String orderNo,
+                                              @Param("type") String type);
+
     @Query("select b.skuId, b.billType, sum(b.qty) from ErpStockBill b " +
            "where b.voidedAt is null and b.srcOrderNo = :orderNo " +
            "group by b.skuId, b.billType")

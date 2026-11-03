@@ -94,6 +94,19 @@ public interface EnergyRepository extends JpaRepository<EnergyRecord, Long> {
             """)
     List<Object[]> totalBetween(@Param("from") long from, @Param("to") long to);
 
+    /**
+     * 某设备在 {@code [from, to)} 内的电量与电费。
+     * <p>
+     * 电费取的是落库时的 {@code cost}（kwh × 当时电价），不是拿今天的电价重算——
+     * 电价涨了之后重算历史工单成本，等于篡改已发生的账。
+     */
+    @Query("""
+            select coalesce(sum(e.kwh), 0), coalesce(sum(e.cost), 0)
+            from EnergyRecord e
+            where e.deviceCode = :code and e.hourStart >= :from and e.hourStart < :to
+            """)
+    List<Object[]> ofDevice(@Param("code") String code, @Param("from") long from, @Param("to") long to);
+
     @Transactional
     @Modifying
     @Query("delete from EnergyRecord e where e.hourStart < :before")

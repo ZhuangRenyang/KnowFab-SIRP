@@ -8,6 +8,7 @@ import com.factory.hub.erp.ErpPurchaseService;
 import com.factory.hub.erp.ErpSalesQueryService;
 import com.factory.hub.erp.ErpSalesService;
 import com.factory.hub.erp.ErpWorkOrderService;
+import com.factory.hub.erp.ErpCostService;
 import com.factory.hub.energy.EnergyService;
 import com.factory.hub.collect.SnapshotStore;
 import com.factory.hub.model.DeviceEntity;
@@ -74,6 +75,7 @@ public class AiChatService {
     private final AiChatLogRepository chatRepo;
     private final ErpReportService reportService;
     private final ErpWorkOrderService workOrderService;
+    private final ErpCostService costService;
     private final EnergyService energyService;
     /**
      * 设备侧日报（OEE 在这里）。注意别和 {@link ErpReportService} 混了：
@@ -90,7 +92,8 @@ public class AiChatService {
                          ErpPurchaseService purchaseService, ErpSalesService salesService,
                          ErpFinanceService financeService, AlarmService alarmService,
                          AiChatLogRepository chatRepo, ErpReportService reportService,
-                         ErpWorkOrderService workOrderService, EnergyService energyService,
+                         ErpWorkOrderService workOrderService, ErpCostService costService,
+                         EnergyService energyService,
                          com.factory.hub.report.ReportService deviceReportService) {
         this.configStore = configStore;
         this.client = client;
@@ -106,6 +109,7 @@ public class AiChatService {
         this.chatRepo = chatRepo;
         this.reportService = reportService;
         this.workOrderService = workOrderService;
+        this.costService = costService;
         this.energyService = energyService;
         this.deviceReportService = deviceReportService;
     }
@@ -175,6 +179,15 @@ public class AiChatService {
                 "查询今日 OEE：全厂与各设备的可用率/性能/良率三因子（百分比）",
                 Map.of("type", "object", "properties", Map.of(), "required", List.of()),
                 SHOP_FLOOR));
+        list.add(new Tool("query_cost",
+                "查询成本核算：料/工/费构成、单位成本、毛利。参数：mode=overview（本期概览）或 products（按产品，默认）或 order（单张工单，需 orderNo），days 天数（默认 30），orderNo 工单号",
+                Map.of("type", "object",
+                        "properties", Map.of(
+                                "mode", Map.of("type", "string", "description", "overview / products / order，默认 products"),
+                                "days", Map.of("type", "integer", "description", "统计天数，默认 30"),
+                                "orderNo", Map.of("type", "string", "description", "工单号，mode=order 时必填")),
+                        "required", List.of()),
+                MANAGER_UP));
         return list;
     }
 
@@ -340,6 +353,7 @@ public class AiChatService {
                 case "query_shortage" -> workOrderService.shortage();
                 case "query_energy" -> energy(num(args.get("days"), 30));
                 case "query_oee" -> oee();
+                case "query_cost" -> cost(str(args.get("mode")), str(args.get("orderNo")), num(args.get("days"), 30));
                 default -> err("未实现的工具");
             };
             String json = mapper.writeValueAsString(data);
@@ -520,6 +534,42 @@ public class AiChatService {
         out.put("note", "OEE 三因子（可用率/性能/良率）与 oee 都是百分数，正常范围 0~100；"
                 + "null 表示数据不足算不出来（不是 0）");
         return out;
+    }
+
+    /**
+     * 成本查询：三种模式。
+     * <p>
+     * 产品模式只给前 8 个（按单位成本从高到低）——模型看到 40 行会把上下文塞满，
+     * 而且它只会念前几行，剩下的纯属浪费 token。截断时明确告诉它"还有多少个没给"，
+     * 它才不会把"前 8 个"当成"全部产品"来下结论。
+     * <p>
+     * 单产品成本里带了毛利率：这是老板最想知道的数，但要注意它只对<b>有销售价</b>的产品有效，
+     * 自制半成品没定价时毛利率是 null，不是 0。
+     */
+    private Map<String, Object> cost(String mode, String orderNo, int days) {
+        int d = Math.max(1, Math.min(365, days));
+        String m = mode == null || mode.isBlank() ? "products" : mode.trim().toLowerCase();
+        long to = System.currentTimeMillis();
+        long from = to - d * 86_400_000L;
+
+        if ("order".equals(m)) {
+            if (orderNo == null || orderNo.isBlank()) {
+                return Map.of("ok", false, "message", "mode=order 时必须给 orderNo（工单号）");
+            }
+            return costService.orderCost(orderNo);
+        }
+        if ("overview".equals(m)) {
+            return costService.overview(from, to);
+        }
+
+        Map<String, Object> r = costService.productCosts(from, to);
+        Object rows = r.get("rows");
+        if (rows instanceof List<?> list && list.size() > 8) {
+            r.put("rows", new ArrayList<>(list.subList(0, 8)));
+            r.put("truncated", true);
+            r.put("hint", "按单位成本从高到低只给了前 8 个，共 " + list.size() + " 个产品");
+        }
+        return r;
     }
 
     /* ==================== 杂项 ==================== */

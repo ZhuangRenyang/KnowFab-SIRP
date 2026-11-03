@@ -41,11 +41,16 @@ public class SettingStore {
     public static final String ALARM_STORM = "alarm.storm-threshold";
     public static final String ALARM_RETAIN_DAYS = "alarm.retain-days";
     public static final String AUDIT_RETAIN_DAYS = "audit.retain-days";
+    /** 人工单价（元/小时）——成本核算的直接人工 */
+    public static final String COST_LABOR_RATE = "cost.labor-rate";
+    /** 制造费用率（元/小时）——除电费以外的间接费用（房租/折旧/管理）摊到每小时 */
+    public static final String COST_OVERHEAD_RATE = "cost.overhead-rate";
 
     /** 分组顺序就是页面上的显示顺序 */
     private static final String G_UPDATE = "更新与升级";
     private static final String G_ALARM = "告警";
     private static final String G_AUDIT = "审计";
+    private static final String G_COST = "成本核算";
     private static final String G_DEMO = "演示数据";
 
     private static final List<SettingDef> DEFS = List.of(
@@ -66,6 +71,17 @@ public class SettingStore {
             SettingDef.number(AUDIT_RETAIN_DAYS, G_AUDIT, "审计日志保留天数",
                     "audit.retain-days", "180", 1, 3650,
                     "审计日志保留多少天。超期的记录会被自动清理，查不回来了——要追溯的改动得在这之前查清楚。"),
+
+            SettingDef.text(COST_LABOR_RATE, G_COST, "人工单价（元/小时）",
+                    "cost.labor-rate", "0",
+                    "直接人工按「设备运行工时 × 这个单价」算。填 0 表示不计人工成本，成本表里人工那栏显示 \"--\"。\n"
+                            + "用设备运行工时而不是开工到完工的墙钟时间：后者包含停机、待料、换班，"
+                            + "拿它乘单价会把停机也算成人工，单位成本必然偏高。"),
+            SettingDef.text(COST_OVERHEAD_RATE, G_COST, "制造费用率（元/小时）",
+                    "cost.overhead-rate", "0",
+                    "房租、设备折旧、管理人员工资这类间接费用，按「设备运行工时 × 这个费率」分摊。\n"
+                            + "**不含电费**——电费按设备的实际电量单独算，写在这里会重复计一遍。\n"
+                            + "填 0 表示不分摊，成本表里制造费用只剩电费。"),
 
             SettingDef.bool(DEMO_ENERGY, G_DEMO, "能耗演示数据",
                     "energy.demo-seed", "true", SettingDef.RESTART,

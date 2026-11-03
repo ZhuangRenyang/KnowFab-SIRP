@@ -30,6 +30,18 @@ public interface ProdHourlyRepository extends JpaRepository<ProdHourly, Long> {
 
     List<ProdHourly> findByHourStart(long hourStart);
 
+    /**
+     * 某设备在 {@code [from, to)} 内的运行秒数——成本核算里的"真工时"。
+     * <p>
+     * 为什么不用「开工到完工」的墙钟时间：那里面包含停机、待料、换班，
+     * 拿它乘人工单价会把停机时间也算成人工成本，算出来的单位成本必然偏高。
+     * 设备运行时长才是真正的人在干活的时间。
+     */
+    @Query("select coalesce(sum(p.runSec), 0) from ProdHourly p " +
+           "where p.deviceCode = :code and p.hourStart >= :from and p.hourStart < :to")
+    double runSecOf(@Param("code") String code, @Param("from") long from, @Param("to") long to);
+
+
     /** 单设备单小时的精确行（内存桶重启后从这里继承累计，防覆盖写冲掉已落库增量） */
     ProdHourly findByDeviceCodeAndHourStart(String deviceCode, long hourStart);
 

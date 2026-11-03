@@ -359,6 +359,21 @@ public class ProdRollup {
     }
 
     /**
+     * 该设备在 hourStart 所属小时的<b>内存实时运行秒数</b>（未等整点落库）。
+     * <p>
+     * 成本核算需要它：产量表是<b>整点才落库</b>的，一张上午 10:13 开工、
+     * 10:40 完工的工单，查 10:00 那一行永远是空的——那个小时还没结束。
+     * 不读内存桶的话，人工成本只能退化成「开工到完工的墙钟时间」，把停机也算进去。
+     * <p>
+     * 返回 {@code NaN} 表示这一小时还没有任何采样（设备没接/刚启动），调用方自行兜底。
+     */
+    public double liveRunSec(String deviceCode, long hourStart) {
+        long hour = hourStart - (hourStart % HOUR_MS);
+        ProdHourly p = buckets.get(deviceCode + "|" + hour);
+        return p == null ? Double.NaN : p.getRunSec();
+    }
+
+    /**
      * 全部设备的「今日产量」，按<b>各自清零时刻</b>的统计日口径，
      * live（当前小时内存桶）+ DB（已落库小时行）混合 —— 与产量统计页 KPI 完全同源。
      * 设备卡片完成率、车间大屏目标红绿灯都用它。
