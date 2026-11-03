@@ -195,7 +195,7 @@ public class ErpStockService {
         for (LineReq r : clean) {
             ErpSku sku = skuRepo.findById(r.skuId())
                     .orElseThrow(() -> new IllegalArgumentException("商品不存在：" + r.skuId()));
-            BigDecimal price = r.unitPrice() != null ? r.unitPrice() : defaultPrice(sku, out);
+            BigDecimal price = r.unitPrice() != null ? r.unitPrice() : defaultPrice(sku, type);
             if (transfer) {
                 // 源仓出（负数） + 目标仓入（正数），两行同一单号
                 rows.add(newLine(billNo, lineNo++, type, r.skuId(), srcWhId, r.qty().negate(), price, ts));
@@ -919,10 +919,27 @@ public class ErpStockService {
         }
     }
 
-    private BigDecimal defaultPrice(ErpSku s, boolean out) {
-        if (out && s.getSalePrice() != null) {
+    /**
+     * 单据没填单价时用哪个价。
+     * <p>
+     * <b>不是所有出库都按售价</b>——这里原来只判断「出库/入库」，于是生产领料也取了售价：
+     * 实测领 20.6kg 铸铁，按售价 7.2 算出 148.32，而它的采购价是 5.8，
+     * 真实材料成本只有 119.48 —— 材料成本虚高 24%，连带库存金额、毛利、报价全都跟着错。
+     * <p>
+     * 正确的划分按业务性质：
+     * <ul>
+     *   <li><b>销售出库 / 销售退货</b> → 售价（这是对客户开的交易价）</li>
+     *   <li><b>生产领料 / 采购入库 / 采购退货 / 其他出入库</b> → 采购价。
+     *       原料从仓库搬到车间，价值没变，变的只是位置；按售价算等于凭空给原料加了利润。</li>
+     * </ul>
+     */
+    private BigDecimal defaultPrice(ErpSku s, String type) {
+        boolean saleSide = ErpStockBill.TYPE_SO_OUT.equals(type)
+                || ErpStockBill.TYPE_SO_RETURN.equals(type);
+        if (saleSide && s.getSalePrice() != null) {
             return s.getSalePrice();
         }
+        // 非销售侧一律按采购价；没维护采购价才退到售价（总比 null 好，成本会偏高但不会崩）
         return s.getPurchasePrice() != null ? s.getPurchasePrice() : s.getSalePrice();
     }
 
