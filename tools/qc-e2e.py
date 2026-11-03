@@ -327,6 +327,39 @@ def run_checks(api, args_port):
     log("未核对（推算）方案 %d 条" % len(unverified))
 
     print()
+    print("--- ③a 国标箭头格：样本量按 10.3 借相邻行（抽样强度）---")
+    # 查表端点按 AQL + 批量返回样本量/Ac/Re。
+    # 关键抽查：H 档（批量 281~500）@ AQL 0.65 在国标里是箭头格，
+    # 按 10.3 要借 J 行 → 抽 80 件（不是 H 行自己的 50 件）。
+    # 抽少了 = 抽样强度不足 = 该判不合格的批次被放行。
+    r = api.get("/api/erp/qc/aql/resolve?level=GENERAL_II&strictLevel=NORMAL"
+                "&lotQty=500&aql=0.65")
+    check(r.get("ok"), "H 档 @ AQL 0.65 查表成功", str(r.get("message", ""))[:70])
+    if r.get("ok"):
+        check(int(r.get("sampleSize", 0)) == 80,
+              "H 档 @ AQL 0.65 抽 80 件（箭头格借 J 行，不是 50 件）",
+              str(r.get("sampleSize")))
+        check(int(r.get("ac", -1)) == 1, "Ac=1", str(r.get("ac")))
+        check(int(r.get("re", -1)) == 2, "Re=2", str(r.get("re")))
+    # A 档（批量 2~8）@ AQL 0.65 是箭头格，借 F 行 → 20 件；批量 8 < 20 → 转全检
+    r = api.get("/api/erp/qc/aql/resolve?level=GENERAL_II&strictLevel=NORMAL"
+                "&lotQty=8&aql=0.65")
+    check(r.get("ok"), "A 档 @ AQL 0.65 查表成功", str(r.get("message", ""))[:70])
+    if r.get("ok"):
+        check(int(r.get("sampleSize", 0)) == 8,
+              "样本量 >= 批量时转全检，实际抽 8 件（批量）", str(r.get("sampleSize")))
+        check(r.get("fullInspection") is True, "转全检", str(r.get("fullInspection")))
+        check(r.get("reasonCode") == "SAMPLE_GE_LOT",
+              "给出全检原因代号", str(r.get("reasonCode")))
+    # 非箭头格不受影响：L 档（批量 3201~10000）@ AQL 6.5 → n=200, Ac=21
+    r = api.get("/api/erp/qc/aql/resolve?level=GENERAL_II&strictLevel=NORMAL"
+                "&lotQty=5000&aql=6.5")
+    check(r.get("ok"), "L 档 @ AQL 6.5 查表成功", str(r.get("message", ""))[:70])
+    if r.get("ok"):
+        check(int(r.get("sampleSize", 0)) == 200, "n=200", str(r.get("sampleSize")))
+        check(int(r.get("ac", -1)) == 21, "Ac=21", str(r.get("ac")))
+
+    print()
     print("--- ③b 抽样下拉只列有数据的组合（界面不制造必然失败）---")
     r = api.get("/api/erp/qc/aql/levels")
     check(r.get("ok"), "可用检验水平接口可调用", str(r.get("message", "")))

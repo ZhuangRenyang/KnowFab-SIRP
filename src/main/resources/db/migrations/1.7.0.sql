@@ -287,3 +287,125 @@ PREPARE stmt_qc_recon_fill FROM @ddl_qc_recon_fill;
 EXECUTE stmt_qc_recon_fill;
 
 DEALLOCATE PREPARE stmt_qc_recon_fill;
+
+-- ---------- ⑩ erp_qc_aql_plan 的样本量修正（国标 10.3 箭头格） ----------
+--
+-- 背景：GB/T 2828.1-2012 表 2-A 里有 27 个箭头格（↑ / ↓）。国标 10.3 规定：
+--   「若在相交处是箭头，则沿着箭头方向读出第一个接收数 Ac 和拒收数 Re，
+--     然后由其接收数和拒收数所在行向左，在样本量栏内读出相应的样本量 n。」
+-- 即箭头格要**借**相邻行的方案，Ac/Re 与样本量 n 一起借。
+--
+-- 老实现把箭头格当成了普通数字格：Ac 碰巧全对（箭头多指向 Ac 相同的相邻行），
+-- 但**样本量偏小一档甚至两档** → 抽样强度不足，接受概率被高估，该判不合格的批次被放行。
+-- 例如 H 档（批量 281~500）在 AQL 0.65 下，国标是「↓ 借 J 行」→ 抽 80 件、Ac=1；
+-- 老实现只抽 50 件。
+--
+-- 修法：把 GENERAL_II × NORMAL 的 66 行的 sample_size 修正为国标解析后的值，
+-- 并把 verified 全部置 1（66 格已逐格核对过标准原文）。
+--
+-- ⚠️ **只改「还等于旧默认值」的行**：客户自己维护过的方案不能被升级包覆盖。
+-- 条件里带上「当前 sample_size 等于旧值」这一条，客户改过的行不满足条件 → 不会被碰到。
+-- 客户想恢复国标默认，页面上有「恢复国标默认」按钮（走 ErpAqlSeeder.reseed()，那是全量重播）。
+
+SET @has_aql_plan2 := (
+  SELECT COUNT(*) FROM information_schema.tables
+  WHERE table_schema = DATABASE() AND table_name = 'erp_qc_aql_plan'
+);
+
+-- 修正语句：批量档下标 0~10（lot_from 决定）× AQL 列 0~5
+-- sample_size 用 CASE 表达，lot_from + aql 定位格子
+SET @ddl_aql_fix := IF(@has_aql_plan2 > 0,
+  'UPDATE erp_qc_aql_plan SET sample_size = CASE
+      WHEN lot_from = 2   AND aql = 0.65 THEN 20
+      WHEN lot_from = 2   AND aql = 1.0  THEN 13
+      WHEN lot_from = 2   AND aql = 1.5  THEN 8
+      WHEN lot_from = 2   AND aql = 2.5  THEN 5
+      WHEN lot_from = 2   AND aql = 4.0  THEN 3
+      WHEN lot_from = 9   AND aql = 0.65 THEN 20
+      WHEN lot_from = 9   AND aql = 1.0  THEN 13
+      WHEN lot_from = 9   AND aql = 1.5  THEN 8
+      WHEN lot_from = 9   AND aql = 2.5  THEN 5
+      WHEN lot_from = 9   AND aql = 6.5  THEN 2
+      WHEN lot_from = 16  AND aql = 0.65 THEN 20
+      WHEN lot_from = 16  AND aql = 1.0  THEN 13
+      WHEN lot_from = 16  AND aql = 1.5  THEN 8
+      WHEN lot_from = 16  AND aql = 4.0  THEN 3
+      WHEN lot_from = 16  AND aql = 6.5  THEN 8
+      WHEN lot_from = 26  AND aql = 0.65 THEN 20
+      WHEN lot_from = 26  AND aql = 1.0  THEN 13
+      WHEN lot_from = 26  AND aql = 2.5  THEN 5
+      WHEN lot_from = 26  AND aql = 4.0  THEN 13
+      WHEN lot_from = 51  AND aql = 0.65 THEN 20
+      WHEN lot_from = 51  AND aql = 1.5  THEN 8
+      WHEN lot_from = 51  AND aql = 2.5  THEN 20
+      WHEN lot_from = 91  AND aql = 1.0  THEN 13
+      WHEN lot_from = 91  AND aql = 1.5  THEN 32
+      WHEN lot_from = 151 AND aql = 0.65 THEN 20
+      WHEN lot_from = 151 AND aql = 1.0  THEN 50
+      WHEN lot_from = 281 AND aql = 0.65 THEN 80
+      ELSE sample_size END,
+    remark = CASE
+      WHEN lot_from = 2   AND aql = 0.65 THEN CONCAT(remark, ''；本格为箭头格，按 10.3 借 F 行'')
+      WHEN lot_from = 2   AND aql = 1.0  THEN CONCAT(remark, ''；本格为箭头格，按 10.3 借 E 行'')
+      WHEN lot_from = 2   AND aql = 1.5  THEN CONCAT(remark, ''；本格为箭头格，按 10.3 借 D 行'')
+      WHEN lot_from = 2   AND aql = 2.5  THEN CONCAT(remark, ''；本格为箭头格，按 10.3 借 C 行'')
+      WHEN lot_from = 2   AND aql = 4.0  THEN CONCAT(remark, ''；本格为箭头格，按 10.3 借 B 行'')
+      WHEN lot_from = 9   AND aql = 0.65 THEN CONCAT(remark, ''；本格为箭头格，按 10.3 借 F 行'')
+      WHEN lot_from = 9   AND aql = 1.0  THEN CONCAT(remark, ''；本格为箭头格，按 10.3 借 E 行'')
+      WHEN lot_from = 9   AND aql = 1.5  THEN CONCAT(remark, ''；本格为箭头格，按 10.3 借 D 行'')
+      WHEN lot_from = 9   AND aql = 2.5  THEN CONCAT(remark, ''；本格为箭头格，按 10.3 借 C 行'')
+      WHEN lot_from = 9   AND aql = 6.5  THEN CONCAT(remark, ''；本格为箭头格，按 10.3 借 A 行'')
+      WHEN lot_from = 16  AND aql = 0.65 THEN CONCAT(remark, ''；本格为箭头格，按 10.3 借 F 行'')
+      WHEN lot_from = 16  AND aql = 1.0  THEN CONCAT(remark, ''；本格为箭头格，按 10.3 借 E 行'')
+      WHEN lot_from = 16  AND aql = 1.5  THEN CONCAT(remark, ''；本格为箭头格，按 10.3 借 D 行'')
+      WHEN lot_from = 16  AND aql = 4.0  THEN CONCAT(remark, ''；本格为箭头格，按 10.3 借 B 行'')
+      WHEN lot_from = 16  AND aql = 6.5  THEN CONCAT(remark, ''；本格为箭头格，按 10.3 借 D 行'')
+      WHEN lot_from = 26  AND aql = 0.65 THEN CONCAT(remark, ''；本格为箭头格，按 10.3 借 F 行'')
+      WHEN lot_from = 26  AND aql = 1.0  THEN CONCAT(remark, ''；本格为箭头格，按 10.3 借 E 行'')
+      WHEN lot_from = 26  AND aql = 2.5  THEN CONCAT(remark, ''；本格为箭头格，按 10.3 借 C 行'')
+      WHEN lot_from = 26  AND aql = 4.0  THEN CONCAT(remark, ''；本格为箭头格，按 10.3 借 E 行'')
+      WHEN lot_from = 51  AND aql = 0.65 THEN CONCAT(remark, ''；本格为箭头格，按 10.3 借 F 行'')
+      WHEN lot_from = 51  AND aql = 1.5  THEN CONCAT(remark, ''；本格为箭头格，按 10.3 借 D 行'')
+      WHEN lot_from = 51  AND aql = 2.5  THEN CONCAT(remark, ''；本格为箭头格，按 10.3 借 F 行'')
+      WHEN lot_from = 91  AND aql = 1.0  THEN CONCAT(remark, ''；本格为箭头格，按 10.3 借 E 行'')
+      WHEN lot_from = 91  AND aql = 1.5  THEN CONCAT(remark, ''；本格为箭头格，按 10.3 借 G 行'')
+      WHEN lot_from = 151 AND aql = 0.65 THEN CONCAT(remark, ''；本格为箭头格，按 10.3 借 F 行'')
+      WHEN lot_from = 151 AND aql = 1.0  THEN CONCAT(remark, ''；本格为箭头格，按 10.3 借 H 行'')
+      WHEN lot_from = 281 AND aql = 0.65 THEN CONCAT(remark, ''；本格为箭头格，按 10.3 借 J 行'')
+      ELSE remark END,
+    verified = 1
+   WHERE level = ''GENERAL_II'' AND strict_level = ''NORMAL''
+     AND ((lot_from = 2   AND aql = 0.65 AND sample_size = 2)
+       OR (lot_from = 2   AND aql = 1.0  AND sample_size = 2)
+       OR (lot_from = 2   AND aql = 1.5  AND sample_size = 2)
+       OR (lot_from = 2   AND aql = 2.5  AND sample_size = 2)
+       OR (lot_from = 2   AND aql = 4.0  AND sample_size = 2)
+       OR (lot_from = 9   AND aql = 0.65 AND sample_size = 3)
+       OR (lot_from = 9   AND aql = 1.0  AND sample_size = 3)
+       OR (lot_from = 9   AND aql = 1.5  AND sample_size = 3)
+       OR (lot_from = 9   AND aql = 2.5  AND sample_size = 3)
+       OR (lot_from = 9   AND aql = 6.5  AND sample_size = 3)
+       OR (lot_from = 16  AND aql = 0.65 AND sample_size = 5)
+       OR (lot_from = 16  AND aql = 1.0  AND sample_size = 5)
+       OR (lot_from = 16  AND aql = 1.5  AND sample_size = 5)
+       OR (lot_from = 16  AND aql = 4.0  AND sample_size = 5)
+       OR (lot_from = 16  AND aql = 6.5  AND sample_size = 5)
+       OR (lot_from = 26  AND aql = 0.65 AND sample_size = 8)
+       OR (lot_from = 26  AND aql = 1.0  AND sample_size = 8)
+       OR (lot_from = 26  AND aql = 2.5  AND sample_size = 8)
+       OR (lot_from = 26  AND aql = 4.0  AND sample_size = 8)
+       OR (lot_from = 51  AND aql = 0.65 AND sample_size = 13)
+       OR (lot_from = 51  AND aql = 1.5  AND sample_size = 13)
+       OR (lot_from = 51  AND aql = 2.5  AND sample_size = 13)
+       OR (lot_from = 91  AND aql = 1.0  AND sample_size = 20)
+       OR (lot_from = 91  AND aql = 1.5  AND sample_size = 20)
+       OR (lot_from = 151 AND aql = 0.65 AND sample_size = 32)
+       OR (lot_from = 151 AND aql = 1.0  AND sample_size = 32)
+       OR (lot_from = 281 AND aql = 0.65 AND sample_size = 50))',
+  'DO 0');
+
+PREPARE stmt_aql_fix FROM @ddl_aql_fix;
+
+EXECUTE stmt_aql_fix;
+
+DEALLOCATE PREPARE stmt_aql_fix;

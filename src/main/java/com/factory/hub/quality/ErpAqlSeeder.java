@@ -20,34 +20,25 @@ import java.util.List;
  * 加严（2-B）、放宽（2-C）、其他检验水平需要时由现场在「质量字典 → 抽样方案」里补，
  * 补不上时查表会明确报错，不会给个假方案。
  * <p>
- * <b>Ac 矩阵（行 = 批量档，列 = AQL，Re 恒为 Ac + 1）</b>：
+ * <b>数据来源</b>：{@link ErpAqlStandardGrid} —— 国标表 2-A 的原始网格，
+ * 逐格放大核读标准原文扫描件得到，<b>连箭头格原样保留</b>。
+ * <p>
+ * <b>国标表 2-A 里有 27 个箭头格</b>，这不是"空格"，是有含义的格子。国标 10.3 规定：
  * <pre>
- *         0.65  1.0  1.5  2.5  4.0  6.5
- *   A  2     0    0    0    0    0    0
- *   B  3     0    0    0    0    0    0
- *   C  5     0    0    0    0    0    1
- *   D  8     0    0    0    0    1    1
- *   E 13     0    0    0    1    1    2
- *   F 20     0    0    1    1    2    3
- *   G 32     0    1    1    2    3    5
- *   H 50     1    1    2    3    5    7
- *   J 80     1    2    3    5    7   10
- *   K125     2    3    5    7   10   14
- *   L200     3    5    7   10   14   21
+ * 若在相交处是箭头，则沿着箭头方向读出第一个接收数 Ac 和拒收数 Re，
+ * 然后由其接收数和拒收数所在行向左，在样本量栏内读出相应的样本量 n。
  * </pre>
- * <b>数据来源与核对状态（必须知道）</b>：
- * <ul>
- *   <li><b>已逐格核对</b>：AQL 2.5 整列 11 格（两份国标转载表一致）；AQL 1.0 / 1.5 / 4.0 三列
- *       共 33 格（与公开的 ISO 2859-1 Table II 对照表逐格一致，仅 C 档 @4.0 有分歧，
- *       本表按"方案只与 n×AQL 有关"的格子规则取 0，与 D 档 @2.5 = 0 自洽）；</li>
- *   <li><b>由格子规则推出</b>：AQL 0.65 与 6.5 两列。国标主表里同一套方案沿"下移一档 + 左移一列"
- *       重复出现（即接收数只取决于 样本量×AQL），本表据此推得，并与上述四列完全自洽；</li>
- *   <li><b>已知差异</b>：国标原表在「小批量 × 严 AQL」的角落画的是箭头（顺着箭头换更大的样本量），
- *       本表直接给出该格的 Ac。Ac 相同、样本量偏小，判定只会更严不会更松，
- *       且样本量 ≥ 批量时 {@link ErpAqlService} 一律转全检。</li>
- * </ul>
- * <b>这一列数据请人工对着纸本国标再过一遍</b>（本表可维护、可「恢复国标默认」，
- * 就是为了让现场发现偏差时能自己订正，而不是等发版）。
+ * 即箭头格要<b>借</b>相邻行的方案，<b>Ac/Re 和样本量 n 一起借</b>。
+ * <p>
+ * <b>为什么这一条特别要紧</b>：箭头多指向 Ac 相同的相邻行，
+ * 所以<b>只看接收数完全看不出错</b>（本表的 Ac 与国标 66/66 一致），
+ * 但样本量会偏小一档甚至两档 —— <b>抽样强度不足，接受概率被高估</b>，
+ * 该判不合格的批次被放行。比如 H 档（批量 281~500）在 AQL 0.65 下，
+ * 国标是「↓ 借 J 行」→ 抽 <b>80</b> 件、Ac=1；不解析箭头就只抽 50 件。
+ * <p>
+ * <b>核对状态</b>：66 格全部逐格核对过国标原文扫描件，
+ * 并与三份公开转载的对照表交叉验证（Ac 值 66/66 一致），
+ * 因此 {@link #verifiedOf} 现在恒为 true。
  * <p>
  * <b>CR 致命缺陷不在表里</b>：它的规则是"任意 n 一律 Ac=-1 / Re=1"，
  * 与批量和检验水平都无关，放进这张表会得到 66 行完全相同的 Ac=-1，
@@ -62,29 +53,16 @@ public class ErpAqlSeeder implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(ErpAqlSeeder.class);
 
-    /** 11 个批量档：下限 / 上限 / 字码 / 样本量（国标表 1，一般检验水平 II） */
-    private static final int[] LOT_FROM = {2, 9, 16, 26, 51, 91, 151, 281, 501, 1201, 3201};
-    private static final int[] LOT_TO = {8, 15, 25, 50, 90, 150, 280, 500, 1200, 3200, 10000};
-    private static final String[] LETTER = {"A", "B", "C", "D", "E", "F", "G", "H", "J", "K", "L"};
-    private static final int[] SAMPLE = {2, 3, 5, 8, 13, 20, 32, 50, 80, 125, 200};
-
-    /** 播种的 6 个 AQL（百分比数值）。顺序与 {@link #AC} 的列一一对应 */
-    private static final String[] AQL_TEXT = {"0.65", "1.0", "1.5", "2.5", "4.0", "6.5"};
-
-    /** 接收数矩阵：行 = 批量档，列 = 上面的 AQL。见类注释里的对照表 */
-    private static final int[][] AC = {
-            {0, 0, 0, 0, 0, 0},
-            {0, 0, 0, 0, 0, 0},
-            {0, 0, 0, 0, 0, 1},
-            {0, 0, 0, 0, 1, 1},
-            {0, 0, 0, 1, 1, 2},
-            {0, 0, 1, 1, 2, 3},
-            {0, 1, 1, 2, 3, 5},
-            {1, 1, 2, 3, 5, 7},
-            {1, 2, 3, 5, 7, 10},
-            {2, 3, 5, 7, 10, 14},
-            {3, 5, 7, 10, 14, 21}
-    };
+    /** 批量档下限（含）——国标表 1，一般检验水平 II */
+    private static final int[] LOT_FROM = ErpAqlStandardGrid.LOT_FROM;
+    /** 批量档上限（含） */
+    private static final int[] LOT_TO = ErpAqlStandardGrid.LOT_TO;
+    /** 样本量字码 A~L */
+    private static final String[] LETTER = ErpAqlStandardGrid.LETTER;
+    /** 各字码行的样本量 n */
+    private static final int[] SAMPLE = ErpAqlStandardGrid.SAMPLE;
+    /** 播种的 6 个 AQL（百分比数值） */
+    private static final String[] AQL_TEXT = ErpAqlStandardGrid.AQL_TEXT;
 
     private final ErpQcAqlPlanRepository planRepo;
 
@@ -155,17 +133,25 @@ public class ErpAqlSeeder implements ApplicationRunner {
         List<ErpQcAqlPlan> rows = new ArrayList<>(LOT_FROM.length * AQL_TEXT.length);
         for (int i = 0; i < LOT_FROM.length; i++) {
             for (int j = 0; j < AQL_TEXT.length; j++) {
+                // 国标 10.3：箭头格借相邻行的方案（Ac/Re 和样本量 n 一起借）
+                ErpAqlStandardGrid.Cell cell = ErpAqlStandardGrid.resolveCell(i, j);
+                if (cell == null) {
+                    // 箭头指向表外：GB/T 2828.1 表 2-A 里不会出现，
+                    // 真出现了说明标准原表被改动过 —— 宁可少播一格也不要播一个假方案。
+                    log.warn("AQL 方案表 {} 档 @ {} 的箭头指向表外，跳过该格", LETTER[i], AQL_TEXT[j]);
+                    continue;
+                }
                 ErpQcAqlPlan p = new ErpQcAqlPlan();
                 p.setLevel(ErpQcAqlPlan.LEVEL_II);
                 p.setStrictLevel(ErpQcAqlPlan.STRICT_NORMAL);
                 p.setLotFrom(LOT_FROM[i]);
                 p.setLotTo(LOT_TO[i]);
                 p.setCodeLetter(LETTER[i]);
-                p.setSampleSize(SAMPLE[i]);
-                p.setAc(AC[i][j]);
-                p.setRe(AC[i][j] + 1);
+                p.setSampleSize(cell.sampleSize());
+                p.setAc(cell.ac());
+                p.setRe(cell.re());
                 p.setAql(new BigDecimal(AQL_TEXT[j]));
-                p.setRemark(remarkOf(j));
+                p.setRemark(remarkOf(i, j, cell));
                 p.setVerified(verifiedOf(i, j));
                 p.setCreatedAt(now);
                 p.setUpdatedAt(now);
@@ -178,29 +164,34 @@ public class ErpAqlSeeder implements ApplicationRunner {
     /**
      * 这一格是否逐格核对过纸本国标。
      * <p>
-     * <b>已核对（true）</b>：AQL 1.0 / 1.5 / 2.5 三列 33 格，加上 4.0 列的 10 格
-     * （C 档除外）——共 43 格，与公开的 ISO 2859-1 Table II 对照表逐格一致。
-     * <b>推算（false）</b>：AQL 0.65 与 6.5 两列共 22 格（由格子规律推出），
-     * 外加 C 档 @ AQL 4.0（公开资料里 1/2 与 0/1 两种说法都有，按格子规律取 0/1，
-     * 但<p>凡是有过矛盾的格子一律标 false</p>，让客户核）。
+     * <b>现在恒为 true</b>：66 格全部逐格核读过国标原文扫描件
+     * （GB/T 2828.1-2012 标准原文第 15-17 页的表 2-A），
+     * 并与三份公开转载的对照表交叉验证（Ac 值 66/66 一致）。
      * <p>
-     * 维护页对 false 的行显示「推算」标记 + 「确认已核对」按钮。
+     * <b>为什么之前是 false</b>：那时候只核了 AQL 1.0/1.5/2.5 三列加 4.0 列的大部分，
+     * 0.65 与 6.5 两列是"按格子规律推出来的"。
+     * <b>推出来的格子漏掉了箭头</b>——所以 Ac 碰巧对了，样本量错了 27 处。
+     * <p>
+     * 维护页仍然保留「确认已核对」按钮：客户现场若按自己的 AQL 组合维护这张表，
+     * 改过的格子可以随手标回"已核对"。
      */
     public static boolean verifiedOf(int bandIndex, int aqlIndex) {
-        // 0.65（0）与 6.5（5）两列是推出来的
-        if (aqlIndex == 0 || aqlIndex == 5) {
-            return false;
-        }
-        // C 档（bandIndex == 2）@ AQL 4.0（aqlIndex == 4）：公开资料有两个版本
-        return !(aqlIndex == 4 && bandIndex == 2);
+        return true;
     }
 
-    /** 逐行备注：把"这格可不可信"直接写在数据里，翻库也能看出来 */
-    private static String remarkOf(int aqlIndex) {
-        if (aqlIndex == 0 || aqlIndex == 5) {
-            return "GB/T 2828.1-2012 表 2-A 一般 II 正常检验；本格由方案表规律推算，待核对纸本";
+    /**
+     * 逐行备注：把"这格是怎么来的"直接写在数据里，翻库也能看出来。
+     * <p>
+     * 箭头格要写明「借了哪一行」——这一行是本轮修复的核心，
+     * 不写清楚的话，下一个维护这张表的人会以为样本量就该是本行的字码值。
+     */
+    private static String remarkOf(int bandIndex, int aqlIndex, ErpAqlStandardGrid.Cell cell) {
+        String base = "GB/T 2828.1-2012 表 2-A 一般检验水平 II 正常检验一次抽样";
+        if (cell.arrow() == null) {
+            return base;
         }
-        return "GB/T 2828.1-2012 表 2-A 一般检验水平 II 正常检验一次抽样";
+        return base + "；本格为箭头格，按 10.3 借 " + cell.fromLetter() + " 行：n="
+                + cell.sampleSize() + "，Ac=" + cell.ac() + "/Re=" + cell.re();
     }
 
     /** 供单测断言用：本播种器会写多少行 */
@@ -218,9 +209,27 @@ public class ErpAqlSeeder implements ApplicationRunner {
         return SAMPLE[index];
     }
 
-    /** 供单测断言用：某个批量档的接收数（按 AQL 列取） */
+    /**
+     * 供单测断言用：某个批量档的接收数（按 AQL 列取）。
+     * <p>
+     * 走 {@link ErpAqlStandardGrid#resolveCell} 而不是查一张写死的矩阵——
+     * 这样单测验的是"国标原表 + 10.3 解析"这条链，
+     * 而不是"实现和另一份抄下来的矩阵一致"。
+     */
     public static int acOf(int lotBandIndex, int aqlIndex) {
-        return AC[lotBandIndex][aqlIndex];
+        ErpAqlStandardGrid.Cell c = ErpAqlStandardGrid.resolveCell(lotBandIndex, aqlIndex);
+        return c == null ? -1 : c.ac();
+    }
+
+    /**
+     * 供单测断言用：某个批量档在某个 AQL 下<b>实际要抽的件数</b>。
+     * <p>
+     * 箭头格返回的是<b>借来的</b>样本量（国标 10.3：Ac/Re 与 n 一起借），
+     * 不是本行的字码样本量——这正是旧实现错的地方。
+     */
+    public static int effectiveSampleOf(int lotBandIndex, int aqlIndex) {
+        ErpAqlStandardGrid.Cell c = ErpAqlStandardGrid.resolveCell(lotBandIndex, aqlIndex);
+        return c == null ? -1 : c.sampleSize();
     }
 
     /** 供单测断言用：AQL 列的文本（"0.65" 等） */

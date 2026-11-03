@@ -29,21 +29,34 @@ export const SAMPLE_SIZE = [2, 3, 5, 8, 13, 20, 32, 50, 80, 125, 200] as const
 export const AQL_VALUES = [0.65, 1.0, 1.5, 2.5, 4.0, 6.5] as const
 
 /**
- * 接收数矩阵：[批量档下标][AQL 下标] → Ac。
- * Re 恒等于 Ac + 1（Ac = -1 时 Re = 1）。
+ * 国标表 2-A 的原始格子（GB/T 2828.1-2012，一般 II × 正常检验）。
+ *
+ * 数值格写成 "Ac Re"（如 "0 1"）；箭头格写成 "↓"（向下借）或 "↑"（向上借）。
+ *
+ * **为什么必须保留箭头**：国标表 2-A 里有 27 个箭头格，国标 10.3 规定
+ * 「若在相交处是箭头，则沿着箭头方向读出第一个接收数 Ac 和拒收数 Re，
+ *   然后由其接收数和拒收数所在行向左，在样本量栏内读出相应的样本量 n」。
+ * 即箭头格要**借**相邻行的方案，Ac/Re 与样本量 n 一起借。
+ *
+ * 漏掉这一步的后果：接收数往往碰巧一样（箭头多指向 Ac 相同的相邻行），
+ * 所以只看 Ac 看不出错；但样本量会差一档 —— **抽样强度不足，该判不合格的批次被放行**。
+ * 比如 H 档（批量 281~500）在 AQL 0.65 下要抽 80 件（借 J 行），不是 50 件。
+ *
+ * 与后端 ErpAqlStandardGrid.GRID 逐格对齐，改这里之前先改后端。
  */
-const AC_MATRIX: readonly (readonly number[])[] = [
-  [0, 0, 0, 0, 0, 0],   // A  2~8
-  [0, 0, 0, 0, 0, 0],   // B  9~15
-  [0, 0, 0, 0, 0, 1],   // C  16~25
-  [0, 0, 0, 0, 1, 1],   // D  26~50
-  [0, 0, 0, 1, 1, 2],   // E  51~90
-  [0, 0, 1, 1, 2, 3],   // F  91~150
-  [0, 1, 1, 2, 3, 5],   // G  151~280
-  [1, 1, 2, 3, 5, 7],   // H  281~500
-  [1, 2, 3, 5, 7, 10],  // J  501~1200
-  [2, 3, 5, 7, 10, 14], // K  1201~3200
-  [3, 5, 7, 10, 14, 21] // L  3201~10000
+const STANDARD_GRID: readonly (readonly string[])[] = [
+  //  0.65    1.0     1.5     2.5     4.0     6.5
+  ['↓', '↓', '↓', '↓', '↓', '0 1'],       // A  2~8
+  ['↓', '↓', '↓', '↓', '0 1', '↑'],       // B  9~15
+  ['↓', '↓', '↓', '0 1', '↑', '↓'],       // C  16~25
+  ['↓', '↓', '0 1', '↑', '↓', '1 2'],      // D  26~50
+  ['↓', '0 1', '↑', '↓', '1 2', '2 3'],     // E  51~90
+  ['0 1', '↑', '↓', '1 2', '2 3', '3 4'],   // F  91~150
+  ['↑', '↓', '1 2', '2 3', '3 4', '5 6'],   // G  151~280
+  ['↓', '1 2', '2 3', '3 4', '5 6', '7 8'],  // H  281~500
+  ['1 2', '2 3', '3 4', '5 6', '7 8', '10 11'],   // J  501~1200
+  ['2 3', '3 4', '5 6', '7 8', '10 11', '14 15'],  // K  1201~3200
+  ['3 4', '5 6', '7 8', '10 11', '14 15', '21 22']  // L  3201~10000
 ]
 
 /** 参考表的一行 */
@@ -65,19 +78,39 @@ export interface AqlTableRow {
   aql: number
 }
 
+/**
+ * 按国标 10.3 解析一格：箭头格沿箭头方向借第一个数字格，**Ac/Re 与样本量一起借**。
+ */
+function resolveCell(bandIndex: number, aqlIndex: number): { ac: number; re: number; sampleSize: number } {
+  const raw = STANDARD_GRID[bandIndex][aqlIndex]
+  if (raw !== '↓' && raw !== '↑') {
+    const [ac, re] = raw.split(/\s+/).map(Number)
+    return { ac, re, sampleSize: SAMPLE_SIZE[bandIndex] }
+  }
+  const step = raw === '↓' ? 1 : -1
+  for (let i = bandIndex + step; i >= 0 && i < CODE_LETTER.length; i += step) {
+    const t = STANDARD_GRID[i][aqlIndex]
+    if (t === '↓' || t === '↑') continue
+    const [ac, re] = t.split(/\s+/).map(Number)
+    return { ac, re, sampleSize: SAMPLE_SIZE[i] }
+  }
+  // 箭头指向表外：GB/T 2828.1 表 2-A 里不会出现。退化成 Ac=0 而不是编一个假方案。
+  return { ac: 0, re: 1, sampleSize: SAMPLE_SIZE[bandIndex] }
+}
+
 /** 展开成 66 行（11 批量档 × 6 个 AQL），顺序与后端 findAllOrdered() 一致 */
 function expand(): AqlTableRow[] {
   const rows: AqlTableRow[] = []
   for (let i = 0; i < LOT_FROM.length; i++) {
     for (let j = 0; j < AQL_VALUES.length; j++) {
-      const ac = AC_MATRIX[i][j]
+      const c = resolveCell(i, j)
       rows.push({
         lotFrom: LOT_FROM[i],
         lotTo: LOT_TO[i],
         codeLetter: CODE_LETTER[i],
-        sampleSize: SAMPLE_SIZE[i],
-        ac,
-        re: ac + 1,
+        sampleSize: c.sampleSize,
+        ac: c.ac,
+        re: c.re,
         aql: AQL_VALUES[j]
       })
     }

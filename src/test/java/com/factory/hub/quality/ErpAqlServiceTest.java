@@ -77,15 +77,30 @@ class ErpAqlServiceTest {
     }
 
     @Test
-    @DisplayName("锚点③：批量 26~50、水平 II、AQL 0.65 → 字码 D、n=8、Ac=0、Re=1")
+    @DisplayName("锚点③：批量 26~50、水平 II、AQL 0.65 → 字码 D、n=20、Ac=0、Re=1（箭头格借 F 行）")
     void anchorD065() {
         ErpAqlService.Resolved r = serviceWithStandardTable()
                 .resolve("GENERAL_II", null, new BigDecimal("50"), new BigDecimal("0.65"));
         assertEquals("D", r.codeLetter());
-        assertEquals(8, r.sampleSize());
+        // 国标表 2-A 的 D 行 @ AQL 0.65 是箭头格（↓），按 10.3 借 F 行：
+        // Ac/Re 与样本量 n 一起借 → n=20（不是 D 行自己的 8）
+        assertEquals(20, r.sampleSize(), "箭头格要借相邻行的样本量（国标 10.3）");
         assertEquals(0, r.ac());
         assertEquals(1, r.re());
         assertFalse(r.fullInspection());
+    }
+
+    @Test
+    @DisplayName("锚点④：批量 281~500、AQL 0.65 → n=80（↓ 借 J 行），不是 H 行自己的 50")
+    void anchorH065() {
+        // H 档 @ AQL 0.65 是 ↓ 箭头 → 借 J 行（n=80, Ac=1）
+        // 公开资料印证：ISO 2859-1 对照表标注「uses the 80-piece plan」
+        ErpAqlService.Resolved r = serviceWithStandardTable()
+                .resolve("GENERAL_II", null, new BigDecimal("500"), new BigDecimal("0.65"));
+        assertEquals("H", r.codeLetter());
+        assertEquals(80, r.sampleSize(), "H 档 AQL 0.65 要抽 80 件，不是 50 件");
+        assertEquals(1, r.ac());
+        assertEquals(2, r.re());
     }
 
     /* ==================== 播种表本身 ==================== */
@@ -149,16 +164,17 @@ class ErpAqlServiceTest {
     @Test
     @DisplayName("样本量 >= 批量 → 全检，Ac/Re 沿用方案值不变")
     void sampleNotSmallerThanLot() {
-        // 批量 40 落在 26~50 档（D，n=8）→ 8 < 40，不是全检
+        // 批量 40 落在 26~50 档（D）；D @ AQL 2.5 是 ↑ 箭头 → 借 C 行（n=5, Ac=0）
+        // → 5 < 40，不是全检
         ErpAqlService.Resolved normal = serviceWithStandardTable()
                 .resolve("II", "NORMAL", new BigDecimal("40"), new BigDecimal("2.5"));
         assertFalse(normal.fullInspection());
-        assertEquals(8, normal.sampleSize());
-        // 批量 2 落在 2~8 档（A，n=2）→ 2 >= 2，转全检，Ac 不变（A 档 AQL 2.5 → 0/1）
+        assertEquals(5, normal.sampleSize(), "D 档 AQL 2.5 借 C 行的 n=5");
+        // 批量 2 落在 2~8 档（A）；A @ AQL 2.5 是 ↓ 箭头 → 借 C 行（n=5）→ 5 >= 2，转全检
         ErpAqlService.Resolved full = serviceWithStandardTable()
                 .resolve("II", "NORMAL", new BigDecimal("2"), new BigDecimal("2.5"));
         assertTrue(full.fullInspection());
-        assertEquals(2, full.sampleSize());
+        assertEquals(2, full.sampleSize(), "全检时实际抽的件数 = 批量");
         assertEquals(0, full.ac());
         assertEquals(1, full.re());
         assertEquals(ErpAqlService.REASON_SAMPLE_GE_LOT, full.reasonCode());
@@ -215,7 +231,7 @@ class ErpAqlServiceTest {
     /* ==================== verified 标记（哪些格是推出来的） ==================== */
 
     @Test
-    @DisplayName("verified 标记：1.0/1.5/2.5 三列 + 4.0 列（除 C 档）为 true，其余 23 格为 false")
+    @DisplayName("verified 标记：66 格全部已核对（逐格核读过国标原文扫描件）")
     void verifiedFlags() {
         List<ErpQcAqlPlan> table = ErpAqlSeeder.buildPlans();
         int verified = 0;
@@ -234,32 +250,45 @@ class ErpAqlServiceTest {
                 }
             }
         }
-        // 43 格逐格核对过公开资料；23 格是推算/有争议的
-        assertEquals(43, verified, "已核对格数应为 43");
-        assertEquals(23, unverified, "待核对格数应为 23（0.65 整列 + 6.5 整列 + C 档 @4.0）");
+        // 66 格全部逐格核读过 GB/T 2828.1-2012 标准原文的表 2-A（第 15-17 页）
+        assertEquals(66, verified, "66 格都核对过国标原文");
+        assertEquals(0, unverified, "不该有未核对的格子");
     }
 
     @Test
-    @DisplayName("AQL 0.65 与 6.5 两列整列都是未核对（由格子规律推出，不能当国标用）")
-    void derivedColumnsAreUnverified() {
-        int col065 = ErpAqlSeeder.aqlIndexOf("0.65");
-        int col65 = ErpAqlSeeder.aqlIndexOf("6.5");
-        for (int band = 0; band < 11; band++) {
-            assertFalse(ErpAqlSeeder.verifiedOf(band, col065), "0.65 列第 " + band + " 档应为未核对");
-            assertFalse(ErpAqlSeeder.verifiedOf(band, col65), "6.5 列第 " + band + " 档应为未核对");
+    @DisplayName("每一格都要写明依据：箭头格写「借了哪一行」，直接格写标准出处")
+    void everyCellDocumentsItsSource() {
+        List<ErpQcAqlPlan> table = ErpAqlSeeder.buildPlans();
+        int arrowCells = 0;
+        for (ErpQcAqlPlan p : table) {
+            assertNotNull(p.getRemark(), "每格都要有备注");
+            assertTrue(p.getRemark().contains("GB/T 2828.1-2012"), "备注要写清出处：" + p.getRemark());
+            if (p.getRemark().contains("箭头格")) {
+                arrowCells++;
+                assertTrue(p.getRemark().contains("借"), "箭头格要写明借了哪一行：" + p.getRemark());
+            }
         }
-        // C 档 @ 4.0：公开资料有 1/2 与 0/1 两种说法，一律标未核对让客户核
-        assertFalse(ErpAqlSeeder.verifiedOf(2, ErpAqlSeeder.aqlIndexOf("4.0")));
-        // 相邻的 D 档 @ 4.0 是核对过的，别一刀切
-        assertTrue(ErpAqlSeeder.verifiedOf(3, ErpAqlSeeder.aqlIndexOf("4.0")));
+        // 国标表 2-A 里有 27 个箭头格（各列 7/6/5/4/3/2 个，左上三角）
+        assertEquals(27, arrowCells, "应有 27 个箭头格");
     }
 
     @Test
     @DisplayName("确认核对后 verified 置 true 并写审计")
     void verifyPlanWritesAudit() {
-        ErpQcAqlPlan row = ErpAqlSeeder.buildPlans().stream()
-                .filter(p -> !p.isVerified()).findFirst().orElseThrow();
+        // 播种出来的 66 格都已是「已核对」，这里手工造一个未核对的行
+        // （客户现场自己加的方案就是这种状态）。
+        ErpQcAqlPlan row = new ErpQcAqlPlan();
         row.setId(99L);
+        row.setLevel(ErpQcAqlPlan.LEVEL_II);
+        row.setStrictLevel(ErpQcAqlPlan.STRICT_NORMAL);
+        row.setLotFrom(2);
+        row.setLotTo(8);
+        row.setCodeLetter("A");
+        row.setSampleSize(2);
+        row.setAc(0);
+        row.setRe(1);
+        row.setAql(new BigDecimal("1.0"));
+        row.setVerified(false);
         ErpQcAqlPlanRepository repo = mock(ErpQcAqlPlanRepository.class);
         when(repo.findById(99L)).thenReturn(java.util.Optional.of(row));
         when(repo.save(any(ErpQcAqlPlan.class))).thenAnswer(inv -> inv.getArgument(0));

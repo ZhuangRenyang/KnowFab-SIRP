@@ -338,6 +338,57 @@ def check_idempotent(port, logfile):
         log("  %s 行数 %d" % (t, n))
         if n > 200:
             problems.append("%s 有 %d 行，种子数据疑似重复播种" % (t, n))
+
+    # AQL 箭头格的样本量修正（QC 核对 GB/T 2828.1 表 2-A 时发现）
+    # 升级前旧版把箭头格当数字格，H 档 @ AQL 0.65 的样本量是 50；
+    # 国标 10.3 要求借 J 行的 n=80。迁移脚本要把它改对。
+    rows = q("select lot_from, aql, sample_size, ac, re, verified "
+             "from erp_qc_aql_plan where level=%s and strict_level=%s "
+             "and lot_from in (281, 151, 91, 2) order by lot_from, aql",
+             ("GENERAL_II", "NORMAL"))
+    log("  AQL 箭头格样本量抽查（升级后应为国标值）：")
+    expect = {
+        # (lot_from, aql) -> (n, ac, re)
+        (281, 0.65): (80, 1, 2),     # ↓ 借 J 行
+        (151, 0.65): (20, 0, 1),     # ↑ 借 F 行
+        (151, 1.0): (50, 1, 2),      # ↓ 借 H 行
+        (91, 1.5): (32, 1, 2),       # ↓ 借 G 行
+        (2, 4.0): (3, 0, 1),         # ↓ 借 B 行
+    }
+    def as_int(v):
+        """统一转 int。
+
+        ⚠️ TINYINT(1) 在这个驱动下返回的是 **bytes b'\x01'**（二进制字节，不是 ASCII '1'），
+        所以不能 decode 后再 float —— decode 得到的是控制字符 '\x01'，float() 直接抛错。
+        这里按字节值判断：b'\x00' → 0，b'\x01' → 1。
+        """
+        if isinstance(v, (bytes, bytearray)):
+            if v in (b"\x00", b"\x01"):
+                return int(v[0])
+            return int(v.decode("utf-8"))
+        if isinstance(v, bool):
+            return 1 if v else 0
+        return int(float(v))
+
+    seen = {}
+    for r in rows:
+        seen[(as_int(r[0]), float(r[1]))] = (as_int(r[2]), as_int(r[3]), as_int(r[4]), as_int(r[5]))
+    log("    查到 %d 行，样例：%r" % (len(rows), rows[:1]))
+    for k, want in expect.items():
+        got = seen.get(k)
+        if got is None:
+            problems.append("AQL 方案缺格子 %s" % (k,))
+            continue
+        if got[:3] != want:
+            problems.append("AQL 方案 %s 升级后仍是 %s，应为 %s（箭头格没借到国标样本量）"
+                            % (k, got[:3], want))
+        if got[3] != 1:
+            problems.append("AQL 方案 %s 升级后 verified=%s，应为 1（66 格已逐格核对国标）"
+                            % (k, got[3]))
+        # 迁移幂等：再跑一次，样本量不该变（说明 CASE 的 WHERE 条件仍然命中不了已改过的行）
+        log("    批量 %s @ AQL %s → n=%s Ac=%s Re=%s verified=%s %s"
+            % (k[0], k[1], got[0], got[1], got[2], got[3],
+               "✓" if got[:3] == want else "✗ 应为 %s" % (want,)))
     return problems
 
 
