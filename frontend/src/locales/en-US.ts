@@ -1,6 +1,7 @@
 /** English (en-US) */
 export default {
   common: {
+    reqFail: 'Request failed',
     ok: 'OK',
     saveTplTitle: 'Save as device template',
     saveTplFor: 'Save the full configuration of {code} as a template',

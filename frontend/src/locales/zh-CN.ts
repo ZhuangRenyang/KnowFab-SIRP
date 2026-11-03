@@ -5,6 +5,7 @@
  */
 export default {
   common: {
+    reqFail: '请求失败',
     ok: '确定',
     saveTplTitle: '存为设备模板',
     saveTplFor: '把设备 {code} 的完整配置存成模板',
