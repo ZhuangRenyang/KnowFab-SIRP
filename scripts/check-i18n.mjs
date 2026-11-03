@@ -389,8 +389,8 @@ async function main() {
 
   if (orphan.length && !quiet) {
     console.log(`\n=== 孤儿键（定义了没人用）===  ${orphan.length} 个`)
-    for (const key of orphan.slice(0, 20)) console.log(`  ${key}`)
-    if (orphan.length > 20) console.log(`  ... 还有 ${orphan.length - 20} 个`)
+    // 全列出来：孤儿键是要逐个清理的，折叠起来反而要改脚本才能看全
+    for (const key of orphan) console.log(`  ${key}`)
   }
 
   if (ok) {

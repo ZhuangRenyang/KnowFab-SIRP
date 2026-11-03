@@ -2407,8 +2407,6 @@ erpSalesStatus: {
     blockedWhTitle: '这单会被拦：源仓是禁发仓',
     blockedNoAck: '有让步流水，但缺客户同意凭证',
     blockedNoRelease: '禁发仓里没有任何放行依据',
-    blockedActionAck: '去登记客户同意',
-    blockedActionDispose: '去不良品页处置',
     blockedCheckFailed: '放行检查没通过，发货可能被后端拒绝',
   }
 ,

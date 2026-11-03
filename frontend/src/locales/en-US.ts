@@ -2403,8 +2403,6 @@ erpSalesStatus: {
     blockedWhTitle: 'This shipment will be blocked: the source is the blocked warehouse',
     blockedNoAck: 'A concession record exists, but customer acknowledgement is missing',
     blockedNoRelease: 'There is no release basis at all in the blocked warehouse',
-    blockedActionAck: 'Record customer acknowledgement',
-    blockedActionDispose: 'Dispose in the defect list',
     blockedCheckFailed: 'The release check did not pass; the backend may reject this shipment',
   }
 ,
