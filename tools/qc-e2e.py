@@ -269,7 +269,7 @@ def main():
         api = Api(args.port)
         api.post("/api/auth/login", {"username": "admin", "password": ADMIN_PASS})
 
-        run_checks(api)
+        run_checks(api, args.port)
     finally:
         stop_service(proc, args.port)
         if not args.keep:
@@ -294,7 +294,7 @@ def main():
     print("全部通过")
 
 
-def run_checks(api):
+def run_checks(api, args_port):
     print()
     print("--- ① 看板与帕累托字段对齐 ---")
     r = api.get("/api/erp/qc/dashboard")
@@ -466,6 +466,58 @@ def run_checks(api):
         check(bool(r.get("limitCode")), "放行结果给匹配口径代号")
     else:
         log("没有禁发仓（跳过硬拦验证）")
+
+    print()
+    print("--- ⑬ 越权收口（AC-09：判定权不外包）---")
+    # 建一个班组长账号，用它验两条边界：
+    #   LEADER 建检验单 → 200（检验员在车间现场做，班组长要能录）
+    #   LEADER 调判定   → 403（班组长自己录自己判等于没质检）
+    r = api.post("/api/users", {
+        "username": "e2e_leader", "displayName": "【e2e】班组长",
+        "password": "e2e_leader_2026", "role": "LEADER",
+    })
+    if not r.get("ok"):
+        log("建班组长账号失败：%s" % r.get("message"))
+    else:
+        leader = Api(args_port)
+        lr = leader.post("/api/auth/login",
+                         {"username": "e2e_leader", "password": "e2e_leader_2026"})
+        check(lr.get("ok"), "班组长登录成功", str(lr.get("message", "")))
+        if lr.get("ok"):
+            # 建检验单 → 应该 200
+            # 用 FQC：IPQC 这类巡检要求手工填样本量，这里只验权限边界，不验业务参数
+            lc = leader.post("/api/erp/qc/inspections", {
+                "inspectionType": "FQC",
+                "skuId": sku_id,
+                "lotQty": 500,
+                "level": "GENERAL_II",
+                "strictLevel": "NORMAL",
+                "aql": 2.5,
+                "defectQty": 0,
+                "items": [],
+                "remark": "【e2e】班组长建单",
+            })
+            check(lc.get("ok") is True and not lc.get("httpStatus"),
+                  "LEADER 建检验单 → 200（现场录检验单）",
+                  "httpStatus=%s %s" % (lc.get("httpStatus"), lc.get("message", "")))
+            lno = lc.get("inspectionNo")
+            # 判定 → 应该 403
+            if lno:
+                leader.post("/api/erp/qc/inspections/%s/submit" % lno)
+                lj = leader.post("/api/erp/qc/inspections/%s/judge" % lno, {"defectQty": 99})
+                # ⚠️ 判权限要看 ok，<b>不能看 HTTP 状态码</b>：本项目全站约定是
+                # 「失败一律 200 + {ok:false}」，权限不足返回的是 200 + ok:false，
+                # 消息「当前角色没有这个操作权限」。
+                check(lj.get("ok") is False and "权限" in str(lj.get("message", "")),
+                      "LEADER 调判定 → 被拒（判定权不外包）",
+                      "ok=%s httpStatus=%s %s" % (lj.get("ok"), lj.get("httpStatus"),
+                                                 lj.get("message", "")))
+            # 处置 → 也应该 403
+            ldis = leader.post("/api/erp/qc/defects/E2E-NOT-EXIST/scrap", {"qty": 1})
+            check(ldis.get("ok") is False and "权限" in str(ldis.get("message", "")),
+                  "LEADER 调处置 → 被拒（处置权不外包）",
+                  "ok=%s 原文=%s" % (ldis.get("ok"),
+                                     json.dumps(ldis, ensure_ascii=False)[:160]))
 
     print()
     print("--- ⑫ 对账定责不放大（P0-1：定责是标记不是改数）---")

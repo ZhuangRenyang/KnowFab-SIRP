@@ -463,7 +463,7 @@ output=100, defect=3
 | AC-06 | 返工不重复计料 | 返工单调 issue 必须抛异常；`amountByOrderAndType(返工单, MATERIAL_OUT) == 0` |
 | AC-07 | 报废不重复进成本 | 处置前后 `orderCost.totalCost` 不变 |
 | AC-08 | 不良品不入成品仓 | 产出 total=10/defect=2 → `PROD_IN` qty 必须为 8 |
-| AC-09 | 越权 | LEADER 调 `judge` → 403；LEADER 建检验单 → 200 |
+| AC-09 | 越权 | LEADER 调 `judge` → **被拒**（`ok:false` +「当前角色没有这个操作权限」）；LEADER 建检验单 → 成功。**注意判权限看 `ok`，不看 HTTP 状态码**——本项目全站约定「失败一律 200 + `{ok:false}`」，权限不足也是 200 |
 | AC-10 | 库存一致 | 任意处置前后 `sum(qty) where voided_at is null` 变化量 = 该处置应有的移动量 |
 | AC-11 | 不破既有 | `smoke-all` 103 条全绿；`selftest` 121 条全绿 |
 | AC-12 | 禁发仓 fail-safe | 禁发仓货无让步流水 → 拦 `NO_RELEASE`；有流水无客户同意 → 拦 `NO_ACK`；两者齐 → 放行。**查不到必须拦，不许放行** |
