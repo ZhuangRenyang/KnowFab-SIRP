@@ -13,6 +13,13 @@ public interface ErpQcDispositionRepository extends JpaRepository<ErpQcDispositi
 
     List<ErpQcDisposition> findByDefectIdAndVoidedAtIsNullOrderBySeqNoAsc(Long defectId);
 
+    /**
+     * 一次取多张不良单的处置明细（列表页用）。
+     * <p>
+     * 逐行查就是 N+1：20 行的列表 = 21 次查询，翻两页就是 42 次。
+     */
+    List<ErpQcDisposition> findByDefectIdInOrderByDefectIdAscSeqNoAsc(List<Long> defectIds);
+
     /** 下一次处置的序号（1 起）。取 max 而不是 count：撤销过的行仍然占着序号 */
     @Query("select coalesce(max(x.seqNo), 0) from ErpQcDisposition x where x.defectId = :defectId")
     int maxSeqNo(@Param("defectId") Long defectId);
@@ -61,6 +68,16 @@ public interface ErpQcDispositionRepository extends JpaRepository<ErpQcDispositi
     @Query("select x from ErpQcDisposition x " +
            "where x.action = 'CONCESSION' and x.voidedAt is null order by x.disposedAt desc")
     List<ErpQcDisposition> findActiveConcessions();
+
+    /**
+     * 某些 SKU 的未撤销让步流水（禁发仓放行校验用）。
+     * <p>
+     * 按 SKU 过滤要 join 不良记录（本表没有 sku_id），所以用子查询而不是 join ——
+     * 子查询在各版本 HQL 上行为一致，{@code join ... on} 的支持度不稳。
+     */
+    @Query("select x from ErpQcDisposition x where x.action = 'CONCESSION' and x.voidedAt is null " +
+           "and x.defectId in (select d.id from ErpQcDefect d where d.skuId in :skuIds)")
+    List<ErpQcDisposition> findActiveConcessionsBySkuIds(@Param("skuIds") List<Long> skuIds);
 
     /** 按库存单据反查处置明细（作废单据时要联动，见撤销流程） */
     List<ErpQcDisposition> findByStockBillNo(String stockBillNo);

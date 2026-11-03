@@ -213,6 +213,10 @@ public class ErpWorkOrderService {
     public Map<String, Object> shortage() {
         List<ErpWorkOrder> open = woRepo.findByStatusIn(
                 List.of(ErpWorkOrder.ST_RELEASED, ErpWorkOrder.ST_RUNNING));
+        // 返工单<b>不算进缺料看板</b>：它不展开 BOM（返工不重复计料），
+        // 用料清单本来就是空的。没有这一层过滤，返工单会永远显示"缺料"，
+        // 车间看着以为自己没领够料，实际上这张单压根不该领料
+        open = open.stream().filter(o -> !o.isRework()).toList();
         Map<Long, ErpWorkOrder> byId = new LinkedHashMap<>();
         for (ErpWorkOrder o : open) {
             byId.put(o.getId(), o);
@@ -319,6 +323,7 @@ public class ErpWorkOrderService {
         o.setOrderType(ErpWorkOrder.TYPE_REWORK.equalsIgnoreCase(str(body.get("orderType")))
                 ? ErpWorkOrder.TYPE_REWORK : ErpWorkOrder.TYPE_PROD);
         o.setSrcWorkOrderNo(str(body.get("srcWorkOrderNo")));
+        o.setSrcDefectNo(str(body.get("srcDefectNo")));
         o.setAutoBackflush(bool(body.get("autoBackflush"), true));
         o.setPlanStart(longOf(body.get("planStart")));
         o.setPlanEnd(longOf(body.get("planEnd")));
@@ -388,6 +393,15 @@ public class ErpWorkOrderService {
         // 重复下达不常见，但重试会走到这里：先清掉旧快照再写，避免唯一键冲突
         womRepo.deleteByWorkOrderId(o.getId());
         womRepo.flush();
+
+        // 返工单<b>不展开 BOM</b>：返工用的是已经出过一次的那批料（不良件），
+        // 再展开一次用料清单，领料就会把这批料重复扣一次——材料成本凭空少计，
+        // 而报表上一切正常。返工单没有用料清单，issue() 会自然报"这张工单没有用料"，
+        // 由人自己决定要不要补领。缺料看板也因此不会把返工单列进去（它永远缺料）。
+        if (o.isRework()) {
+            mats = List.of();
+            log.info("返工工单 {} 下达：不展开 BOM（返工不重复计料）", orderNo);
+        }
         for (ErpWorkOrderMaterial m : mats) {
             m.setWorkOrderId(o.getId());
         }

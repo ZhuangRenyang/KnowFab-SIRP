@@ -23,9 +23,13 @@ import java.util.List;
  * <pre>
  *                 in_stock = false                        in_stock = true
  *   报废 SCRAP    不动库存，只改状态                         SCRAP_OUT 出库（qty 负，扣所在仓）
- *   返工 REWORK   建 REWORK 工单，不动库存                   TRANSFER 到待处理仓（不再可售）+ 建工单
+ *   返工 REWORK   建 REWORK 工单，不动库存                   只建工单 + 提示人工领料出库（系统不代做）
  *   让步 CONCESS   OTHER_IN 入待处理仓                      TRANSFER 所在仓 → 待处理仓
  * </pre>
+ * <b>返工那一格与 Spec §3.4 的原文不同</b>：原文写"已入账 → 先 TRANSFER 到返工仓"，
+ * 实际裁决是<b>不自动出库</b>，只提示"货还在 {仓库}，返工前请先开一张其他出库领到车间"。
+ * 理由：领料要去"车间"，而车间是不是一个仓由客户自己定义，系统替它选一个就是替客户做决定；
+ * 而且自动出库会让仓管以为货已经发出去了，账实当场分家。
  * <b>为什么 {@code in_stock} 是分支点而不是"看仓库够不够"</b>：它记的是
  * "这批不良品<b>当时</b>有没有入过账"。没入过账的货去扣库存，扣的是别人的货，
  * 账实立刻分家；已入账的不出库，账上就永远比现实多一批。
@@ -105,11 +109,25 @@ public final class ErpQualityStockAdapter {
      * @param action            SCRAP / REWORK / CONCESSION
      * @param qty               本次处置件数，必须 > 0
      * @param warehouseId       货当前所在仓（inStock=true 时必须有值）
-     * @param blockedWarehouseId 待处理仓（禁发仓）id；让步与已入账返工必须有值
+     * @param blockedWarehouseId 待处理仓（禁发仓）id；让步必须有值
      * @param defectNo          不良单号
+     * @param warehouseName     所在仓名称（只用于提示文案，让现场看得懂"货还在哪"）
      */
     public record Ctx(boolean inStock, String action, BigDecimal qty, Long warehouseId,
-                      Long blockedWarehouseId, String defectNo) {
+                      Long blockedWarehouseId, String defectNo, String warehouseName) {
+
+        public Ctx(boolean inStock, String action, BigDecimal qty, Long warehouseId,
+                   Long blockedWarehouseId, String defectNo) {
+            this(inStock, action, qty, warehouseId, blockedWarehouseId, defectNo, null);
+        }
+
+        /** 所在仓的显示名：没给就退回 id，至少让人知道是哪一仓 */
+        public String whLabel() {
+            if (warehouseName != null && !warehouseName.isBlank()) {
+                return warehouseName;
+            }
+            return warehouseId == null ? "未知仓库" : "仓库#" + warehouseId;
+        }
     }
 
     /* ==================== 纯函数：算计划 ==================== */
@@ -178,38 +196,25 @@ public final class ErpQualityStockAdapter {
      * <ul>
      *   <li><b>未入账</b>：货不在任何仓里 → 只建 {@code REWORK} 工单，不动库存。
      *       补料走 {@code MATERIAL_OUT}，由工单领料流程负责，这里不预先记账；</li>
-     *   <li><b>已入账</b>：先把货从所在仓 {@code TRANSFER} 到待处理仓（禁发仓），
-     *       <b>让它不再可售</b>，再建工单。返工完成后由返工入库（{@code PROD_IN}）回到成品仓。</li>
+     *   <li><b>已入账</b>：<b>系统不代做这一步</b>——货还在成品仓里，返工前要人先开一张
+     *       「其他出库」把货领到车间。系统不自动出库，理由是：
+     *       ① 领料要去<b>车间</b>，而"车间"是不是一个仓由客户自己定义，系统替它选一个就是替客户做决定；
+     *       ② 自动出库会让仓管以为货已经发出去了，账实当场分家。
+     *       所以这里只建工单 + 把"货还在哪、该你做什么"写进提示。</li>
      * </ul>
-     * <b>为什么已入账要先调拨</b>：不调走的话，这批不良品还挂在成品仓里，
-     * 销售查可用量时能看到它、发出去，等于把不良品当良品卖了。
      */
     private static Plan rework(Ctx c) {
-        requireBlockedWh(c, "返工");
-        // 货已经在待处理仓里（上一次处置已经调过）：不用再调，只建工单。
-        // 硬调拨会被库存服务拦下来（源仓和目标仓不能是同一个），报错信息还不好懂
-        boolean moved = c.inStock() && !c.warehouseId().equals(c.blockedWarehouseId());
         Intent order = new Intent(Op.REWORK_ORDER, null, c.qty(), null, null, c.defectNo(),
                 "不良品返工（不良单 " + c.defectNo() + "）", "建返工工单");
-        if (!moved) {
+        if (!c.inStock()) {
             return new Plan(List.of(order),
-                    "建返工工单 " + plain(c.qty()) + " 件"
-                            + (c.inStock() ? "（货已在待处理仓）" : "（这批货从未入账，不产生库存单据）"),
+                    "建返工工单 " + plain(c.qty()) + " 件（这批货从未入账，不产生库存单据）",
                     null);
         }
-        List<Intent> intents = new ArrayList<>();
-        intents.add(new Intent(Op.STOCK_BILL, com.factory.hub.erp.ErpStockBill.TYPE_TRANSFER, c.qty(),
-                c.warehouseId(), c.blockedWarehouseId(), c.defectNo(),
-                "不良品返工：转入待处理仓（不良单 " + c.defectNo() + "）",
-                "从所在仓调到待处理仓，先让它不可售"));
-        intents.add(order);
-        return new Plan(intents,
-                "调到待处理仓 " + plain(c.qty()) + " 件，并建返工工单",
-                // 这条提示是 team-lead 明确要求写进返回 message 的（R24）：
-                // 账上已经把货调到待处理仓（不再可售），但"从库里搬到车间"这一步系统做不了，
-                // 不搬的话实物还在仓库、账上也在待处理仓，月底盘亏
-                "货已调到待处理仓（不再可售）。实物从仓库搬到车间需要人工作业，"
-                        + "返工完成后按返工入库回成品仓");
+        return new Plan(List.of(order),
+                "建返工工单 " + plain(c.qty()) + " 件（不产生库存单据）",
+                "这批货还在「" + c.whLabel() + "」，返工前请先开一张「其他出库」领到车间 —— "
+                        + "系统不代做这一步（自动出库会让仓管以为货已经发出去了，账实当场分家）");
     }
 
     /**
@@ -288,7 +293,8 @@ public final class ErpQualityStockAdapter {
                     body.put("planQty", i.qty());
                     body.put("remark", i.remark());
                     body.put("orderType", com.factory.hub.erp.ErpWorkOrder.TYPE_REWORK);
-                    body.put("srcOrderNo", i.refNo());
+                    // 返工单的来源是不良单，单独一列（src_order_no 是来源销售订单，混用会让报表算错）
+                    body.put("srcDefectNo", i.refNo());
                     if (srcWorkOrderNo != null) {
                         body.put("srcWorkOrderNo", srcWorkOrderNo);
                     }

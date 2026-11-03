@@ -26,6 +26,9 @@ public interface ErpQcDefectRepository extends JpaRepository<ErpQcDefect, Long> 
     /** 某张检验单产出的不良记录 */
     List<ErpQcDefect> findByInspectionNoOrderByIdAsc(String inspectionNo);
 
+    /** 某张工单名下的不良记录（对账用：设备通道 vs 质量域） */
+    List<ErpQcDefect> findByWorkOrderNoOrderByIdAsc(String workOrderNo);
+
     /** 设备通道同步：取某设备某时间窗的已同步记录（幂等键构造用，也可用于对账） */
     List<ErpQcDefect> findByDeviceCodeAndFoundAtBetween(String deviceCode, long from, long to);
 

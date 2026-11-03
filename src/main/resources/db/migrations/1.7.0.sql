@@ -144,7 +144,26 @@ EXECUTE stmt_infer_wh_kind;
 
 DEALLOCATE PREPARE stmt_infer_wh_kind;
 
--- ---------- ⑤ 索引兜底 ----------
+-- ---------- ⑤ erp_work_order.src_defect_no ----------
+-- 返工单指向的不良单号。与 src_order_no（来源销售订单）分开两列：
+-- 填在同一列里，报表会把返工单的来源算成销售订单，数字对不上还不报错。
+
+SET @has_wo_defect_no := (
+  SELECT COUNT(*) FROM information_schema.columns
+  WHERE table_schema = DATABASE() AND table_name = 'erp_work_order' AND column_name = 'src_defect_no'
+);
+
+SET @ddl_wo_defect_no := IF(@has_wo > 0 AND @has_wo_defect_no = 0,
+  'ALTER TABLE erp_work_order ADD COLUMN src_defect_no VARCHAR(40) NULL COMMENT ''返工单指向的不良单号''',
+  'DO 0');
+
+PREPARE stmt_wo_defect_no FROM @ddl_wo_defect_no;
+
+EXECUTE stmt_wo_defect_no;
+
+DEALLOCATE PREPARE stmt_wo_defect_no;
+
+-- ---------- ⑥ 索引兜底 ----------
 -- 工单列表与质量成本报表会按类型过滤。ddl-auto 有时不会补索引（表已存在的情况下
 -- 部分方言只加列不建索引），这里明确建一次。
 

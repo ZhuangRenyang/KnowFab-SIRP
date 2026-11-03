@@ -128,6 +128,17 @@ public class SecurityConfig {
                                 "/api/erp/work-orders/*/issue",
                                 "/api/erp/work-orders/*/auto-issue")
                         .hasAnyRole("ADMIN", "MANAGER", "LEADER")
+                        // 质检：建单/改单/提交/登记不良 —— 检验员在车间现场做，班组长要能录。
+                        // 必须排在 /api/erp/** 通配之前，否则会被吞掉（AC-09：LEADER 建单 200、判定 403）。
+                        // 判定 / 处置 / 作废 / 撤销 / 让步确认一律只给 ADMIN/MANAGER：
+                        // 判定权不外包——班组长自己录自己判等于没质检
+                        .requestMatchers(HttpMethod.POST,
+                                "/api/erp/qc/inspections",
+                                "/api/erp/qc/inspections/*/submit",
+                                "/api/erp/qc/defects")
+                        .hasAnyRole("ADMIN", "MANAGER", "LEADER")
+                        .requestMatchers(HttpMethod.PUT, "/api/erp/qc/inspections/*")
+                        .hasAnyRole("ADMIN", "MANAGER", "LEADER")
                         .requestMatchers(HttpMethod.POST, "/api/erp/**").hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.PUT, "/api/erp/**").hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.DELETE, "/api/erp/**").hasAnyRole("ADMIN", "MANAGER")

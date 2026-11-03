@@ -152,6 +152,16 @@ public class ErpWorkOrder {
     @Column(name = "src_work_order_no", length = 40)
     private String srcWorkOrderNo;
 
+    /**
+     * 返工单指向的不良单号（可空）：追溯"这批返工是哪张不良单发起的"。
+     * <p>
+     * 为什么单独一列而不用 {@code src_order_no}：{@code src_order_no} 的语义是"来源销售订单"，
+     * 填一个不良单号进去会让报表把返工单的来源算成销售订单（数字对不上还不报错）。
+     * 两件事各占一列，比一列混着用强。
+     */
+    @Column(name = "src_defect_no", length = 40)
+    private String srcDefectNo;
+
     /** 是否在产出时按 BOM 自动反冲领料（1 = 自动扣料，0 = 只记产出，料由人工领） */
     @Column(name = "auto_backflush", nullable = false)
     private boolean autoBackflush = true;
@@ -212,6 +222,8 @@ public class ErpWorkOrder {
     public void setOrderType(String orderType) { this.orderType = orderType; }
     public String getSrcWorkOrderNo() { return srcWorkOrderNo; }
     public void setSrcWorkOrderNo(String srcWorkOrderNo) { this.srcWorkOrderNo = srcWorkOrderNo; }
+    public String getSrcDefectNo() { return srcDefectNo; }
+    public void setSrcDefectNo(String srcDefectNo) { this.srcDefectNo = srcDefectNo; }
 
     /**
      * 是否返工单。

@@ -89,31 +89,26 @@ class ErpQualityStockAdapterTest {
     /* ==================== 分支④：返工 × 已入账 ==================== */
 
     @Test
-    @DisplayName("分支④ 返工 + 已入账 → TRANSFER 到待处理仓 + 建工单，并提示实物要人搬")
-    void reworkInStockTransfersThenOrders() {
+    @DisplayName("分支④ 返工 + 已入账 → 只建工单、不动库存，并提示人工先领料出库")
+    void reworkInStockDoesNotTouchStock() {
         ErpQualityStockAdapter.Plan p = ErpQualityStockAdapter.plan(
-                ctx(true, ErpQcDisposition.ACT_REWORK, "6"));
-        assertEquals(1, p.stockBillCount());
+                new ErpQualityStockAdapter.Ctx(true, ErpQcDisposition.ACT_REWORK, bd("6"),
+                        WH_STOCK, WH_BLOCKED, "BLP20261103-0001", "成品仓"));
+        assertEquals(0, p.stockBillCount(),
+                "返工不自动出库：领料要去车间，而车间是不是一个仓由客户定义，系统不该替它选");
         assertEquals(1, p.reworkOrderCount());
-
-        ErpQualityStockAdapter.Intent t = p.intents().get(0);
-        assertEquals(ErpStockBill.TYPE_TRANSFER, t.billType());
-        assertEquals(WH_STOCK, t.srcWhId(), "从货所在仓调出");
-        assertEquals(WH_BLOCKED, t.whId(), "调进待处理仓——不调走的话这批不良品还能被销售发出去");
-        assertEquals(0, t.qty().signum() > 0 ? 0 : 1);
-
-        assertNotNull(p.warn(), "必须提示：实物从仓库搬到车间这一步系统做不了");
-        assertTrue(p.warn().contains("待处理仓"), p.warn());
+        assertNotNull(p.warn(), "必须提示：货还在哪、该人做什么");
+        assertTrue(p.warn().contains("成品仓"), "提示里要写清货在哪个仓：" + p.warn());
+        assertTrue(p.warn().contains("其他出库"), "要告诉人具体开什么单：" + p.warn());
     }
 
     @Test
-    @DisplayName("分支④ 的边界：货已经在待处理仓 → 不再调拨（否则库存服务报「源仓=目标仓」）")
-    void reworkAlreadyInBlockedWarehouse() {
+    @DisplayName("分支④ 的边界：没给仓名时提示里也要有可读的东西，不能是空白")
+    void reworkWarningAlwaysHasWarehouse() {
         ErpQualityStockAdapter.Plan p = ErpQualityStockAdapter.plan(
-                new ErpQualityStockAdapter.Ctx(true, ErpQcDisposition.ACT_REWORK, bd("3"),
-                        WH_BLOCKED, WH_BLOCKED, "BLP20261103-0002"));
-        assertEquals(0, p.stockBillCount(), "已经在待处理仓，不用再调");
-        assertEquals(1, p.reworkOrderCount(), "工单照建");
+                ctx(true, ErpQcDisposition.ACT_REWORK, "6"));
+        assertNotNull(p.warn());
+        assertTrue(p.warn().contains("仓库#1"), "至少要能看出是哪一仓：" + p.warn());
     }
 
     /* ==================== 分支⑤：让步 × 未入账 ==================== */
@@ -173,11 +168,12 @@ class ErpQualityStockAdapterTest {
         assertEquals(1, ErpQualityStockAdapter.plan(
                 ctx(false, ErpQcDisposition.ACT_CONCESSION, "1")).stockBillCount());
 
-        // 已入账侧：报废 SCRAP_OUT、返工 TRANSFER、让步 TRANSFER
+        // 已入账侧：报废 SCRAP_OUT、返工只建工单（不自动出库）、让步 TRANSFER
         assertEquals(java.util.List.of(ErpStockBill.TYPE_SCRAP_OUT), ErpQualityStockAdapter.plan(
                 ctx(true, ErpQcDisposition.ACT_SCRAP, "1")).billTypes());
-        assertEquals(java.util.List.of(ErpStockBill.TYPE_TRANSFER), ErpQualityStockAdapter.plan(
-                ctx(true, ErpQcDisposition.ACT_REWORK, "1")).billTypes());
+        assertEquals(0, ErpQualityStockAdapter.plan(
+                ctx(true, ErpQcDisposition.ACT_REWORK, "1")).stockBillCount(),
+                "返工已入账也不自动出库");
         assertEquals(java.util.List.of(ErpStockBill.TYPE_TRANSFER), ErpQualityStockAdapter.plan(
                 ctx(true, ErpQcDisposition.ACT_CONCESSION, "1")).billTypes());
     }
@@ -210,13 +206,20 @@ class ErpQualityStockAdapterTest {
     }
 
     @Test
-    @DisplayName("让步/已入账返工没有待处理仓 → 报错并说清去哪建")
+    @DisplayName("让步没有待处理仓 → 报错并说清去哪建；返工不再需要待处理仓")
     void missingBlockedWarehouseRejected() {
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
                 () -> ErpQualityStockAdapter.plan(new ErpQualityStockAdapter.Ctx(
                         false, ErpQcDisposition.ACT_CONCESSION, bd("2"), null, null, "BLP0001")));
         assertTrue(ex.getMessage().contains("待处理仓"), ex.getMessage());
         assertTrue(ex.getMessage().contains("禁发仓"), "要告诉人仓库类型设成什么：" + ex.getMessage());
+
+        // 返工不碰待处理仓（系统不代做领料出库），所以没有待处理仓也能建工单
+        ErpQualityStockAdapter.Plan p = ErpQualityStockAdapter.plan(
+                new ErpQualityStockAdapter.Ctx(true, ErpQcDisposition.ACT_REWORK, bd("2"),
+                        WH_STOCK, null, "BLP0001"));
+        assertEquals(0, p.stockBillCount());
+        assertEquals(1, p.reworkOrderCount());
     }
 
     @Test
