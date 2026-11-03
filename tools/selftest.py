@@ -680,6 +680,56 @@ def main():
                      {"productSkuId": prod_id, "planQty": 1}, cookie=leader_cookie)
     check("N12 班组长不能建工单(403)", code == 403, (code, body))
 
+    # ============ O. 成本核算（DH-74，2026-11-03 补）============
+    # 成本最容易错的地方不是公式，是口径：材料按售价还是采购价、工时用墙钟还是设备运行时长、
+    # 算不出来时返回 0 还是 null。这三条都会被下游拿去报价和算毛利，错一点就是真金白银。
+    code, body = req("POST", "/api/system/settings",
+                     {"values": {"cost.labor-rate": "30", "cost.overhead-rate": "10"}},
+                     cookie=admin_cookie)
+    check("O1 配置人工单价 30 / 制造费用率 10", body.get("ok") is True, (code, body))
+
+    # 成本里的人工要有时长才验得了，所以这张单必须绑设备（CNC-01 来自演示数据）
+    code, body = req("POST", "/api/erp/work-orders",
+                     {"productSkuId": prod_id, "planQty": 2, "deviceCode": "CNC-01",
+                      "warehouseId": wh_id, "materialWhId": wh_id}, cookie=admin_cookie)
+    cost_no = body.get("orderNo") if isinstance(body, dict) else None
+    req("POST", "/api/erp/work-orders/%s/release" % cost_no, {}, cookie=admin_cookie)
+    code, body = req("POST", "/api/erp/work-orders/%s/start" % cost_no, {}, cookie=admin_cookie)
+    check("O2 成本用工单可开工", body.get("ok") is True, (code, body))
+
+    code, c = req("GET", "/api/erp/cost/orders/%s" % cost_no, cookie=admin_cookie)
+    check("O3 成本接口能返回", c.get("ok") is True, (code, c))
+    hours = float(c.get("hours") or 0)
+    mat = float(c.get("materialCost") or 0)
+    lab = float(c.get("laborCost") or 0)
+    oh = float(c.get("overheadCost") or 0)
+    el = float(c.get("electricityCost") or 0)
+    tot = float(c.get("totalCost") or 0)
+    check("O4 人工成本 = 工时 x 工价(30)",
+          abs(lab - hours * 30) < 0.05, "工时 %.4f 人工 %.4f 期望 %.4f" % (hours, lab, hours * 30))
+    check("O5 制造费用 = 电费 + 工时 x 费率(10)",
+          abs(oh - (el + hours * 10)) < 0.05, "费用 %.4f 电费 %.4f 工时 %.4f" % (oh, el, hours))
+    check("O6 总成本 = 材料 + 人工 + 制造费用",
+          abs(tot - (mat + lab + oh)) < 0.05, "合计 %.4f 分项和 %.4f" % (tot, mat + lab + oh))
+    # 完成量为 0 时单位成本必须是 null。返回 0 会让毛利虚高 100%，客户拿去报价就赔了
+    if float(c.get("doneQty") or 0) == 0:
+        check("O7 完成量为 0 时单位成本是 null 而不是 0", c.get("unitCost") is None, c.get("unitCost"))
+    else:
+        check("O7 有产量时单位成本 = 总成本 / 完成量",
+              abs(float(c.get("unitCost")) - tot / float(c["doneQty"])) < 0.02, c.get("unitCost"))
+
+    code, ov = req("GET", "/api/erp/cost/overview", cookie=admin_cookie)
+    check("O8 成本概览能返回", ov.get("ok") is True, (code, ov))
+    if float(ov.get("totalCost") or 0) > 0:
+        s_pct = (ov.get("materialPct") or 0) + (ov.get("laborPct") or 0) + (ov.get("overheadPct") or 0)
+        check("O9 料工费占比合计约 100%", abs(s_pct - 100) < 1.5, s_pct)
+
+    # 成本是敏感数据：销售只有销售查询一个入口，成本不能被他们看到
+    code, body = req("GET", "/api/erp/cost/overview", cookie=sales_cookie)
+    check("O10 销售读成本被拒(403)", code == 403, (code, body))
+
+    req("POST", "/api/erp/work-orders/%s/cancel" % cost_no, {"reason": "SELFTEST"}, cookie=admin_cookie)
+
     # ============ 清理 ============
     # H2 往 storm-threshold 写了个 50 做校验测试，用完必须还原——
     # 不还原的话，客户机上这个批量告警合并阈值就比 yml 默认的 8 宽松了 6 倍多，
