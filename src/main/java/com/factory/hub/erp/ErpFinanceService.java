@@ -246,6 +246,12 @@ public class ErpFinanceService {
             if (in) {
                 ErpSalesOrder o = salesRepo.findByOrderNo(orderNo)
                         .orElseThrow(() -> new IllegalArgumentException("销售订单不存在：" + orderNo));
+                // 订单的客户必须就是所选往来单位：不然这家的货款会记到另一家头上，
+                // 应收核销直接串户，对账时才发现就晚了。
+                if (o.getCustomerId() != null && !o.getCustomerId().equals(partner.getId())) {
+                    throw new IllegalArgumentException("订单 " + orderNo + " 的客户与所选往来单位不是同一家，"
+                            + "不能把货款记到别的客户头上");
+                }
                 if (!ErpSalesOrder.STATUS_CONFIRMED.equals(o.getStatus())
                         && !ErpSalesOrder.STATUS_PARTIAL.equals(o.getStatus())
                         && !ErpSalesOrder.STATUS_DONE.equals(o.getStatus())) {
@@ -262,6 +268,11 @@ public class ErpFinanceService {
             } else {
                 ErpPurchaseOrder o = purchaseRepo.findByOrderNo(orderNo)
                         .orElseThrow(() -> new IllegalArgumentException("采购订单不存在：" + orderNo));
+                // 同上：付款的对象必须就是订单的供应商
+                if (o.getSupplierId() != null && !o.getSupplierId().equals(partner.getId())) {
+                    throw new IllegalArgumentException("订单 " + orderNo + " 的供应商与所选往来单位不是同一家，"
+                            + "不能把货款记到别的供应商头上");
+                }
                 if (!ErpPurchaseOrder.STATUS_CONFIRMED.equals(o.getStatus())
                         && !ErpPurchaseOrder.STATUS_PARTIAL.equals(o.getStatus())
                         && !ErpPurchaseOrder.STATUS_DONE.equals(o.getStatus())) {

@@ -236,12 +236,16 @@ public class ErpStockService {
         }
         List<LineReq> diffs = new ArrayList<>();
         int lines = 0;
-        for (LineReq r : counted) {
+        // 按 SKU 排序再逐个加锁：所有请求用同一个加锁顺序，避免死锁
+        List<LineReq> sortedCounted = new ArrayList<>(counted);
+        sortedCounted.sort(Comparator.comparing(r -> r.skuId() == null ? Long.MIN_VALUE : r.skuId()));
+        for (LineReq r : sortedCounted) {
             if (r.skuId() == null || r.qty() == null) {
                 continue;
             }
             lines++;
-            BigDecimal system = nz(billRepo.stockOf(r.skuId(), whId));
+            // 带锁读：盘点的同时有人在发货，差异常常算错
+            BigDecimal system = nz(billRepo.stockOfForUpdate(r.skuId(), whId));
             BigDecimal diff = r.qty().subtract(system);
             if (diff.abs().compareTo(EPS) <= 0) {
                 continue;
@@ -337,9 +341,11 @@ public class ErpStockService {
             delta.merge(key, l.getQty(), BigDecimal::add);
             desc.putIfAbsent(key, "「" + skuLabel(l.getSkuId()) + "」在「" + whLabel(l.getWarehouseId()) + "」");
         }
-        for (Map.Entry<String, BigDecimal> e : delta.entrySet()) {
+        for (Map.Entry<String, BigDecimal> e : sortedDelta(delta)) {
             String[] k = e.getKey().split("#");
-            BigDecimal stock = nz(billRepo.stockOf(Long.valueOf(k[0]), Long.valueOf(k[1])));
+            // 作废也要带锁：不然「作废入库单」和「同时发货」会各看各的库存，
+            // 把已经用掉的货又作废掉，库存就成负数了。
+            BigDecimal stock = nz(billRepo.stockOfForUpdate(Long.valueOf(k[0]), Long.valueOf(k[1])));
             BigDecimal after = stock.subtract(e.getValue());
             if (after.signum() < 0) {
                 throw new IllegalArgumentException("不能作废：" + desc.get(e.getKey())
@@ -851,15 +857,32 @@ public class ErpStockService {
         return out;
     }
 
+    /** 按 SKU 排序后的增量项：所有要加锁的地方都用同一个顺序，避免死锁 */
+    private List<Map.Entry<String, BigDecimal>> sortedDelta(Map<String, BigDecimal> delta) {
+        List<Map.Entry<String, BigDecimal>> out = new ArrayList<>(delta.entrySet());
+        out.sort(Comparator.comparing(e -> Long.parseLong(e.getKey().split("#")[0])));
+        return out;
+    }
+
     /** 出库/调拨前查可用量，负数库存直接拒绝并说清差多少 */
     private void checkStockForOut(String type, List<LineReq> lines, Long whId, ErpWarehouse wh) {
-        boolean out = ErpStockBill.TYPE_SO_OUT.equals(type) || ErpStockBill.TYPE_OTHER_OUT.equals(type);
+        boolean out = ErpStockBill.TYPE_SO_OUT.equals(type) || ErpStockBill.TYPE_OTHER_OUT.equals(type)
+                // 采购退货也是出库（退给供应商，货要离开库存）。
+                // 原来漏在这里，于是采购退货能把库存做成负数还不报错——
+                // 单据层面看不出问题，账实从这儿开始对不上。
+                || ErpStockBill.TYPE_PO_RETURN.equals(type);
         boolean transfer = ErpStockBill.TYPE_TRANSFER.equals(type);
         if (!out && !transfer) {
             return;
         }
-        for (LineReq r : lines) {
-            BigDecimal stock = nz(billRepo.stockOf(r.skuId(), whId));
+        // 按 SKU 排序再加锁：两个请求如果锁的顺序相反（先 A 后 B / 先 B 后 A），
+        // 数据库会判成死锁。让所有请求按同一个顺序拿锁，死锁就不会发生。
+        List<LineReq> sorted = new ArrayList<>(lines);
+        sorted.sort(Comparator.comparing(LineReq::skuId));
+        for (LineReq r : sorted) {
+            // 用带行锁的读：查到的可用量必须是「锁住之后」的库存，
+            // 否则两个销售员同时发货会读到同一份「够」的数量，然后各自扣减 → 超卖。
+            BigDecimal stock = nz(billRepo.stockOfForUpdate(r.skuId(), whId));
             if (stock.compareTo(r.qty()) < 0) {
                 ErpSku s = skuRepo.findById(r.skuId()).orElse(null);
                 String name = s == null ? ("商品#" + r.skuId()) : s.getName();

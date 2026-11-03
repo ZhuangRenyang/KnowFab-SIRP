@@ -27,6 +27,22 @@ public interface ErpStockBillRepository extends JpaRepository<ErpStockBill, Long
            "where b.voidedAt is null and b.skuId = :skuId and b.warehouseId = :whId")
     BigDecimal stockOf(@Param("skuId") Long skuId, @Param("whId") Long whId);
 
+    /**
+     * 出库/作废/盘点前用：<b>带行锁</b>地读当前库存。
+     * <p>
+     * 为什么必须让数据库来锁：Java 层的 synchronized 只挡得住本进程，
+     * 而且它挡不住「事务在锁外提交」这个窗口——两个销售员同时发货，
+     * 各自读到同一份「够」的数量，然后各自扣减，就是超卖。
+     * 这里 {@code FOR UPDATE} 把行锁到外层事务提交为止，
+     * 后到的那个请求会等前一个提交完，再读到已经扣减过的库存。
+     * <p>
+     * 注意：这条必须在事务里调用（{@code FOR UPDATE} 需要事务）。
+     */
+    @Query(value = "select coalesce(sum(qty), 0) from erp_stock_bill " +
+                   "where voided_at is null and sku_id = :skuId and warehouse_id = :whId for update",
+            nativeQuery = true)
+    BigDecimal stockOfForUpdate(@Param("skuId") Long skuId, @Param("whId") Long whId);
+
     List<ErpStockBill> findByHeaderIdOrderByLineNoAsc(Long headerId);
 
     List<ErpStockBill> findByBillNoOrderByLineNoAsc(String billNo);
