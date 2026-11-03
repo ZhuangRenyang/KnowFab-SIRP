@@ -88,6 +88,20 @@ class ErpDefectSyncServiceTest {
         });
         when(f.defectRepo.findBySourceKey(anyString())).thenAnswer(
                 inv -> Optional.ofNullable(f.byKey.get(inv.getArgument(0))));
+        // 同一"基键"下的全部记录：基础行 + 所有 :#n 补记行。
+        // 差额基准必须是这个和（QA 静态验收 B2）——不 stub 它的话，
+        // Mockito 默认返回空集合，实现会走进"首次同步"分支，测试测不到真实路径。
+        when(f.defectRepo.findBySourceKeyGroup(anyString())).thenAnswer(inv -> {
+            String key = inv.getArgument(0);
+            List<ErpQcDefect> group = new ArrayList<>();
+            for (ErpQcDefect d : f.byKey.values()) {
+                String sk = d.getSourceKey();
+                if (sk.equals(key) || sk.startsWith(key + ":#")) {
+                    group.add(d);
+                }
+            }
+            return group;
+        });
         f.svc = new ErpDefectSyncService(f.prodRepo, f.defectRepo, f.outputRepo,
                 f.workOrderRepo, f.deviceService);
         return f;
@@ -149,6 +163,51 @@ class ErpDefectSyncServiceTest {
         assertEquals(0, total.compareTo(new BigDecimal("5")), "总量必须等于最终值 5");
         String memoKey = f.byKey.keySet().stream().filter(k -> k.contains(":#")).findFirst().orElse("");
         assertTrue(memoKey.endsWith(":#1"), "补记行的键要带 :#n 后缀：" + memoKey);
+    }
+
+    @Test
+    @DisplayName("已处置后不良数变大 → 重跑 3 次，记录数不再涨（补记行不能无限增殖）")
+    void disposedRecordDoesNotMultiplyOnRepeatedSync() {
+        Fx f = fx(3);
+        f.svc.sync(NOW);
+        ErpQcDefect d = f.byKey.values().iterator().next();
+        d.setStatus(ErpQcDefect.ST_DISPOSED);
+        d.setDisposedQty(new BigDecimal("3"));
+
+        f.hours.get(0).setDefect(5);
+        f.svc.sync(NOW);
+        int afterFirst = f.byKey.size();
+        f.svc.sync(NOW);
+        f.svc.sync(NOW);
+
+        assertEquals(afterFirst, f.byKey.size(),
+                "同步是定时任务，每 5 分钟跑一次；补记行不能每轮多一条（QA 静态验收 B2）");
+        BigDecimal total = BigDecimal.ZERO;
+        for (ErpQcDefect x : f.byKey.values()) {
+            total = total.add(x.getQty());
+        }
+        assertEquals(0, total.compareTo(new BigDecimal("5")), "总量必须等于最终值 5");
+    }
+
+    @Test
+    @DisplayName("连续两次增量（3→5→8）：总量等于最后一次的值，不翻倍")
+    void twoConsecutiveIncrements() {
+        Fx f = fx(3);
+        f.svc.sync(NOW);
+        ErpQcDefect d = f.byKey.values().iterator().next();
+        d.setStatus(ErpQcDefect.ST_DISPOSED);
+        d.setDisposedQty(new BigDecimal("3"));
+
+        f.hours.get(0).setDefect(5);
+        f.svc.sync(NOW);
+        f.hours.get(0).setDefect(8);
+        f.svc.sync(NOW);
+
+        BigDecimal total = BigDecimal.ZERO;
+        for (ErpQcDefect x : f.byKey.values()) {
+            total = total.add(x.getQty());
+        }
+        assertEquals(0, total.compareTo(new BigDecimal("8")), "总量必须等于最终值 8，不能是 5+5 或翻倍");
     }
 
     @Test

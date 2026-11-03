@@ -22,8 +22,18 @@ import java.util.Map;
  * <p>
  * <b>校准只进质量域，绝不改 {@code prod_hourly.defect}</b>：
  * 那是 OEE 良率的唯一数据源，改了它，已出过的月报就再也对不上了。
- * 所以"以质检为准"是把质量域里那条设备通道记录的 qty 改成质检数，
+ * 所以"以质检为准"是<b>标记</b>质量域里哪些通道算数，
  * <b>设备原始值仍然保留在 {@code prod_hourly} 里</b>，对账条上会写明这一点。
+ *
+ * <p><b>定责是「标记」不是「改数」</b>（QC-SPEC §2.5.1）：
+ * <ul>
+ *   <li>改数会让合计越校越大——质检口径本身含设备行，
+ *       {@code DEVICE := qcQty} 之后 3+2 变成 5+2=7，再定一次 7+2=9；</li>
+ *   <li>改数还会被同步撤销——设备通道的行是 {@code prod_hourly} 的镜像，
+ *       改它的 qty，下一轮同步（每 5 分钟）会按镜像值把差额补回去。</li>
+ * </ul>
+ * 所以定责只改 {@code recon_state} 标记：哪个通道 {@code KEEP}（算数）、
+ * 哪个 {@code DROP}（不计入）。<b>定责前后合计口径稳定</b>，重复定责结果相同。
  */
 @Service
 public class ErpQcReconService {
@@ -68,7 +78,7 @@ public class ErpQcReconService {
                 continue;
             }
             BigDecimal deviceQty = deviceQtyOf(o.getDeviceCode(), start, end);
-            BigDecimal qcQty = qcQtyOf(o.getOrderNo());
+            BigDecimal qcQty = qcQtyOf(o.getOrderNo());   // 人工判的数
             BigDecimal gap = qcQty.subtract(deviceQty);
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("workOrderNo", o.getOrderNo());
@@ -112,21 +122,47 @@ public class ErpQcReconService {
         BigDecimal qcQty = qcQtyOf(workOrderNo);
         BigDecimal target = CHOICE_TRUST_QC.equals(choice) ? qcQty : deviceQty;
 
-        // 改的是质量域里那条设备通道记录（source=DEVICE 且属于这张工单）
+        // 当前设备通道在质量域里的合计（这些行是"机器数"的镜像，不该被人改）
+        BigDecimal mirrored = BigDecimal.ZERO;
+        for (ErpQcDefect d : defectRepo.findByWorkOrderNoOrderByIdAsc(workOrderNo)) {
+            if (ErpQcDefect.SRC_DEVICE.equals(d.getSource()) && !d.isVoided()) {
+                mirrored = mirrored.add(d.getQty());
+            }
+        }
+        BigDecimal diff = target.subtract(mirrored);
+        BigDecimal before = effectiveQtyOf(workOrderNo);
+
+        // 定责 = 标记哪个通道算数，<b>不改任何一行 qty</b>。
+        // 理由两条（QC-SPEC §2.5.1）：
+        //   ① 改数会让合计越校越大（qcQty 含 DEVICE 行，DEVICE := qcQty → 3+2 变 5+2）；
+        //   ② 改数会被同步撤销（设备通道的行是 prod_hourly 的镜像，下一轮同步按镜像补差额）。
+        // 已处置的记录一个字不动 —— 那是既成事实（可能已经报废出库了），
+        // 所以只有未处置的行会被标记；已处置的仍计入统计（那是已发生的损失）。
+        boolean trustQc = CHOICE_TRUST_QC.equals(choice);
         int changed = 0;
         for (ErpQcDefect d : defectRepo.findByWorkOrderNoOrderByIdAsc(workOrderNo)) {
-            if (!ErpQcDefect.SRC_DEVICE.equals(d.getSource()) || d.isVoided()) {
+            if (d.isVoided() || ErpQcDefect.SRC_RECON_ADJ.equals(d.getSource())) {
                 continue;
             }
-            d.setQty(target);
-            d.setUpdatedAt(System.currentTimeMillis());
-            defectRepo.save(d);
-            changed++;
+            if (!ErpQcDefect.ST_PENDING.equals(d.getStatus())) {
+                continue;   // 已处置：既成事实，不参与定责标记
+            }
+            boolean isDevice = ErpQcDefect.SRC_DEVICE.equals(d.getSource());
+            // 以质检为准 → 设备通道不计入；以设备为准 → 人工通道不计入
+            String want = (trustQc != isDevice) ? ErpQcDefect.RECON_KEEP : ErpQcDefect.RECON_DROP;
+            if (!want.equals(d.getReconState())) {
+                d.setReconState(want);
+                d.setUpdatedAt(System.currentTimeMillis());
+                defectRepo.save(d);
+                changed++;
+            }
         }
         audit.ok(com.factory.hub.audit.AuditLog.CAT_QUALITY, com.factory.hub.audit.AuditLog.ACT_UPDATE,
                 workOrderNo, "对账定责 " + choice,
                 "设备 " + deviceQty.toPlainString() + " / 质检 " + qcQty.toPlainString()
                         + " → 校准为 " + target.toPlainString() + "：" + reason);
+
+        BigDecimal after = effectiveQtyOf(workOrderNo);
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("ok", true);
@@ -136,7 +172,27 @@ public class ErpQcReconService {
         out.put("qcQty", qcQty);
         out.put("calibratedQty", target);
         out.put("changedRecords", changed);
+        // 定责前后的有效通道合计：定责是标记不是改数，合计口径不会因为定责而膨胀。
+        // 这两个数一起给，界面上能看出"定责改变的是谁说了算，不是总数"。
+        out.put("effectiveQtyBefore", before);
+        out.put("effectiveQtyAfter", after);
         return out;
+    }
+
+    /**
+     * 某张工单当前的有效通道合计（走统一口径 {@link ErpQcChannelRule}）。
+     * <p>这是"定责后这个工单算几件不良"的唯一答案来源——
+     * 不用 sum、也不自己判断通道，因为那正是各写一份、漏一处就重复计数的根源。
+     */
+    private BigDecimal effectiveQtyOf(String workOrderNo) {
+        List<ErpQcDefect> rows = defectRepo.findByWorkOrderNoOrderByIdAsc(workOrderNo);
+        List<ErpQcDefect> mine = new ArrayList<>();
+        for (ErpQcDefect d : rows) {
+            if (!ErpQcDefect.SRC_RECON_ADJ.equals(d.getSource())) {
+                mine.add(d);
+            }
+        }
+        return ErpQcChannelRule.effectiveQtyOfGroup(mine);
     }
 
     /** 设备采集的不良数（该工单时间窗内、该设备的小时行之和） */
@@ -151,13 +207,20 @@ public class ErpQcReconService {
         return sum.setScale(4, RoundingMode.HALF_UP);
     }
 
-    /** 质量域记录的不良数（这张工单名下所有未作废的不良记录） */
+    /**
+     * <b>人工判的</b>不良数：只算非设备来源的记录（MANUAL / INSPECTION / RETURN）。
+     * <p>
+     * 设备通道的记录是 {@code prod_hourly} 的镜像，不是"人的判断"，
+     * 把它算进质检口径就变成自己跟自己比，gap 永远是 0。
+     */
     private BigDecimal qcQtyOf(String workOrderNo) {
         BigDecimal sum = BigDecimal.ZERO;
         for (ErpQcDefect d : defectRepo.findByWorkOrderNoOrderByIdAsc(workOrderNo)) {
-            if (!d.isVoided()) {
-                sum = sum.add(d.getQty());
+            if (d.isVoided() || ErpQcDefect.SRC_DEVICE.equals(d.getSource())
+                    || ErpQcDefect.SRC_RECON_ADJ.equals(d.getSource())) {
+                continue;
             }
+            sum = sum.add(d.getQty());
         }
         return sum.setScale(4, RoundingMode.HALF_UP);
     }

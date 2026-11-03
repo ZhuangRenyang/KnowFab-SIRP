@@ -238,3 +238,52 @@ PREPARE stmt_idx_wh_kind FROM @ddl_idx_wh_kind;
 EXECUTE stmt_idx_wh_kind;
 
 DEALLOCATE PREPARE stmt_idx_wh_kind;
+
+-- ---------- ⑨ erp_qc_defect.recon_state ----------
+-- 对账定责的「通道标记」。为什么不是加一个布尔「是否计入」：
+-- 两个布尔（已定责 + 是否计入）能组合出「已定责但又计入」的非法态，
+-- 而三态 ('' / KEEP / DROP) 不会出现这种组合。
+--
+-- 三态的含义：
+--   ''    未定责（默认）——统计时按「设备通道优先」规则推断
+--   KEEP  定责后保留——计入统计
+--   DROP  定责后不计入——统计时排除
+--
+-- 为什么定责是「标记」不是「改数」：设备通道的行是 prod_hourly 的镜像，
+-- 改它的 qty，下一轮同步会按镜像值把差额补回去（校准在 5 分钟内被撤销）；
+-- 而且 qcQty 本身含 DEVICE 行，DEVICE := qcQty 会让合计越校越大
+-- （3+2 → 5+2=7 → 7+2=9）。标记不碰数，定责前后合计口径稳定。
+
+SET @has_qc_defect := (
+  SELECT COUNT(*) FROM information_schema.tables
+  WHERE table_schema = DATABASE() AND table_name = 'erp_qc_defect'
+);
+
+SET @has_qc_recon_state := (
+  SELECT COUNT(*) FROM information_schema.columns
+  WHERE table_schema = DATABASE() AND table_name = 'erp_qc_defect' AND column_name = 'recon_state'
+);
+
+SET @ddl_qc_recon_state := IF(@has_qc_defect > 0 AND @has_qc_recon_state = 0,
+  'ALTER TABLE erp_qc_defect ADD COLUMN recon_state VARCHAR(16) NOT NULL DEFAULT '''' COMMENT ''对账定责的通道标记：空=未定责 / KEEP=计入 / DROP=不计入''',
+  'DO 0');
+
+PREPARE stmt_qc_recon_state FROM @ddl_qc_recon_state;
+
+EXECUTE stmt_qc_recon_state;
+
+DEALLOCATE PREPARE stmt_qc_recon_state;
+
+-- 存量行回填：默认就是「未定责」，NOT NULL DEFAULT '' 已经保证，
+-- 这里再显式刷一次是为了兼容「列已存在但有 NULL」的半升级库
+-- （老版本加过这一列但没设默认值时会出现 NULL，统计里 NULL <> 'DROP' 为 NULL → 行被静默漏掉）。
+-- 用守卫式：新装环境表还不存在，直接 UPDATE 会报错、把整段迁移打断。
+SET @ddl_qc_recon_fill := IF(@has_qc_defect > 0 AND @has_qc_recon_state > 0,
+  'UPDATE erp_qc_defect SET recon_state = '''' WHERE recon_state IS NULL OR recon_state = ''''',
+  'DO 0');
+
+PREPARE stmt_qc_recon_fill FROM @ddl_qc_recon_fill;
+
+EXECUTE stmt_qc_recon_fill;
+
+DEALLOCATE PREPARE stmt_qc_recon_fill;

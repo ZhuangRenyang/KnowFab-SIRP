@@ -42,17 +42,26 @@ public class ErpQcDefectController {
         this.syncService = syncService;
     }
 
-    /** 列表：status / source / from / to / kw / page / size */
+    /**
+     * 列表：severity / source / status / triaged / partial / from / to / kw / page / size
+     * <p>
+     * {@code partial=true} 筛「处置了一半」的记录（{@code disposed_qty > 0 AND disposed_qty < qty}）。
+     * <b>不为它新增第四种状态</b>：那样 {@code status='PENDING'} 的筛选会漏掉部分处置的行，
+     * 8 件处置 3 件的单会从待处置队列里消失。
+     */
     @GetMapping
     public Map<String, Object> list(@RequestParam(required = false) String status,
                                     @RequestParam(required = false) String source,
+                                    @RequestParam(required = false) String severity,
+                                    @RequestParam(required = false) Boolean triaged,
+                                    @RequestParam(required = false) Boolean partial,
                                     @RequestParam(required = false) Long from,
                                     @RequestParam(required = false) Long to,
                                     @RequestParam(required = false) String kw,
                                     @RequestParam(defaultValue = "1") int page,
                                     @RequestParam(defaultValue = "20") int size) {
         try {
-            return queryService.list(status, source, from, to, kw, page, size);
+            return queryService.list(status, source, severity, triaged, partial, from, to, kw, page, size);
         } catch (Exception e) {
             return ErpQcBody.fail(e);
         }

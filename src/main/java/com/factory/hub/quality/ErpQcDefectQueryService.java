@@ -73,14 +73,24 @@ public class ErpQcDefectQueryService {
 
     /* ==================== 列表 / 详情 ==================== */
 
-    /** 列表。from/to 是毫秒时间戳，0 表示不限 */
+    /**
+     * 列表。from/to 是毫秒时间戳，0 表示不限。
+     * <p>
+     * 筛选参数统一一套：{@code severity}（CR/MA/MI）、{@code source}、{@code status}
+     * （PENDING/DISPOSED/CANCELLED）、{@code triaged}（true/false）、
+     * {@code kw}、{@code from}、{@code to}。
+     * <p>
+     * <b>没有 {@code partial}</b>：「处置了一半」用 {@code disposedQty > 0 && disposedQty < qty} 表达，
+     * 前端本地过滤即可，后端不再多一个参数（多一个参数就多一份两处口径）。
+     */
     @Transactional(readOnly = true)
-    public Map<String, Object> list(String status, String source, Long from, Long to,
-                                    String kw, int page, int size) {
+    public Map<String, Object> list(String status, String source, String severity, Boolean triaged,
+                                    Boolean partial, Long from, Long to, String kw,
+                                    int page, int size) {
         int p = Math.max(1, page);
         int s = Math.max(1, Math.min(200, size));
         Page<ErpQcDefect> res = defectRepo.search(
-                blankToNull(source), blankToNull(status),
+                blankToNull(source), blankToNull(status), blankToNull(severity), triaged, partial,
                 from == null ? 0L : from, to == null ? 0L : to,
                 blankToNull(kw), PageRequest.of(p - 1, s));
 
@@ -96,7 +106,11 @@ public class ErpQcDefectQueryService {
         for (ErpQcDefect d : res.getContent()) {
             List<ErpQcDisposition> ds = byDefect.getOrDefault(d.getId(), List.of());
             Map<String, Object> row = defectService.toRow(d, ds);
-            row.put("dispositionSummary", summary(ds));
+            // dispositionSummary：前端契约要的是字符串（"报废 2 · 返工 1"）；
+            // 同时给一份结构化的（items），前端要本地化时用后者
+            row.put("dispositionSummary", summaryText(ds));
+            row.put("dispositionSummaryItems", summary(ds));
+            row.put("voidCount", dispRepo.countVoided(d.getId()));
             rows.add(row);
             if (ErpQcDefect.ST_PENDING.equals(d.getStatus())) {
                 pendingQty = pendingQty.add(d.pendingQty());
@@ -287,6 +301,32 @@ public class ErpQcDefectQueryService {
     }
 
     /* ==================== 内部 ==================== */
+
+    /** 处置摘要的字符串形式："报废 2 · 返工 1"（前端契约明确要的格式） */
+    private String summaryText(List<ErpQcDisposition> ds) {
+        StringBuilder sb = new StringBuilder();
+        for (Map<String, Object> m : summary(ds)) {
+            if (!sb.isEmpty()) {
+                sb.append(" · ");
+            }
+            sb.append(actionLabel(String.valueOf(m.get("action"))))
+                    .append(" ").append(((BigDecimal) m.get("qty")).stripTrailingZeros().toPlainString());
+        }
+        return sb.toString();
+    }
+
+    private static String actionLabel(String action) {
+        if (ErpQcDisposition.ACT_SCRAP.equals(action)) {
+            return "报废";
+        }
+        if (ErpQcDisposition.ACT_REWORK.equals(action)) {
+            return "返工";
+        }
+        if (ErpQcDisposition.ACT_CONCESSION.equals(action)) {
+            return "让步";
+        }
+        return action;
+    }
 
     private List<Map<String, Object>> summary(List<ErpQcDisposition> ds) {
         Map<String, BigDecimal> byAction = new LinkedHashMap<>();

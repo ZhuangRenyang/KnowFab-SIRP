@@ -120,26 +120,37 @@ public class ErpDefectSyncService {
     private boolean syncOne(ProdHourly row) {
         String key = KEY_PREFIX + row.getDeviceCode() + ":" + row.getHourStart();
         BigDecimal qty = BigDecimal.valueOf(row.getDefect()).setScale(4, RoundingMode.HALF_UP);
-        Optional<ErpQcDefect> existing = defectRepo.findBySourceKey(key);
 
-        if (existing.isEmpty()) {
+        // 同一基键下的全部记录：基础行 + 所有 #n 补记行
+        List<ErpQcDefect> rows = defectRepo.findBySourceKeyGroup(key);
+        if (rows.isEmpty()) {
             defectRepo.save(newRecord(row, key, qty));
             return true;
         }
-        ErpQcDefect d = existing.get();
-        if (ErpQcDefect.ST_PENDING.equals(d.getStatus())) {
-            // 还没处置：直接覆盖成最新值（设备断线补记会让这个数变大）
-            if (qty.compareTo(d.getQty()) == 0) {
-                return false;
+        // 差额基准 = 这一组记录的件数之和。
+        // 用单条记录当基准会让每轮同步都补记一次（prod_hourly 不变时也一直补），
+        // 补记行无限增殖——这是 QA 静态验收 B2 抓到的真 bug。
+        BigDecimal already = BigDecimal.ZERO;
+        ErpQcDefect base = null;
+        for (ErpQcDefect r : rows) {
+            already = already.add(r.getQty());
+            if (key.equals(r.getSourceKey())) {
+                base = r;
             }
-            d.setQty(qty);
-            d.setUpdatedAt(System.currentTimeMillis());
-            defectRepo.save(d);
+        }
+        BigDecimal diff = qty.subtract(already);
+        if (diff.signum() == 0) {
+            return false;
+        }
+        // 基础行还在待处置 → 差额并进它，不新建行（避免补记行越攒越多）
+        if (base != null && ErpQcDefect.ST_PENDING.equals(base.getStatus()) && !base.isVoided()) {
+            base.setQty(base.getQty().add(diff));
+            base.setUpdatedAt(System.currentTimeMillis());
+            defectRepo.save(base);
             return true;
         }
-        // 已处置/已作废：不能改它的数量，差额另开一条补记行
-        BigDecimal diff = qty.subtract(d.getQty());
-        if (diff.signum() <= 0) {
+        // 基础行已处置/已作废：不能改它的数量（那是既成事实），差额另开一条补记行
+        if (diff.signum() < 0) {
             return false;
         }
         ErpQcDefect memo = newRecord(row, nextMemoKey(key), diff);

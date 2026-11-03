@@ -130,6 +130,16 @@ public class ErpQcDefectService {
         }
         if (ErpQcDisposition.ACT_CONCESSION.equals(action)) {
             fillConcession(disp, body);
+            // B5：让步之后这批货换了仓（进禁发仓），头表要跟着改：
+            // 不改的话，"这批货在哪"还是原仓，出库校验按仓判断时会拿错仓，
+            // 追溯也查不到那笔调拨/入库单。
+            // inStock 不用改：让步后货确实还在库里（只是换了仓），"已入过账"仍然成立。
+            if (blocked != null) {
+                defect.setWarehouseId(blocked.getId());
+            }
+            if (disp.getStockBillNo() != null) {
+                defect.setSrcBillNo(disp.getStockBillNo());
+            }
         }
         if (body != null && body.get("costAmount") != null) {
             disp.setCostAmount(qtyOf(body.get("costAmount")));
@@ -270,6 +280,18 @@ public class ErpQcDefectService {
                 ? "PENDING" : "DISPOSED";
     }
 
+    /** 分级中文名 */
+    static String severityLabel(String severity) {
+        if (severity == null) {
+            return "";
+        }
+        return switch (severity) {
+            case ErpQcDefectCode.SEV_CR -> "致命";
+            case ErpQcDefectCode.SEV_MI -> "轻微";
+            default -> "严重";
+        };
+    }
+
     /* ==================== 内部 ==================== */
 
     ErpQcDefect load(String defectNo) {
@@ -316,8 +338,12 @@ public class ErpQcDefectService {
         m.put("pendingQty", d.pendingQty());
         m.put("inStock", d.isInStock());
         m.put("severity", d.getSeverity());
+        // severityLabel：中文名，前端直接显示（这是前端契约明确要的字段）
+        m.put("severityLabel", severityLabel(d.getSeverity()));
         m.put("defectCode", d.getDefectCode());
         m.put("defectName", d.getDefectName());
+        // codeMissing：还没分诊（缺缺陷代码）
+        m.put("codeMissing", d.getDefectCodeId() == null);
         m.put("deviceCode", d.getDeviceCode());
         m.put("skuCode", d.getSkuCode());
         m.put("skuName", d.getSkuName());

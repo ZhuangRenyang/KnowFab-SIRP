@@ -39,6 +39,10 @@ class ErpQcBoardServiceTest {
     private static void stub(ErpQcDefectRepository d, ErpQcDispositionRepository p,
                              ErpQcInspectionRepository i, ProdHourlyRepository h) {
         when(d.sumQtyInWindow(anyLong(), anyLong())).thenReturn(new BigDecimal("20"));
+        // 看板的质检口径分子走 findInWindow + 有效通道口径（按工单分组去重），
+        // 不走 sumQtyInWindow——同一工单的设备通道与人工通道相加就是重复计数。
+        when(d.findInWindow(anyLong(), anyLong())).thenReturn(List.of(
+                row(ErpQcDefect.SRC_MANUAL, "WO1", "20")));
         when(d.pendingQtyTotal()).thenReturn(new BigDecimal("5"));
         when(d.pendingRecordCount()).thenReturn(3L);
         when(d.untriagedQty()).thenReturn(new BigDecimal("8"));
@@ -50,6 +54,37 @@ class ErpQcBoardServiceTest {
         when(p.costByAction(anyLong(), anyLong())).thenReturn(List.of(
                 new Object[]{"SCRAP", new BigDecimal("6"), new BigDecimal("300"), BigDecimal.ZERO},
                 new Object[]{"CONCESSION", new BigDecimal("4"), BigDecimal.ZERO, new BigDecimal("150")}));
+    }
+
+    /** 造一条不良记录（默认未处置、未定责） */
+    private static ErpQcDefect row(String source, String wo, String qty) {
+        ErpQcDefect d = new ErpQcDefect();
+        d.setSource(source);
+        d.setWorkOrderNo(wo);
+        d.setQty(new BigDecimal(qty));
+        d.setStatus(ErpQcDefect.ST_PENDING);
+        d.setFoundAt(FROM);
+        return d;
+    }
+
+    @Test
+    @DisplayName("同一工单的设备通道与人工通道不相加：质检口径只算设备（QA 静态验收 P0-2）")
+    void sameWorkOrderChannelsAreNotAddedUp() {
+        ErpQcDefectRepository d = mock(ErpQcDefectRepository.class);
+        ErpQcDispositionRepository p = mock(ErpQcDispositionRepository.class);
+        ErpQcInspectionRepository i = mock(ErpQcInspectionRepository.class);
+        ProdHourlyRepository h = mock(ProdHourlyRepository.class);
+        stub(d, p, i, h);
+        // 同一工单：设备采到 6 件、人工补录 4 件——是同一批货的两次记录
+        when(d.findInWindow(anyLong(), anyLong())).thenReturn(List.of(
+                row(ErpQcDefect.SRC_DEVICE, "WO1", "6"),
+                row(ErpQcDefect.SRC_MANUAL, "WO1", "4")));
+        Map<String, Object> out = svc(d, p, i, h).dashboard(FROM, TO);
+
+        // 相加 = 10 那是重复计数；设备优先，正确答案是 6
+        assertEquals(0, new BigDecimal("6").compareTo((BigDecimal) out.get("qcDefectQty")));
+        // 设备口径仍然是原始的 40/2000，不受定责影响
+        assertEquals(2.0d, (Double) out.get("deviceDefectRate"), 0.001);
     }
 
     @Test

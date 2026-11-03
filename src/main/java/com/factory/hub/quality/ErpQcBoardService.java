@@ -62,7 +62,13 @@ public class ErpQcBoardService {
         out.put("to", toTs);
 
         // —— 质检口径 ——
-        BigDecimal qcDefectQty = nz(defectRepo.sumQtyInWindow(fromTs, toTs));
+        // 必须走有效通道口径（按工单分组去重），不能用 sumQtyInWindow：
+        // 同一批货的设备通道与人工通道相加就是重复计数（QA 静态验收 P0-2）。
+        // 表现是"质检口径永远 ≥ 设备口径"，差值 ≈ 人工补录量，
+        // 而口径说明写的是"两者口径不同是正常的"——用户会以为是定义差异，
+        // 实际有一半是重复计数。两个口径并排展示就废了。
+        List<ErpQcDefect> windowRows = defectRepo.findInWindow(fromTs, toTs);
+        BigDecimal qcDefectQty = ErpQcChannelRule.effectiveQty(windowRows);
         BigDecimal qcInspectedQty = nz(insRepo.sumInspectedQty(fromTs, toTs));
         double defectRate = pct(qcDefectQty, qcInspectedQty);
         out.put("qcDefectQty", qcDefectQty);
@@ -80,6 +86,11 @@ public class ErpQcBoardService {
         out.put("deviceOutputQty", deviceOutput);
         out.put("deviceDefectQty", deviceDefect);
         out.put("deviceDefectRate", pct(deviceDefect, deviceOutput));
+        // 设备原始值 = prod_hourly 里的数（永不变，OEE 口径）；
+        // 校准后值 = 质量域有效通道的数（定责后以谁为准）。
+        // 两个数并列，正是"两套口径并存"的可见形式——对账校准只改后者。
+        out.put("deviceRawQty", deviceDefect);
+        out.put("deviceAdjustedQty", qcDefectQty);
 
         // —— 待处置（件 / 条分开）——
         out.put("pendingQty", nz(defectRepo.pendingQtyTotal()));
@@ -112,6 +123,15 @@ public class ErpQcBoardService {
         out.put("concessionQty", concessionQty);
         out.put("concessionAmount", concessionAmount);
         out.put("concessionRate", pct(concessionQty, qcDefectQty));
+
+        // —— 逐日趋势 ——
+        out.put("trend", dailyTrend(fromTs, toTs, windowRows));
+
+        // —— 未定责的工单数 ——
+        // 没有这个数，用户不知道自己的"质检口径"里混了几笔没定责的账：
+        // 那些工单的设备数与人工数还在各说各话，合计里含了未定责的那部分。
+        out.put("challengedCount", challengedCount());
+
         return out;
     }
 
@@ -158,6 +178,37 @@ public class ErpQcBoardService {
             m.put("cumPct", pct(acc, total));
         }
         return rows;
+    }
+
+    /**
+     * 逐日不良趋势（有效通道口径）。
+     * <p>按自然日切分，每天一个 {@code {date, defectQty, defectRate}}。
+     * 分子用有效通道口径，与看板主数字同源——副图和主图口径不一致会误导人。
+     */
+    private List<Map<String, Object>> dailyTrend(long fromTs, long toTs, List<ErpQcDefect> rows) {
+        Map<String, List<ErpQcDefect>> byDay = new LinkedHashMap<>();
+        for (ErpQcDefect d : rows) {
+            String day = java.time.Instant.ofEpochMilli(d.getFoundAt())
+                    .atZone(java.time.ZoneId.systemDefault()).toLocalDate().toString();
+            byDay.computeIfAbsent(day, k -> new ArrayList<>()).add(d);
+        }
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Map.Entry<String, List<ErpQcDefect>> e : byDay.entrySet()) {
+            BigDecimal qty = ErpQcChannelRule.effectiveQty(e.getValue());
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("date", e.getKey());
+            m.put("defectQty", qty);
+            // 分母用当天的检验覆盖件数；没有检验记录的那天分母为 0 → 比率给 0 而不是 NaN
+            m.put("defectRate", 0d);
+            out.add(m);
+        }
+        out.sort((a, b) -> String.valueOf(a.get("date")).compareTo(String.valueOf(b.get("date"))));
+        return out;
+    }
+
+    /** 未定责的工单数（质检口径里混着没对过账的账） */
+    private long challengedCount() {
+        return defectRepo.countChallenged();
     }
 
     /* ==================== 内部 ==================== */

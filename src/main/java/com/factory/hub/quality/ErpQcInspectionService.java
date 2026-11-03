@@ -47,19 +47,23 @@ public class ErpQcInspectionService {
     private final ErpSkuRepository skuRepo;
     private final ErpAqlService aqlService;
     private final com.factory.hub.audit.AuditService audit;
+    /** 库存单据头：查来料检验对应的那张入库单（定出不良品在哪个仓） */
+    private final com.factory.hub.erp.ErpStockBillHdrRepository billHdrRepo;
 
     public ErpQcInspectionService(ErpQcInspectionRepository insRepo,
                                   ErpQcInspectionItemRepository itemRepo,
                                   ErpQcDefectRepository defectRepo,
                                   ErpSkuRepository skuRepo,
                                   ErpAqlService aqlService,
-                                  com.factory.hub.audit.AuditService audit) {
+                                  com.factory.hub.audit.AuditService audit,
+                                  com.factory.hub.erp.ErpStockBillHdrRepository billHdrRepo) {
         this.insRepo = insRepo;
         this.itemRepo = itemRepo;
         this.defectRepo = defectRepo;
         this.skuRepo = skuRepo;
         this.aqlService = aqlService;
         this.audit = audit;
+        this.billHdrRepo = billHdrRepo;
     }
 
     /* ==================== 建单 ==================== */
@@ -326,6 +330,10 @@ public class ErpQcInspectionService {
 
         ins.setResult(result);
         ins.setStatus(ErpQcInspection.ST_JUDGED);
+        // 判定不是 PASS → 必须生成不良记录，否则这批货不进待处置队列，
+        // 没人处置 → 它在系统里根本不存在 → 按 F1 的口径它就是良品，可以直接发货。
+        // 质检判了不合格、货却能正常卖出去，正是这个模块要防的那件事。
+        createDefectFromInspection(ins);
         ins.setJudgedBy(operator);
         ins.setJudgedAt(System.currentTimeMillis());
         ins.setRemark(ins.getRemark() == null ? text : ins.getRemark() + "；" + text);
@@ -339,6 +347,123 @@ public class ErpQcInspectionService {
         out.put("why", r.why());
         out.put("judgeText", text);
         return out;
+    }
+
+    /**
+     * 判定生成不良记录（{@code source=INSPECTION}）。
+     * <p>
+     * <b>幂等键 = {@code INSP:检验单号}</b>：一张检验单一条汇总记录，
+     * 重复判定/网络重试都不会产生第二条（唯一键兜底）。
+     * <p>
+     * <b>件数用 {@code defectQty}（不合格品件数），不用 {@code defectCr+Ma+Mi}（项数）</b>：
+     * 一件产品带 3 个 MA 缺陷，件数是 1、项数是 3；处置对象的单位是件。
+     * 判定口径与处置口径必须一致，否则看板的待处置件数会翻三倍。
+     * <p>
+     * <b>{@code inStock} 按检验类型区分</b>（这条最容易搞反）：
+     * <ul>
+     *   <li><b>IQC</b> → {@code true}：来料已通过 {@code PO_IN} 进了原料仓，
+     *       判不合格要出库（报废）或退供应商；</li>
+     *   <li><b>FAI/IPQC/FQC</b> → {@code false}：F1 起入库量 = 总产出 − 不良数，
+     *       <b>不良品从没进过成品仓</b>，报废不动库存。
+     *       按 true 处理会去扣一批不存在的货，把库存做成负数。</li>
+     * </ul>
+     */
+    private void createDefectFromInspection(ErpQcInspection ins) {
+        if (ErpQcInspection.RESULT_PASS.equals(ins.getResult())) {
+            return;
+        }
+        BigDecimal qty = ins.getDefectQty();
+        if (qty == null || qty.signum() <= 0) {
+            // 判了不合格却没填件数：建一条 qty=0 的记录毫无意义，
+            // 还会让待处置统计出现一堆 0 行
+            return;
+        }
+        String key = "INSP:" + ins.getInspectionNo();
+        ErpQcDefect d = defectRepo.findBySourceKey(key).orElseGet(ErpQcDefect::new);
+        if (d.getDefectNo() == null) {
+            d.setDefectNo(nextDefectNo());
+        }
+        d.setSource(ErpQcDefect.SRC_INSPECTION);
+        d.setSourceKey(key);
+        d.setInspectionNo(ins.getInspectionNo());
+        d.setSkuId(ins.getSkuId());
+        d.setSkuCode(ins.getSkuCode());
+        d.setSkuName(ins.getSkuName());
+        d.setLotNo(ins.getLotNo());
+        d.setQty(qty);
+        d.setStatus(ErpQcDefect.ST_PENDING);
+        d.setDisposedQty(BigDecimal.ZERO);
+        d.setFoundAt(ins.getInspectedAt() == null ? System.currentTimeMillis() : ins.getInspectedAt());
+        d.setRegisteredBy(ins.getJudgedBy());
+        d.setSeverity(severityOf(ins));
+        d.setRemark("检验单 " + ins.getInspectionNo() + " 判定 " + ins.getResult());
+
+        // 缺陷分类：取明细里第一个填了的（检验员可能没填 → 留空进"未分类"等人工分诊）
+        for (ErpQcInspectionItem it : itemRepo.findByInspectionIdOrderByLineNoAsc(ins.getId())) {
+            if (it.getDefectCodeId() != null) {
+                d.setDefectCodeId(it.getDefectCodeId());
+                d.setDefectCode(it.getDefectCode());
+                d.setDefectName(it.getDefectName());
+                break;
+            }
+        }
+
+        // inStock：IQC 来料已入库，其余（FAI/IPQC/FQC）不良品从未进过成品仓
+        if (ErpQcInspection.TYPE_IQC.equals(ins.getInspectionType())) {
+            d.setInStock(true);
+            resolveSourceBill(ins, d);
+        } else {
+            d.setInStock(false);
+        }
+        defectRepo.save(d);
+    }
+
+    /**
+     * IQC 的不良品在哪：查来源单据对应的那张入库单（{@code src_order_no} = 采购单号）。
+     * <p>
+     * 查不到就留空——处置时会明确报错让人补，不会拿一个"猜的仓"去出库
+     * （猜错仓就是从别人的库存里扣货）。
+     */
+    private void resolveSourceBill(ErpQcInspection ins, ErpQcDefect d) {
+        String src = ins.getSrcBillNo();
+        if (src == null || src.isBlank()) {
+            return;
+        }
+        for (com.factory.hub.erp.ErpStockBillHdr h :
+                billHdrRepo.findBySrcOrderNoOrderByCreatedAtDesc(src)) {
+            if (h.getDstWhId() != null) {
+                d.setWarehouseId(h.getDstWhId());
+                d.setSrcBillNo(h.getBillNo());
+            }
+            break;
+        }
+    }
+
+    /** 分级取最严重的那个：CR &gt; MA &gt; MI */
+    private static String severityOf(ErpQcInspection ins) {
+        if (ins.getDefectCr() > 0) {
+            return ErpQcDefectCode.SEV_CR;
+        }
+        if (ins.getDefectMa() > 0) {
+            return ErpQcDefectCode.SEV_MA;
+        }
+        return ErpQcDefectCode.SEV_MI;
+    }
+
+    /** 不良单号：与设备同步同一套前缀规则 */
+    private String nextDefectNo() {
+        String base = "BLP" + java.time.LocalDate.now().format(
+                java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd")) + "-";
+        String max = defectRepo.maxNoByPrefix(base);
+        int n = 1;
+        if (max != null && max.length() > base.length()) {
+            try {
+                n = Integer.parseInt(max.substring(base.length())) + 1;
+            } catch (NumberFormatException ignored) {
+                n = 1;
+            }
+        }
+        return base + String.format("%04d", n);
     }
 
     /* ==================== 查询 ==================== */

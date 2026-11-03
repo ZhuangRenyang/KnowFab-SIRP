@@ -23,11 +23,17 @@ import java.math.BigDecimal;
  * <p>
  * <b>{@code inStock} 决定处置动不动库存</b>（这是本表最容易做错的一列）：
  * <ul>
- *   <li>{@code false}：这批不良从未入过账（设备采集的在制品、IQC 判定前的不合格品），
- *       报废<b>不动库存</b>，只改状态——去扣库存会把别人的货扣掉，然后账实不符；</li>
- *   <li>{@code true}：已经入过账（客户退货、库存抽检、FQC 之后才判的），
- *       报废<b>必须出库</b>（{@code SCRAP_OUT}），否则账面数量永远比现实多。</li>
+ *   <li>{@code false}：这批不良<b>从未入过账</b>——设备采集的在制品、FAI/IPQC/FQC 判出的不良
+ *       （F1 起入库量 = 总产出 − 不良数，不良品从没进过成品仓）→ 报废<b>不动库存</b>，
+ *       只改状态。去扣库存会把别人的货扣掉，账实当场分家；</li>
+ *   <li>{@code true}：已经入过账——IQC 来料已通过 {@code PO_IN} 进了原料仓、客户退货、库存抽检
+ *       → 报废<b>必须出库</b>（{@code SCRAP_OUT}），否则账面数量永远比现实多一批。</li>
  * </ul>
+ * <p>
+ * ⚠️ 搞反的后果（F1 之后才成立的那些口径，最容易被人按旧印象写）：
+ * FQC 按 {@code true} → 报废时去扣一批根本不存在的货 → <b>库存做成负数</b>；
+ * IQC 按 {@code false} → 废料永远躺在原料仓 → 月底盘亏。
+ * <b>凡是改了入库/库存口径，必须回头检查所有描述该口径的注释与文档。</b>
  * <p>
  * <b>本表不存处置方式</b>（刻意）：一批 8 件真实场景是"3 件报废 + 5 件返工"，
  * 存一个单值 {@code disposition} 只能二选一——填报废则 8 件全废（返工那 5 件白扔），
@@ -71,8 +77,36 @@ public class ErpQcDefect {
     public static final String SRC_MANUAL = "MANUAL";
     /** 客户退货（仅质量问题退货；订多/发错/取消的退货是良品，不生成不良记录） */
     public static final String SRC_RETURN = "RETURN";
+    /**
+     * 对账校准产生的调整行：把某张工单的不良总数校准到定责后的值时，
+     * 差额落到这条记录上（qty 可为负）。
+     * <p>
+     * 为什么要有它：校准不能改已处置的记录（那是既成事实，可能已经报废出库），
+     * 只能落到待处置的记录上；如果一条待处置的都没有，差额就没有地方放，
+     * 只能单开一条调整行。少了它，对账的差额会凭空消失。
+     */
+    public static final String SRC_RECON_ADJ = "RECON_ADJ";
 
     /** 待处置（含"处置了一部分"，进度看 disposedQty） */
+    /**
+     * 对账定责的通道标记（三态，存 {@code recon_state} 列）。
+     *
+     * <p><b>为什么定责是「标记」不是「改数」</b>：设备通道的行是 {@code prod_hourly} 的镜像，
+     * 改它的 qty，下一轮同步会按镜像值把差额补回去（校准在 5 分钟内被同步撤销）；
+     * 而且质检口径本身含设备行，{@code DEVICE := qcQty} 会让合计越校越大
+     * （3+2 → 5+2=7 → 7+2=9）。标记不碰数。
+     *
+     * <p><b>为什么用三态而不是两个布尔</b>：两个布尔（已定责 + 是否计入）能组合出
+     * 「已定责但又计入」的非法态；三态不会出现这种组合。
+     */
+    public static final String RECON_NONE = "";
+
+    /** 定责后保留（计入统计） */
+    public static final String RECON_KEEP = "KEEP";
+
+    /** 定责后不计入（统计时排除） */
+    public static final String RECON_DROP = "DROP";
+
     public static final String ST_PENDING = "PENDING";
     /** 已处置：待处置件数 == 0 */
     public static final String ST_DISPOSED = "DISPOSED";
@@ -173,6 +207,18 @@ public class ErpQcDefect {
     @Column(name = "status", nullable = false, length = 16)
     private String status = ST_PENDING;
 
+    /**
+     * 对账定责的通道标记：{@code ''} 未定责 / {@code KEEP} 计入 / {@code DROP} 不计入。
+     * 见 {@link #RECON_KEEP} 的说明——定责是标记不是改数。
+     */
+    @Column(name = "recon_state", nullable = false, length = 16)
+    private String reconState = RECON_NONE;
+
+    /** 统计时是否计入：只有被定责标记为 DROP 的才排除。 */
+    public boolean countedInStats() {
+        return !RECON_DROP.equals(reconState);
+    }
+
     @JdbcTypeCode(SqlTypes.LONGVARCHAR)
     @Column(name = "remark")
     private String remark;
@@ -238,6 +284,10 @@ public class ErpQcDefect {
     public BigDecimal getDisposedQty() { return disposedQty; }
     public void setDisposedQty(BigDecimal disposedQty) { this.disposedQty = disposedQty; }
     public String getStatus() { return status; }
+
+    public String getReconState() { return reconState; }
+
+    public void setReconState(String reconState) { this.reconState = reconState; }
     public void setStatus(String status) { this.status = status; }
     public String getRemark() { return remark; }
     public void setRemark(String remark) { this.remark = remark; }
