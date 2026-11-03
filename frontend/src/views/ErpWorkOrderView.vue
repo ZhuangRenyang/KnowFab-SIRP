@@ -1,7 +1,7 @@
 <template>
   <div class="page">
     <!-- 四张概览卡：车间主任第一眼要看的就是"现在在做什么" -->
-    <div class="kpi-row">
+    <div class="kpi-row kpi-5">
       <div class="kpi" :class="{ on: status === 'RUNNING' }" @click="pickStatus('RUNNING')">
         <div class="kpi-label">{{ t('wo.kpiRunning') }}</div>
         <div class="kpi-value num">{{ summary.running }}</div>
@@ -827,12 +827,8 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.kpi-row {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 10px;
-  margin-bottom: 12px;
-}
+/* KPI 行的布局走全局 styles/erp.css 的 .kpi-row.kpi-5（含窄屏降列），
+   这里不再写死 5 列 —— 写死的话 1024 屏会挤成一排。 */
 .kpi {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);

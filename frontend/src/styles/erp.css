@@ -95,6 +95,38 @@
   color: var(--danger);
 }
 
+/*
+ * 固定 5 卡的 KPI 行（质量看板、工单列表都用 5 张）。
+ *
+ * 为什么不能只靠上面的 auto-fit：auto-fit 在 1024 视口（工业平板常见分辨率）
+ * 会算成 4 列，5 张卡变成「4 + 1」——第 5 张孤零零挂在下一行。
+ * 这种问题没人会当 bug 报，看着就是"没对齐"。
+ *
+ * 实测算账（侧栏 212 + main padding 40 + el-card body 40 + 边框 2）：
+ *   视口 1366 → 内容 1072 → 6 列封顶 5 → 5 张一行 ✓
+ *   视口 1092 → 内容  840 → 5 列（临界点）
+ *   视口 1024 → 内容  772 → 4 列 → 4+1 孤行 ✗
+ *
+ * 所以 ≤1091 直接降到 3 列（3+2），比 4+1 好看。
+ * 用 minmax(0, 1fr) 而不是 minmax(160px, 1fr)：允许卡片压到 146px，
+ * KPI 卡里只有两行字，146px 放得下，不值得为了最小宽度折行。
+ */
+.kpi-row.kpi-5 {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+@media (max-width: 1091px) {
+  .kpi-row.kpi-5 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 639px) {
+  .kpi-row.kpi-5 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 /* ---------- 表格单元格 ---------- */
 
 /* 单元格主行（产品名、工单号）+ 副行（编码、时间）。把两行塞进一个单元格省一列宽度 */
@@ -110,18 +142,24 @@
 
 /* ---------- 数字与语义色 ---------- */
 
-/* 所有数量/金额/百分比必须过这个类：等宽 + 表格数字对齐，车间横向扫读全靠它 */
-.num {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-}
+/* .num 定义在 tokens.css 里（还带 td.num，覆盖面更广），这里不再重复定义。
+   本文件开头就写着「同一份东西散成 N 份，改一次要改 N 处」——不自己犯这条。 */
 
 .danger { color: var(--danger); }
 .warn { color: var(--idle); }
 .muted { color: var(--muted); }
 .strong { font-weight: 600; }
 
-/* 中国工厂习惯：涨/正数用红，跌/负数用绿（与欧美相反） */
+/*
+ * 涨红跌绿（中国习惯，与欧美相反）。
+ *
+ * ⚠️ 只能用在「涨跌本身有意义」的地方——成本、毛利、单价、库存量。
+ *    不要用在比率类指标上：
+ *      合格率 / 良率  上升是好事，套 .up 会变成红色，看着像出了问题
+ *      不良率 / 报废损失  上升是坏事，这种才是 .up 该用的场景
+ *    比率类要表达"越差越红"，用 .kpi.warn / .kpi.danger 那套语义类，
+ *    不要用 .up / .down。
+ */
 .up { color: var(--danger); }
 .down { color: var(--run); }
 
