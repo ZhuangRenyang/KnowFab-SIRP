@@ -101,13 +101,19 @@
         </el-table-column>
         <el-table-column :label="t('cost.colGross')" width="120" align="right">
           <template #default="{ row }">
-            <span v-if="row.grossProfit == null" class="muted">--</span>
+            <!-- 算不出毛利时不能只显示 '--'：用户不知道是没维护销售价，
+                 还是毛利真的算成了 0。hover 说清楚原因。 -->
+            <el-tooltip v-if="row.grossProfit == null" :content="t('cost.noPrice')" placement="top">
+              <span class="muted">--</span>
+            </el-tooltip>
             <span v-else class="num" :class="row.grossProfit >= 0 ? 'up' : 'down'">{{ money(row.grossProfit) }}</span>
           </template>
         </el-table-column>
         <el-table-column :label="t('cost.colGrossPct')" width="106" align="right">
           <template #default="{ row }">
-            <span v-if="row.grossPct == null" class="muted">--</span>
+            <el-tooltip v-if="row.grossPct == null" :content="t('cost.noPrice')" placement="top">
+              <span class="muted">--</span>
+            </el-tooltip>
             <span v-else class="num" :class="row.grossPct >= 0 ? 'up' : 'down'">{{ row.grossPct }}%</span>
           </template>
         </el-table-column>

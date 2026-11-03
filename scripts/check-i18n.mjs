@@ -162,6 +162,48 @@ const EXPANSIONS = [
  */
 const ORPHAN_IGNORE_PREFIXES = ['ai.']
 
+/**
+ * 已知保留的孤儿键（逐个登记，不走前缀）。
+ *
+ * <p><b>为什么要这个机制</b>：孤儿键分两种——
+ * 一种是「废弃键」（该删，留着会误导后来者），
+ * 一种是「备用词库」（通用词条备着，写新页面时直接能用，删了还得重新加）。
+ * 没有这张表的话，后者每次都报，报久了就没人看了——**检查一旦被习惯性忽略就等于没有**。
+ *
+ * <p><b>登记要写理由</b>：只写键名的话，过几个月谁也不知道它为什么留着。
+ * 理由写清楚，后来者想删时能判断「当时为什么决定留」。
+ *
+ * <p><b>登记是逐个的，不是整块</b>：整块登记等于把整块变成免检区，
+ * 里面新长出来的真废弃键就再也不会被报出来。
+ */
+const ORPHAN_KEEP = {
+  // —— common.* 通用词库（备用词条，写新页面时直接能用）——
+  // 与 base.* 重复的那几个已经删掉了（两份真值更危险），剩下的是 common 独有的。
+  'common.add': '通用词库：新增',
+  'common.all': '通用词库：全部',
+  'common.back': '通用词库：返回',
+  'common.confirm': '通用词库：确认',
+  'common.delete': '通用词库：删除',
+  'common.detail': '通用词库：详情',
+  'common.export': '通用词库：导出',
+  'common.failed': '通用词库：操作失败',
+  'common.loading': '通用词库：加载中',
+  'common.no': '通用词库：否',
+  'common.noData': '通用词库：暂无数据',
+  'common.operation': '通用词库：操作',
+  'common.reset': '通用词库：重置',
+  'common.search': '通用词库：搜索',
+  'common.submit': '通用词库：提交',
+  'common.thisMonth': '通用词库：本月',
+  'common.thisYear': '通用词库：今年',
+  'common.time': '通用词库：时间',
+  'common.tip': '通用词库：提示',
+  'common.today': '通用词库：今日',
+  'common.total': '通用词库：合计',
+  'common.warning': '通用词库：警告',
+  'common.yes': '通用词库：是',
+}
+
 const CALL_RE = /\b(?:t|tc|te|tm)\(\s*['"]([A-Za-z0-9_.\-]+)['"]/g
 const CONCAT_RE = /\b(?:t|tc|te|tm)\(\s*['"]([^'"]+)['"]\s*\+/g
 /**
@@ -343,6 +385,7 @@ async function main() {
     .filter((k) => !ORPHAN_IGNORE_PREFIXES.some((p) => k.startsWith(p)))
     .filter((k) => ![...dynamicPrefixes].some((p) => k.startsWith(p)))
     .filter((k) => !stringLiterals.has(k))   // 通过映射表间接引用的，不算孤儿
+    .filter((k) => !(k in ORPHAN_KEEP))       // 登记为「已知保留」的，不算孤儿
     .sort()
 
   let ok = true

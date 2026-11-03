@@ -46,6 +46,9 @@
         <span class="jp-main">{{ t('qc.why.' + preview.why) }}</span>
         <span class="jp-sub">{{ modePrefix }}{{ previewText }}</span>
       </div>
+      <!-- 预览结论是本地算的，提交后服务端重算（方案表可能与建单快照不一致）。
+           不说清楚的话，判定岗会以为看到的就是最终结论。 -->
+      <div v-if="preview" class="field-hint">{{ t('qc.insp.secJudgeHint') }}</div>
       <el-alert
         v-if="preview?.inconsistent"
         type="warning"

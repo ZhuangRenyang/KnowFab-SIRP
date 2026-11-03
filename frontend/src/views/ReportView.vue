@@ -23,7 +23,7 @@
       <div class="ebox"><span>{{ t('rpt.kpiAvail') }}</span>
         <b class="num">{{ availText }}<i>%</i></b><em>{{ t('rpt.recorded', { v: num((totals?.countedSec || 0) / 3600, 1) }) }}</em></div>
       <div class="ebox"><span>{{ t('rpt.stopDur') }}</span>
-        <b class="num st">{{ num((totals?.stopSec || 0) / 3600, 1) }}<i>h</i></b><em>{{ t('rpt.allDevices') }}</em></div>
+        <b class="num st">{{ num((totals?.stopSec || 0) / 3600, 1) }}<i>{{ t('rpt.unitH') }}</i></b><em>{{ t('rpt.allDevices') }}</em></div>
       <div class="ebox"><span>{{ t('rpt.stopCount') }}</span>
         <b class="num al">{{ stopCount }}<i>{{ t('rpt.unitTimes') }}</i></b>
         <em>{{ stopCount ? t('rpt.stopAccum', { n: num(stopMin, 0) }) : t('rpt.noStopAlarm') }}</em></div>
