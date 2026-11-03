@@ -365,6 +365,9 @@ def sales_flow(s, w, p):
         ship(no, w["WH-01"], [{"skuId": s["P-002"], "qty": 40}])
         st, r = call("POST", "/api/erp/sales/orders/%s/return" % no, {
             "warehouseId": w["WH-01"], "lines": [{"skuId": s["P-002"], "qty": 5}],
+            # 退货原因必填：QUALITY（质量问题）→ 强制入禁发仓并生成不良记录；
+            # OTHER（其它原因）→ 正常回良品仓。不选的话后端直接拒绝。
+            "returnReason": "OTHER",
             "remark": "【演示-销售退货】外观磕碰退回",
         })
         if not r.get("ok"):

@@ -1,0 +1,553 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+质检模块端到端验收脚本（QC-SPEC §8 的 AC 逐条动态验证）。
+
+**为什么要有这个脚本**：Spec 里 15 条 AC，静态审查能看出"代码写了没有"，
+看不出"跑起来对不对"。而这个模块的缺陷几乎全是「错了不报错」型——
+账面正常、页面正常、良率看着合理，月底盘账才发现。
+所以必须真跑一遍。
+
+**用法**：
+    python tools/qc-e2e.py                    # 自建隔离库、起服务、跑完自动清理
+    python tools/qc-e2e.py --keep             # 保留环境便于排查
+    python tools/qc-e2e.py --port 8141
+
+**判定标准**：每条 AC 一组断言，任一失败即 FAIL 并打印失败原因。
+"""
+
+import argparse
+import http.cookiejar
+import json
+import os
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+
+PROJ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = PROJ
+
+DB_HOST = "127.0.0.1"
+DB_PORT = 3306
+DB_USER = "devicehub"
+DB_PASS = "DeviceHub2026"
+# 用已授权的验证库名。devicehub 用户只对固定几个库有权限，
+# 不能自己 create 新库——那是本地环境的授权限制，不是脚本的问题。
+DB_NAME = "devicehub_verify"
+ADMIN_PASS = "123456"
+
+MVN = os.path.join(ROOT, "..", "tools", "apache-maven-3.9.9", "bin", "mvn")
+JAR = os.path.join(PROJ, "target", "device-hub.jar")
+
+_results = []
+
+
+def log(msg):
+    print("  %s" % msg, flush=True)
+
+
+def ok(name, detail=""):
+    _results.append((True, name, detail))
+    print("  [PASS] %s %s" % (name, detail), flush=True)
+
+
+def fail(name, detail=""):
+    _results.append((False, name, detail))
+    print("  [FAIL] %s %s" % (name, detail), flush=True)
+
+
+def as_rows(x):
+    """列表接口的返回体格式不统一：有的是 {rows:[...]}，有的是 [...] 本身。"""
+    if isinstance(x, list):
+        return x
+    if isinstance(x, dict):
+        for k in ("rows", "data", "items", "list"):
+            v = x.get(k)
+            if isinstance(v, list):
+                return v
+    return []
+
+
+def check(cond, name, detail=""):
+    if cond:
+        ok(name, detail)
+    else:
+        fail(name, detail)
+    return cond
+
+
+def no_proxy_opener():
+    """本机直连，不走 HTTP 代理。
+
+    这台机器设了 HTTP_PROXY，urllib 默认拿它去请求 127.0.0.1，
+    本地回环被代理拦下返回 502。本机直连必须显式禁代理。
+    """
+    return urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
+class Api:
+    def __init__(self, port):
+        self.base = "http://127.0.0.1:%d" % port
+        self.cj = http.cookiejar.CookieJar()
+        self.op = no_proxy_opener()
+        self.op.add_handler(urllib.request.HTTPCookieProcessor(self.cj))
+
+    def send(self, method, path, body=None):
+        data = json.dumps(body).encode("utf-8") if body is not None else None
+        req = urllib.request.Request(
+            self.base + path, data=data, method=method,
+            headers={"Content-Type": "application/json"})
+        try:
+            with self.op.open(req, timeout=30) as r:
+                return json.loads(r.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            body_txt = e.read().decode("utf-8", "replace")
+            try:
+                return json.loads(body_txt)
+            except Exception:
+                return {"ok": False, "httpStatus": e.code, "raw": body_txt[:300]}
+
+    def get(self, path):
+        return self.send("GET", path)
+
+    def post(self, path, body=None):
+        return self.send("POST", path, body if body is not None else {})
+
+    def put(self, path, body=None):
+        return self.send("PUT", path, body if body is not None else {})
+
+
+def db(database=None):
+    import pymysql
+    return pymysql.connect(host=DB_HOST, port=DB_PORT, user=DB_USER,
+                           password=DB_PASS, database=database, charset="utf8mb4")
+
+
+def wait_login(port, timeout=90):
+    """等到「能登录」为止，而不是等「端口通」。
+
+    Tomcat 先开始监听，管理员账号是 DataInitializer 随后才建的。
+    只等端口通的话，紧接着的登录会拿到 401「用户名或密码不对」——
+    看着像密码错了，其实是还没建好。
+    """
+    api = Api(port)
+    for _ in range(timeout):
+        try:
+            r = api.post("/api/auth/login", {"username": "admin", "password": ADMIN_PASS})
+            if r.get("ok"):
+                return True
+        except Exception:
+            pass
+        time.sleep(1)
+    return False
+
+
+def start_service(port, logfile):
+    env = dict(os.environ)
+    env["DEVICEHUB_DB_PASSWORD"] = DB_PASS
+    env["NO_PROXY"] = "127.0.0.1,localhost"
+    env["no_proxy"] = "127.0.0.1,localhost"
+    url = ("jdbc:mysql://%s:%d/%s?useUnicode=true&characterEncoding=utf8"
+           "&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true"
+           % (DB_HOST, DB_PORT, DB_NAME))
+    cmd = ["java", "-Xms256m", "-Xmx512m", "-jar", JAR,
+           "--server.port=%d" % port,
+           "--spring.datasource.url=" + url,
+           "--system.admin.password=" + ADMIN_PASS]
+    with open(logfile, "wb") as f:
+        p = subprocess.Popen(cmd, stdout=f, stderr=subprocess.STDOUT, cwd=PROJ, env=env)
+    return p
+
+
+def stop_service(proc, port):
+    try:
+        proc.terminate()
+        proc.wait(timeout=20)
+    except Exception:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+
+
+def seed(port):
+    env = dict(os.environ)
+    env["NO_PROXY"] = "127.0.0.1,localhost"
+    env["no_proxy"] = "127.0.0.1,localhost"
+    p = subprocess.run([sys.executable, os.path.join(PROJ, "tools", "seed-demo.py"),
+                        "--base", "http://127.0.0.1:%d" % port, "--pass", ADMIN_PASS],
+                       capture_output=True, text=True, encoding="utf-8", errors="replace",
+                       cwd=PROJ, env=env)
+    if p.returncode != 0:
+        print(p.stdout[-1500:])
+        print(p.stderr[-800:])
+        raise SystemExit("播种失败：旧环境起不来就没法造存量数据")
+    return p.stdout.strip().splitlines()[-1] if p.stdout.strip() else "?"
+
+
+def seed_two_channels(work_order_no, device_code):
+    """造同一工单的两条记录：设备通道 3 件 + 人工通道 2 件。
+
+    直接写库：设备通道的记录只能由同步任务生成，而演示数据里
+    设备没有 reject 点位、prod_hourly 的 defect 恒为 0，造不出 3 件。
+    写库只为验对账口径，不走业务接口——业务路径另有单测覆盖。
+    """
+    now = int(time.time() * 1000)
+    conn = db(DB_NAME)
+    cur = conn.cursor()
+    # 同时造一条 prod_hourly：设备采集数（deviceQty）是从 prod_hourly 读的，
+    # 只造质量域记录的话两个数对不上（一个 3 一个 0），
+    # 那不是代码问题，是造数据造歪了——两个通道本来就该互为镜像。
+    if device_code:
+        hour = (now // 3600000) * 3600000
+        # insert ignore：演示数据可能已经有同一 device+hour 的行（唯一键冲突）。
+        # 普通 insert 失败时 MySQL 只回滚那一条语句，后续语句照跑——
+        # 结果就是质量域记录插进去了、prod_hourly 没插进去，两个数对不上。
+        # ⚠️ prod_hourly 的 double 列不能是 NULL：实体里它们是 primitive double
+        # （不是 Double），Hibernate 读到 NULL 会抛
+        # "Null value was assigned to a property ... of primitive type"，
+        # 整个接口 500。所以这里把所有 double 列都填上值。
+        cur.execute(
+            "insert ignore into prod_hourly (device_code, device_name, hour_start, output, defect, "
+            " run_sec, stop_sec, idle_sec, alarm_sec, backfill, unknown_sec) "
+            "values (%s, 'e2e', %s, 100, 3, 3600, 0, 0, 0, 0, 0)", (device_code, hour))
+        cur.execute(
+            "update prod_hourly set defect = 3 where device_code = %s and hour_start = %s",
+            (device_code, hour))
+    for src, qty, key in [("DEVICE", "3", "DEV:E2E:%s:%d" % (device_code or "X", now)),
+                          ("MANUAL", "2", "MANUAL:E2E:%s:%d" % (work_order_no, now))]:
+        cur.execute(
+            "insert into erp_qc_defect "
+            "(defect_no, source, source_key, work_order_no, device_code, qty, in_stock, "
+            " status, disposed_qty, found_at, registered_by, recon_state, created_at, updated_at) "
+            "values (%s, %s, %s, %s, %s, %s, 0, 'PENDING', 0, %s, 'e2e', '', %s, %s)",
+            ("E2E%s%d" % (src[:3], now % 100000), src, key, work_order_no,
+             device_code, qty, now, now, now))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+def main():
+    global DB_NAME
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--port", type=int, default=8141)
+    ap.add_argument("--keep", action="store_true")
+    ap.add_argument("--db", default=DB_NAME, help="隔离库名（默认用已授权的验证库）")
+    args = ap.parse_args()
+    DB_NAME = args.db
+
+    os.environ["NO_PROXY"] = "127.0.0.1,localhost"
+    os.environ["no_proxy"] = "127.0.0.1,localhost"
+
+    if not os.path.exists(JAR):
+        raise SystemExit("jar 不存在，先跑 mvn clean package：%s" % JAR)
+
+    print("=== 质检模块端到端验收 ===")
+    c = db(None)
+    cur = c.cursor()
+    cur.execute("drop database if exists `%s`" % DB_NAME)
+    cur.execute("create database `%s` default charset utf8mb4" % DB_NAME)
+    c.close()
+    log("隔离库 %s 已建（不碰交付库 devicehub）" % DB_NAME)
+
+    logfile = os.path.join(PROJ, "target", "qc-e2e.log")
+    proc = start_service(args.port, logfile)
+    try:
+        if not wait_login(args.port):
+            tail = ""
+            if os.path.exists(logfile):
+                with open(logfile, "rb") as f:
+                    tail = f.read().decode("gbk", "replace")[-2500:]
+            print(tail)
+            raise SystemExit("服务起来了但 admin 始终登录不了")
+        log("服务已就绪")
+
+        log("播种演示数据：%s" % seed(args.port))
+        api = Api(args.port)
+        api.post("/api/auth/login", {"username": "admin", "password": ADMIN_PASS})
+
+        run_checks(api)
+    finally:
+        stop_service(proc, args.port)
+        if not args.keep:
+            c = db(None)
+            cur = c.cursor()
+            cur.execute("drop database if exists `%s`" % DB_NAME)
+            c.close()
+            log("隔离库已清理")
+        else:
+            log("保留环境：库 %s / 日志 %s" % (DB_NAME, logfile))
+
+    passed = sum(1 for r in _results if r[0])
+    total = len(_results)
+    print()
+    print("=== 结果：%d / %d 通过 ===" % (passed, total))
+    if passed != total:
+        print("失败项：")
+        for good, name, detail in _results:
+            if not good:
+                print("  - %s %s" % (name, detail))
+        raise SystemExit(1)
+    print("全部通过")
+
+
+def run_checks(api):
+    print()
+    print("--- ① 看板与帕累托字段对齐 ---")
+    r = api.get("/api/erp/qc/dashboard")
+    check(r.get("ok"), "看板可用", str(r.get("message", "")))
+    for f in ["defectRate", "deviceDefectRate", "qcDefectQty", "qcInspectedQty",
+              "deviceOutputQty", "deviceDefectQty", "pendingQty", "pendingRecords",
+              "untriagedQty", "untriagedRecords", "scrapQty", "concessionQty",
+              "deviceRawQty", "deviceAdjustedQty", "challengedCount", "trend"]:
+        check(f in r, "看板字段 %s" % f)
+    check("caliberNote" not in r, "看板不返面向用户的文案（caliberNote 由前端 i18n 写）")
+
+    r2 = api.get("/api/erp/qc/pareto?by=code")
+    check(r2.get("ok") and isinstance(r2.get("rows"), list), "帕累托可用")
+    check(any(x.get("key") is None for x in r2.get("rows", [])) or not r2.get("rows"),
+          "帕累托保留「未分类」行（不许被静默丢掉）")
+
+    print()
+    print("--- ② 检验单列表端点 ---")
+    r = api.get("/api/erp/qc/inspections")
+    check(r.get("ok"), "检验单列表可用", str(r.get("message", "")))
+    check("rows" in r and "total" in r, "列表返回 rows/total")
+
+    print()
+    print("--- ③ AQL 方案表 ---")
+    r = api.get("/api/erp/qc/aql/plans")
+    check(r.get("ok"), "AQL 方案表可用")
+    rows = r.get("rows") or []
+    check(len(rows) > 0, "方案表非空", "%d 行" % len(rows))
+    unverified = [x for x in rows if not x.get("verified")]
+    log("未核对（推算）方案 %d 条" % len(unverified))
+
+    print()
+    print("--- ④ 时间窗参数是毫秒时间戳（前端传日期串会 400 整页报错）---")
+    r = api.get("/api/erp/qc/dashboard?from=%d&to=%d"
+                % (int(time.time() * 1000) - 30 * 86400000, int(time.time() * 1000)))
+    check(r.get("ok"), "看板接受毫秒时间戳", str(r.get("message", "")))
+
+    print()
+    print("--- ⑤ 缺陷列表筛选参数真的生效（severity / partial）---")
+    r = api.get("/api/erp/qc/defects?partial=true")
+    check(r.get("ok"), "缺陷列表接受 partial 参数", str(r.get("message", "")))
+    r = api.get("/api/erp/qc/defects?severity=CR")
+    check(r.get("ok"), "缺陷列表接受 severity 参数", str(r.get("message", "")))
+
+    print()
+    print("--- ⑥ 放行校验（禁发仓 fail-safe）---")
+    r = api.get("/api/erp/qc/concession-release?whId=1&skuIds=1")
+    check(r.get("ok"), "放行校验可调用", str(r.get("message", "")))
+    check("blocked" in r, "放行结果给 blocked 标志")
+
+    print()
+    print("--- ⑦ 对账条字段 ---")
+    r = api.get("/api/erp/qc/recon")
+    check(r.get("ok"), "对账条可调用")
+    items = r.get("items") or []
+    if items:
+        f = items[0]
+        for k in ["workOrderNo", "deviceQty", "manualQty", "gap", "challenged",
+                  "effectiveQty", "source", "deviceConfigured", "deviceCollected"]:
+            check(k in f, "对账条字段 %s" % k)
+    else:
+        log("当前没有可对账的工单（跳过字段核对）")
+
+    print()
+    print("--- ⑧ 人工补录缺必填项被拒 ---")
+    # 缺缺陷分类是允许的（那正是"未分类"，等着分诊）；缺设备才是错
+    r = api.post("/api/erp/qc/defects", {"qty": 1})
+    check(r.get("ok") is False, "人工补录缺设备被拒（不静默兜底）")
+
+    print()
+    print("--- ⑨ 判定闭环：判 FAIL 必须生成不良记录（B1 / AC 核心）---")
+    skus = api.get("/api/erp/skus")
+    sku_list = as_rows(skus)
+    sku_id = None
+    for s in sku_list:
+        if s.get("code") == "P-001":
+            sku_id = s.get("id")
+            break
+    if not sku_id and sku_list:
+        sku_id = sku_list[0].get("id")
+    check(sku_id is not None, "拿到演示产品 id", str(sku_id))
+
+    if sku_id:
+        r = api.post("/api/erp/qc/inspections", {
+            "inspectionType": "FQC",
+            "skuId": sku_id,
+            "lotQty": 500,
+            "level": "GENERAL_II",
+            "strictLevel": "NORMAL",
+            "aql": 2.5,
+            "defectQty": 0,
+            "items": [],
+            "remark": "【e2e】判定闭环验证",
+        })
+        check(r.get("ok"), "检验单建单", str(r.get("message", "")))
+        no = r.get("inspectionNo")
+        if no:
+            api.put("/api/erp/qc/inspections/%s" % no, {"defectQty": 0})
+            rs = api.post("/api/erp/qc/inspections/%s/submit" % no)
+            check(rs.get("ok"), "检验单提交", str(rs.get("message", "")))
+            # 判 FAIL：不合格件数超过接收数 Ac
+            rj = api.post("/api/erp/qc/inspections/%s/judge" % no, {"defectQty": 50})
+            check(rj.get("ok"), "检验单判定", str(rj.get("message", "")))
+            check(rj.get("result") == "FAIL", "判定结果是 FAIL", str(rj.get("result")))
+            check(bool(rj.get("why")), "判定给出原因码 why", str(rj.get("why")))
+            check(bool(rj.get("judgeText")), "判定给出存档说明 judgeText")
+
+            # 关键：必须生成了 source=INSPECTION 的不良记录
+            rd = api.get("/api/erp/qc/defects?source=INSPECTION")
+            rows = rd.get("rows") or []
+            check(len(rows) >= 1, "判定后生成了不良记录（不在待处置队列就没人处置）",
+                  "%d 条" % len(rows))
+            if rows:
+                check(rows[0].get("status") == "PENDING", "不良记录进待处置队列",
+                      str(rows[0].get("status")))
+                check(abs(float(rows[0].get("qty", 0)) - 50) < 0.01,
+                      "不良件数取件数（不是缺陷项数）", str(rows[0].get("qty")))
+                check(rows[0].get("inStock") is False,
+                      "FQC 判出的不良 in_stock=false（不良品没进过成品仓）",
+                      str(rows[0].get("inStock")))
+
+            # 幂等：再判一次不应该产生第二条
+            api.post("/api/erp/qc/inspections/%s/judge" % no, {"defectQty": 50})
+            rd2 = api.get("/api/erp/qc/defects?source=INSPECTION")
+            check(len(rd2.get("rows") or []) == len(rows),
+                  "重复判定不会产生第二条不良记录（幂等键）",
+                  "%d → %d" % (len(rows), len(rd2.get("rows") or [])))
+
+    print()
+    print("--- ⑩ 退货按原因分流（B4 / AC-13 / AC-14）---")
+    r = api.get("/api/erp/sales/orders")
+    orders = as_rows(r)
+    shipped = None
+    for o in orders:
+        if str(o.get("status", "")).upper() in ("SHIPPED", "PARTIAL", "COMPLETED", "DONE"):
+            shipped = o
+            break
+    if not shipped:
+        log("没有已发货订单可退（跳过）")
+    else:
+        ono = shipped.get("orderNo")
+        # 缺原因 → 必须拒绝
+        r = api.post("/api/erp/sales/orders/%s/return" % ono, {
+            "warehouseId": shipped.get("warehouseId") or 1,
+            "lines": [{"skuId": shipped.get("skuId"), "qty": 1}],
+        })
+        check(r.get("ok") is False, "退货缺原因被拒（不落默认值）", str(r.get("message", ""))[:80])
+
+    print()
+    print("--- ⑪ 放行硬拦：禁发仓的货出不去（AC-15）---")
+    # 演示数据里没有禁发仓，造一个（禁发仓是让步接收后的存放处）
+    r = api.post("/api/erp/warehouses", {
+        "code": "HOLD-E2E", "name": "待处理仓【e2e】", "kind": "BLOCKED", "enabled": True,
+    })
+    if not r.get("ok"):
+        log("建禁发仓失败：%s（可能已存在）" % r.get("message"))
+    whs = api.get("/api/erp/warehouses")
+    wh_rows = as_rows(whs)
+    blocked = [w for w in wh_rows if w.get("kind") == "BLOCKED"]
+    log("禁发仓 %d 个" % len(blocked))
+    if blocked:
+        wh = blocked[0]
+        r = api.get("/api/erp/qc/concession-release?whId=%s&skuIds=%s"
+                    % (wh.get("id"), sku_id or 1))
+        check(r.get("ok"), "禁发仓放行校验可调用")
+        # fail-safe：禁发仓里的货没有放行依据 → 必须拦住
+        check(r.get("blocked") is True or any(h.get("blocked") for h in (r.get("hits") or [])),
+              "禁发仓无放行依据时必须拦住（fail-safe：查不到就拦）")
+        check(bool(r.get("limitCode")), "放行结果给匹配口径代号")
+    else:
+        log("没有禁发仓（跳过硬拦验证）")
+
+    print()
+    print("--- ⑫ 对账定责不放大（P0-1：定责是标记不是改数）---")
+    # 对账只认 RUNNING / DONE 的工单，演示数据里没有 → 造一张带设备的
+    if sku_id:
+        devs = as_rows(api.get("/api/devices"))
+        device_code = None
+        for d in devs:
+            code = d.get("code")
+            if code:
+                device_code = code
+                break
+        normal_wh = None
+        for w in wh_rows:
+            if w.get("kind") == "STANDARD":
+                normal_wh = w
+                break
+        if device_code and normal_wh:
+            # 用返工工单（orderType=REWORK）：下达时返工单不展开 BOM，
+            # 所以不用先配物料清单就能下达——本脚本只验对账口径，不验 BOM。
+            r = api.post("/api/erp/work-orders", {
+                "productSkuId": sku_id, "planQty": 10,
+                "deviceCode": device_code, "warehouseId": normal_wh.get("id"),
+                "orderType": "REWORK",
+                "remark": "【e2e】对账定责验证",
+            })
+            if r.get("ok"):
+                wno = r.get("orderNo")
+                rr = api.post("/api/erp/work-orders/%s/release" % wno)
+                rs2 = api.post("/api/erp/work-orders/%s/start" % wno)
+                log("已造工单 %s（设备 %s）下达=%s 开工=%s"
+                    % (wno, device_code,
+                       rr.get("message") if not rr.get("ok") else "OK",
+                       rs2.get("message") if not rs2.get("ok") else "OK"))
+                od = api.get("/api/erp/work-orders/%s" % wno)
+                log("工单状态：%s" % (od.get("status") or od.get("orderNo") or "?"))
+    r = api.get("/api/erp/qc/recon")
+    items = as_rows(r.get("items") if isinstance(r, dict) else r)
+    if not items:
+        log("没有可对责的工单（跳过）")
+    else:
+        it = items[0]
+        ono = it.get("workOrderNo")
+        # 造两条同工单的记录：设备通道 3 件、人工通道 2 件。
+        # 不造数据的话这条断言会"假通过"（0 → 0，什么都没测到）——
+        # 假通过的断言比没有断言更危险，它给人虚假的安全感。
+        seed_two_channels(ono, it.get("deviceCode"))
+        r0 = api.get("/api/erp/qc/recon")
+        it0 = as_rows(r0.get("items") if isinstance(r0, dict) else r0)
+        row0 = next((x for x in it0 if x.get("workOrderNo") == ono), None)
+        log("对账条工单号：%s / 本次造的：%s" % ([x.get("workOrderNo") for x in it0], ono))
+        log("r0 原文：%s" % json.dumps(r0, ensure_ascii=False)[:400])
+        check(row0 is not None, "对账条里能定位到这张工单")
+        if row0:
+            check(abs(float(row0.get("deviceQty", 0)) - 3) < 0.01,
+                  "设备通道数是 3", str(row0.get("deviceQty")))
+            check(abs(float(row0.get("manualQty", 0)) - 2) < 0.01,
+                  "人工通道数是 2", str(row0.get("manualQty")))
+            # 未定责时设备优先：有效通道合计 = 3（不是 3+2=5）
+            check(abs(float(row0.get("effectiveQty", 0)) - 3) < 0.01,
+                  "未定责时有效合计只算设备通道（3，不是 5）",
+                  str(row0.get("effectiveQty")))
+
+            r1 = api.post("/api/erp/qc/recon/%s/resolve" % ono,
+                          {"choice": "TRUST_QC", "reason": "【e2e】以质检为准"})
+            check(r1.get("ok"), "对账定责可调用", str(r1.get("message", "")))
+            after1 = r1.get("effectiveQtyAfter")
+            check(after1 is not None and abs(float(after1) - 2) < 0.01,
+                  "以质检为准 → 有效合计变成人工数 2（不是 3+2=5）", str(after1))
+            r2 = api.post("/api/erp/qc/recon/%s/resolve" % ono,
+                          {"choice": "TRUST_QC", "reason": "【e2e】重复定责"})
+            after2 = r2.get("effectiveQtyAfter")
+            check(after2 is not None and after1 is not None and
+                  abs(float(after1) - float(after2)) < 0.01,
+                  "重复定责合计不变（3+2 不会变 7、9）", "%s → %s" % (after1, after2))
+            # 再定责到设备：合计应回到 3，而不是继续涨
+            r3 = api.post("/api/erp/qc/recon/%s/resolve" % ono,
+                          {"choice": "TRUST_DEVICE", "reason": "【e2e】改判以设备为准"})
+            after3 = r3.get("effectiveQtyAfter")
+            check(after3 is not None and abs(float(after3) - 3) < 0.01,
+                  "改判以设备为准 → 有效合计回到 3（定责是切换不是累加）", str(after3))
+
+
+if __name__ == "__main__":
+    main()

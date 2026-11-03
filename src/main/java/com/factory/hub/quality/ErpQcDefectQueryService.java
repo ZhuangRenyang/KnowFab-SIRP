@@ -332,10 +332,9 @@ public class ErpQcDefectQueryService {
         long from = o.getActualStart() != null ? o.getActualStart()
                 : (o.getPlanStart() != null ? o.getPlanStart() : 0L);
         long to = o.getActualEnd() != null ? o.getActualEnd() : System.currentTimeMillis();
-        BigDecimal deviceQty = BigDecimal.ZERO;
-        for (ProdHourly p : prodRepo.findByDeviceCodeAndHourStartBetween(deviceCode, from, to)) {
-            deviceQty = deviceQty.add(BigDecimal.valueOf(p.getDefect()));
-        }
+        // 走统一算法（ErpQcDeviceQty）：与对账条用的是同一份，
+        // 且按"小时与时间窗有交集"算，不会漏掉开工/完工那一小时
+        BigDecimal deviceQty = ErpQcDeviceQty.of(prodRepo, deviceCode, from, to);
         BigDecimal manualQty = BigDecimal.ZERO;
         LocalDate d1 = Instant.ofEpochMilli(from).atZone(ZoneId.systemDefault()).toLocalDate();
         LocalDate d2 = Instant.ofEpochMilli(to).atZone(ZoneId.systemDefault()).toLocalDate();

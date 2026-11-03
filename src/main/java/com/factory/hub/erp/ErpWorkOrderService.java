@@ -387,21 +387,28 @@ public class ErpWorkOrderService {
         if (!ErpWorkOrder.ST_DRAFT.equals(o.getStatus())) {
             throw new IllegalArgumentException("只有草稿能下达，当前状态：" + statusLabel(o.getStatus()));
         }
-        List<ErpWorkOrderMaterial> mats = bomService.expand(o.getProductSkuId(), o.getPlanQty(),
-                o.getMaterialWhId() != null ? o.getMaterialWhId() : defaultWhId());
-
-        // 重复下达不常见，但重试会走到这里：先清掉旧快照再写，避免唯一键冲突
-        womRepo.deleteByWorkOrderId(o.getId());
-        womRepo.flush();
-
         // 返工单<b>不展开 BOM</b>：返工用的是已经出过一次的那批料（不良件），
         // 再展开一次用料清单，领料就会把这批料重复扣一次——材料成本凭空少计，
         // 而报表上一切正常。返工单没有用料清单，issue() 会自然报"这张工单没有用料"，
         // 由人自己决定要不要补领。缺料看板也因此不会把返工单列进去（它永远缺料）。
+        //
+        // ⚠️ 这个判断<b>必须在 expand() 之前</b>：expand() 在产品没配 BOM 时会直接抛
+        // "这个产品还没配 BOM，无法下达工单"。先 expand 再判断的话，
+        // 返工单永远走不到下面那句 mats = List.of() —— <b>返工单下达不了</b>，
+        // 而用户看到的报错是"没配 BOM"，与真实原因完全不符。
+        // 返工单恰恰是最不该要求配 BOM 的单子：它复用的是已经出过一次的那批料。
+        List<ErpWorkOrderMaterial> mats;
         if (o.isRework()) {
             mats = List.of();
             log.info("返工工单 {} 下达：不展开 BOM（返工不重复计料）", orderNo);
+        } else {
+            mats = bomService.expand(o.getProductSkuId(), o.getPlanQty(),
+                    o.getMaterialWhId() != null ? o.getMaterialWhId() : defaultWhId());
         }
+
+        // 重复下达不常见，但重试会走到这里：先清掉旧快照再写，避免唯一键冲突
+        womRepo.deleteByWorkOrderId(o.getId());
+        womRepo.flush();
         for (ErpWorkOrderMaterial m : mats) {
             m.setWorkOrderId(o.getId());
         }

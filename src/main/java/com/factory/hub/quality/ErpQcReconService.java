@@ -231,11 +231,9 @@ public class ErpQcReconService {
         if (deviceCode == null) {
             return BigDecimal.ZERO;
         }
-        BigDecimal sum = BigDecimal.ZERO;
-        for (ProdHourly p : prodRepo.findByDeviceCodeAndHourStartBetween(deviceCode, from, to)) {
-            sum = sum.add(BigDecimal.valueOf(p.getDefect()));
-        }
-        return sum.setScale(4, RoundingMode.HALF_UP);
+        // 走统一算法（ErpQcDeviceQty）：与人工补录基线用的是同一份，
+        // 且按"小时与时间窗有交集"算，不会漏掉开工/完工那一小时
+        return ErpQcDeviceQty.of(prodRepo, deviceCode, from, to);
     }
 
     /**
