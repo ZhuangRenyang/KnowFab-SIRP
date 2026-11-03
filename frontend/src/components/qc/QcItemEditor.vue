@@ -226,10 +226,6 @@ async function createCode() {
   gap: 10px;
   margin-top: 10px;
 }
-.hint {
-  font-size: var(--text-xs);
-  color: var(--muted);
-}
 .opt-code {
   display: inline-block;
   min-width: 64px;

@@ -87,8 +87,12 @@ export type QcBlockReason = 'NO_ACK' | 'NO_RELEASE'
 /** 退货原因。必选、无默认值：默认 OTHER 会让质量退货被系统性漏掉 */
 export type QcReturnReason = 'QUALITY' | 'OTHER'
 
-/** 批量操作时被跳过的原因（记录已处置 / 与选中项冲突 / 找不到 / 状态不允许） */
-export type QcSkipReason = 'DISPOSED' | 'CONFLICT' | 'NOT_FOUND' | 'INVALID_STATE'
+/**
+ * 批量操作时被跳过的原因。
+ * ERROR 是后端在处理本身出错时用的；其余四个是业务上的跳过原因。
+ * 都留着：后端返回哪个，前端都能给出对应的中性文案，不显示码本身。
+ */
+export type QcSkipReason = 'DISPOSED' | 'CONFLICT' | 'NOT_FOUND' | 'INVALID_STATE' | 'ERROR'
 
 /* ---------- 主数据 ---------- */
 
@@ -141,6 +145,11 @@ export interface QcAqlResolve {
   note: string | null
   /** ac === -1 */
   zeroTolerance: boolean
+  /**
+   * 语境代号：LOT_TOO_SMALL / SAMPLE_GE_LOT / ZERO_TOLERANCE。
+   * 是代号不是文案——界面按 i18n 渲染（qc.aql.reason.*）。
+   */
+  reasonCode?: string | null
   /** 失败时给出（NO_AQL_PLAN 等），供界面做「两个出路」卡片 */
   code?: string
   message?: string

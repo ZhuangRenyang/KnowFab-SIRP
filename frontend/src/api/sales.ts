@@ -124,7 +124,20 @@ export const salesApi = {
   ship: (orderNo: string, b: { warehouseId: number; remark?: string; lines: SalesLineInput[] }) =>
     http.post<{ ok: boolean; message?: string; billNo?: string }>(
       `/api/erp/sales/orders/${encodeURIComponent(orderNo)}/ship`, b),
-  returnFrom: (orderNo: string, b: { warehouseId: number; remark?: string; lines: SalesLineInput[] }) =>
+  /**
+   * 客户退货。
+   *
+   * `returnReason` 必选、无默认值（QUALITY-SPEC §3.5、AC-14）：
+   * 默认 QUALITY → 队列全是噪音；默认 OTHER → 质量退货被系统性漏掉。
+   * 后端收到 QUALITY 会生成待处置的不良记录并把货放进禁发仓；
+   * OTHER 直接回良品仓、不生成记录。
+   */
+  returnFrom: (orderNo: string, b: {
+    warehouseId: number
+    remark?: string
+    returnReason?: 'QUALITY' | 'OTHER'
+    lines: SalesLineInput[]
+  }) =>
     http.post<{ ok: boolean; message?: string; billNo?: string }>(
       `/api/erp/sales/orders/${encodeURIComponent(orderNo)}/return`, b),
   open: (limit = 10) => http.get<SalesOrderRow[]>(`/api/erp/sales/open?limit=${limit}`)

@@ -20,7 +20,7 @@
         <div>
           <label class="jf-lb">{{ t('qc.insp.defectQtyInput') }}</label>
           <el-input-number
-            v-model="defectQty"
+            v-model="localQty"
             :min="0"
             :precision="0"
             controls-position="right"
@@ -31,7 +31,7 @@
         <div>
           <label class="jf-lb">{{ t('qc.insp.crCount') }}</label>
           <el-input-number
-            v-model="defectCr"
+            v-model="localCr"
             :min="0"
             :precision="0"
             controls-position="right"
@@ -157,8 +157,6 @@ const previewText = computed(() => {
   const base = splitJudgeHint(props.judgeText, props.fullInspection)
   return base || t('qc.insp.previewFallback')
 })
-
-defineExpose({ conditional, condReason })
 </script>
 
 <style scoped>

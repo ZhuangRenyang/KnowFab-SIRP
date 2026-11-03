@@ -79,8 +79,14 @@ export function runAqlSelfTest(): { passed: boolean; total: number; cases: SelfT
   check('判定：等于 Ac 判 PASS', j3.verdict === 'PASS' && j3.why === 'WITHIN_AC')
   const j4 = previewVerdict({ defectCr: 0, defectQty: 3, ac: 2, re: 3 })
   check('判定：等于 Re 判 FAIL', j4.verdict === 'FAIL' && j4.why === 'OVER_RE')
-  const j5 = previewVerdict({ defectCr: 0, defectQty: 9, ac: 2, re: 3 })
-  check('判定：数据不自洽时不做猜测', j5.inconsistent === true)
+  // 数据不自洽：一次抽样里 Re 恒等于 Ac+1，qty 落在 Ac 与 Re 之间时无法判定。
+  // 用 ac=2 / re=5 / qty=3 构造这种情况（后端 ErpInspectionJudge 在这里抛异常）
+  const j5 = previewVerdict({ defectCr: 0, defectQty: 3, ac: 2, re: 5 })
+  check('判定：数据不自洽时不做猜测', j5.inconsistent === true,
+    `inconsistent=${j5.inconsistent}`)
+  const j6 = previewVerdict({ defectCr: 0, defectQty: 9, ac: 2, re: 3 })
+  check('判定：远超 Re 仍是正常 FAIL（不是不自洽）',
+    j6.verdict === 'FAIL' && j6.why === 'OVER_RE' && j6.inconsistent === false)
 
   const passed = cases.filter((c) => c.passed).length
   return { passed: passed === cases.length, total: cases.length, cases }

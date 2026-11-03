@@ -85,6 +85,17 @@
   line-height: 1.2;
 }
 
+/* 卡片的副行（口径说明、补充数字）。两个页面都在用，收在这里改一次生效 */
+.kpi-sub {
+  margin-top: 2px;
+  font-size: var(--text-2xs);
+  color: var(--muted);
+}
+
+.kpi-sub .dot {
+  margin: 0 5px;
+}
+
 /* 需要强调"这个数不正常"的卡（缺料、报废损失、待处置） */
 .kpi.warn .kpi-value,
 .kpi-warn .kpi-value {

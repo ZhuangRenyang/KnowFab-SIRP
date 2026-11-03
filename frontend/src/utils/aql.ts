@@ -77,8 +77,15 @@ export interface SamplingResult {
   fullInspection: boolean
   /** 查表依据，界面弹层逐条展示 */
   trace: TraceStep[]
-  /** 服务端给的说明（如"样本量不小于批量，按全检执行"）。本地预览时为空 */
+  /** 服务端给的说明（本地预览时为空） */
   note?: string | null
+  /**
+   * 服务端给的语境代号：LOT_TOO_SMALL / SAMPLE_GE_LOT / ZERO_TOLERANCE。
+   * <p>
+   * 是代号不是文案——后端塞中文则英文界面蹦中文。界面按 i18n 渲染
+   * （{@code t('qc.aql.reason.' + reasonCode)}），未知代号退化成中性文案。
+   */
+  reasonCode?: string | null
 }
 
 /** 水平归一化：接受 GENERAL_II 与现场的 II / 2 两种写法 */

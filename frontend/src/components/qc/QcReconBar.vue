@@ -22,7 +22,7 @@
         <b class="num">{{ qty(data?.effectiveQty ?? 0) }}</b>
       </span>
     </el-tooltip>
-    <el-tag v-if="data?.source === 'CHALLENGED'" size="small" type="warning" effect="light">
+    <el-tag v-if="data?.challenged" size="small" type="warning" effect="light">
       {{ t('qc.recon.challenged') }}
     </el-tag>
   </div>
@@ -52,7 +52,7 @@
 
     <!-- 两边都 > 0：不自动相加，标记成待核对。绝不能悄悄把两个数加起来 -->
     <el-alert
-      v-if="data?.source === 'CHALLENGED'"
+      v-if="data?.challenged"
       type="warning"
       :closable="false"
       show-icon
@@ -60,7 +60,7 @@
       :title="t('qc.recon.challengedTitle')"
       :description="t('qc.recon.challengedDesc')"
     />
-    <p v-else-if="data?.note" class="rc-note">{{ data.note }}</p>
+    <p v-else-if="gapText" class="rc-note">{{ gapText }}</p>
   </div>
 </template>
 
@@ -68,35 +68,44 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { qty } from '@/utils/format'
-import type { QcRecon } from '@/api/qc'
+import type { QcReconView } from '@/api/qc'
 
 const props = withDefaults(defineProps<{
-  data?: QcRecon | null
+  data?: QcReconView | null
   variant?: 'compact' | 'full'
 }>(), { data: null, variant: 'compact' })
 
-const { t } = useI18n()
+// te：判断 i18n 键是否存在。用于「未知代号退化成中性文案」——
+// 缺键时 vue-i18n 会返回键路径原文，那等于把内部码暴露给用户。
+const { t, te } = useI18n()
 
-/** 以哪条通道为准 —— 这句话决定用户要不要去核对，必须说清楚 */
+/**
+ * 以哪条通道为准 —— 这句话决定用户要不要去核对，必须说清楚。
+ *
+ * source 是后端给的代号（不是文案，英文界面不能蹦中文）：
+ *   DEVICE_PRIORITY 设备采到了数，按设备优先（人工不叠加）
+ *   MANUAL_ONLY     设备没数，人工是唯一来源
+ *   NO_DEVICE       工单没设备 / 设备没配 reject 点位
+ * 两边数不一致时（challenged）优先说"待核对"——那是要人去做决定的信号。
+ */
 const sourceLabel = computed(() => {
-  switch (props.data?.source) {
-    case 'DEVICE':
-      return t('qc.recon.srcDevice')
-    case 'MANUAL':
-      return t('qc.recon.srcManual')
-    case 'CHALLENGED':
-      return t('qc.recon.srcChallenged')
-    default:
-      return t('qc.recon.srcNone')
-  }
+  if (props.data?.challenged) return t('qc.recon.challenged')
+  const code = props.data?.source
+  if (!code) return t('qc.recon.source.NO_DEVICE')
+  // 未知代号退化成中性文案（不显示码本身，也不白屏）
+  const key = 'qc.recon.source.' + code
+  return te(key) ? t(key) : t('qc.recon.source.NO_DEVICE')
 })
 
-const sourceHint = computed(() => {
-  const s = props.data?.source
-  if (s === 'DEVICE') return t('qc.recon.srcDevice')
-  if (s === 'MANUAL') return t('qc.recon.srcManual')
-  if (s === 'CHALLENGED') return t('qc.recon.srcChallenged')
-  return t('qc.recon.srcNone')
+const sourceHint = computed(() => sourceLabel.value)
+
+/** 差了多少：人工比设备多还是少 */
+const gapText = computed(() => {
+  const gap = props.data?.gap
+  if (gap === undefined || gap === null || gap === 0) return ''
+  return gap > 0
+    ? t('qc.recon.gapMore', { n: Math.abs(gap) })
+    : t('qc.recon.gapLess', { n: Math.abs(gap) })
 })
 </script>
 

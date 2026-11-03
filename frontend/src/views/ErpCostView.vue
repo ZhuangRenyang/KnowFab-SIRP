@@ -222,14 +222,6 @@ onMounted(() => {
   color: var(--fg);
   line-height: 1.25;
 }
-.kpi-sub {
-  margin-top: 2px;
-  font-size: 11px;
-  color: var(--muted);
-}
-.kpi-sub .dot {
-  margin: 0 5px;
-}
 .mix {
   margin-top: 6px;
 }

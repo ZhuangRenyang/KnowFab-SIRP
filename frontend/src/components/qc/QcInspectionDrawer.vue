@@ -80,44 +80,7 @@
         <span class="dt-sec-title">{{ t('qc.insp.secItems') }}</span>
         <span class="dt-sec-sub">{{ t('qc.insp.itemsCount', { n: detail.items.length }) }}</span>
       </div>
-      <el-table :data="detail.items" size="small" stripe :empty-text="t('qc.item.empty')">
-        <el-table-column :label="t('qc.item.colName')" min-width="150">
-          <template #default="{ row }">
-            <div class="cell-main">{{ row.itemName }}</div>
-            <div class="cell-sub">{{ row.standard || '--' }}</div>
-          </template>
-        </el-table-column>
-        <el-table-column :label="t('qc.item.colMethod')" width="110">
-          <template #default="{ row }">{{ row.method || '--' }}</template>
-        </el-table-column>
-        <el-table-column :label="t('qc.item.colDefect')" min-width="150">
-          <template #default="{ row }">
-            <span v-if="row.defectCode" class="num">{{ row.defectCode }}</span>
-            <span v-if="row.defectName" class="muted"> {{ row.defectName }}</span>
-            <span v-if="!row.defectCode" class="muted">--</span>
-            <el-tag
-              v-if="row.severity"
-              size="small"
-              effect="plain"
-              class="ml8"
-              :type="gradeType(row.severity)"
-            >{{ t('qc.severity.' + row.severity) }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column :label="t('qc.item.colMeasured')" min-width="130">
-          <template #default="{ row }">{{ row.measured || '--' }}</template>
-        </el-table-column>
-        <el-table-column :label="t('qc.item.colResult')" width="80">
-          <template #default="{ row }">
-            <el-tag size="small" effect="light" :type="row.result === 'NG' ? 'danger' : 'success'">
-              {{ row.result === 'NG' ? t('qc.item.ng') : t('qc.item.ok') }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column :label="t('qc.item.colQty')" width="80" align="right">
-          <template #default="{ row }"><span class="num">{{ qty(row.defectQty, 0) }}</span></template>
-        </el-table-column>
-      </el-table>
+      <QcItemTable :items="detail.items" />
 
       <!-- 判定区 -->
       <div class="dt-sec">
@@ -176,11 +139,12 @@ import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
 import {
-  gradeType, qcInspectionApi, qcStatusType, verdictType,
+  qcInspectionApi, qcStatusType, verdictType,
   type QcInspectionDetail
 } from '@/api/qc'
 import { useAuthStore } from '@/stores/auth'
 import { qty } from '@/utils/format'
+import QcItemTable from './QcItemTable.vue'
 import QcJudgePanel from './QcJudgePanel.vue'
 import QcSamplingSnapshot from './QcSamplingSnapshot.vue'
 
@@ -308,6 +272,5 @@ async function doCancel() {
   font-size: var(--text-xs);
   color: var(--muted);
 }
-.grow { flex: 1; }
 .snap-wrap { margin-bottom: 4px; }
 </style>

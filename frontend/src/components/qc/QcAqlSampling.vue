@@ -11,12 +11,12 @@
             :precision="0"
             controls-position="right"
             class="w-full"
-            @update:model-value="onLotQty"
+            @update:model-value="(v: number | undefined) => emitChange({ lotQty: v || 1 })"
           />
         </div>
         <div>
           <label class="aq-lb">{{ t('qc.aql.level') }}</label>
-          <el-select :model-value="level" class="w-full" @update:model-value="onLevel">
+          <el-select :model-value="level" class="w-full" @update:model-value="(v: QcLevel) => emitChange({ level: v })">
             <el-option v-for="l in QC_LEVELS" :key="l" :value="l" :label="t('qc.level.' + l)" />
           </el-select>
         </div>
@@ -24,13 +24,13 @@
       <div class="frow">
         <div>
           <label class="aq-lb">{{ t('qc.aql.strict') }}</label>
-          <el-select :model-value="strictLevel" class="w-full" @update:model-value="onStrict">
+          <el-select :model-value="strictLevel" class="w-full" @update:model-value="(v: QcStrictLevel) => emitChange({ strictLevel: v })">
             <el-option v-for="s in STRICT_LEVELS" :key="s" :value="s" :label="t('qc.strictLevel.' + s)" />
           </el-select>
         </div>
         <div>
           <label class="aq-lb">{{ t('qc.aql.value') }}</label>
-          <el-select :model-value="aql" class="w-full" @update:model-value="onAql">
+          <el-select :model-value="aql" class="w-full" @update:model-value="(v: number) => emitChange({ aql: v })">
             <el-option v-for="a in AQL_VALUES" :key="a" :value="a" :label="a + '%'" />
           </el-select>
         </div>
@@ -105,7 +105,7 @@
       />
     </div>
 
-    <p v-if="result?.note" class="aq-note">{{ result.note }}</p>
+    <p v-if="reasonText" class="aq-note">{{ reasonText }}</p>
   </div>
 </template>
 
@@ -115,7 +115,7 @@ import { useI18n } from 'vue-i18n'
 import { Edit, InfoFilled, Plus, Right } from '@element-plus/icons-vue'
 import { QC_LEVELS, STRICT_LEVELS, type QcLevel, type QcStrictLevel } from '@/api/qc'
 import { resolveSampling, type SamplingResult, type TraceStep } from '@/utils/aql'
-import { AQL_VALUES } from '@/utils/aqlTable'
+import { AQL_VALUES, type AqlTableRow } from '@/utils/aqlTable'
 import { qty } from '@/utils/format'
 
 const props = withDefaults(defineProps<{
@@ -125,6 +125,8 @@ const props = withDefaults(defineProps<{
   aql?: number | null
   /** 服务端算好的结果。有它就以服务端为准（真值在服务端） */
   resolved?: SamplingResult | null
+  /** 服务端的方案表。查表依据从它算，说明和结论来自同一份数据 */
+  plans?: AqlTableRow[]
   /** 主数据缺失时的兜底模式：临时全检 + 零允收 */
   manualMode?: boolean
   editable?: boolean
@@ -133,6 +135,7 @@ const props = withDefaults(defineProps<{
   strictLevel: 'NORMAL',
   aql: 1.0,
   resolved: null,
+  plans: () => [],
   manualMode: false,
   editable: true
 })
@@ -142,17 +145,42 @@ const emit = defineEmits<{
   (e: 'outlet', v: 'changeLot' | 'addPlan'): void
 }>()
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 
-/** 本地预览（服务端结果到达之前用）；有服务端结果就以服务端为准 */
+/**
+ * 查表语境说明：后端给代号，前端给文案。
+ *
+ * 未知代号退化成中性文案 + 不显示码本身——
+ * 缺键时 vue-i18n 会返回键路径原文，那等于把内部码暴露给用户。
+ */
+const reasonText = computed(() => {
+  const code = props.resolved?.reasonCode
+  if (!code) return props.resolved?.note || ''
+  const key = 'qc.aql.reason.' + code
+  return te(key) ? t(key) : props.resolved?.note || ''
+})
+
+/**
+ * 结果的取法，优先级从高到低：
+ * 1. resolved —— 服务端 /aql/resolve 的返回。**这是判定真值**：
+ *    客户的方案表是可维护的（验厂常要求按自己的 AQL 组合执行），
+ *    前端内置的参考表只是预览，服务端说多少就是多少。
+ * 2. 服务端查不到（found=false）—— 原样透传，不自己兜底算一个 Ac。
+ * 3. 服务端结果还没到 —— 用本地参考表先显示一个预览。
+ *
+ * trace（查表依据）用服务端方案表算，这样说明和结论来自同一份数据。
+ */
 const result = computed<SamplingResult | null>(() => {
-  if (props.resolved) return props.resolved
-  return resolveSampling({
+  const local = resolveSampling({
     lotQty: props.lotQty,
     level: props.level || 'GENERAL_II',
     strictLevel: props.strictLevel || 'NORMAL',
-    aql: props.aql ?? 1.0
+    aql: props.aql ?? 1.0,
+    plans: props.plans
   })
+  if (!props.resolved) return local
+  // 服务端结果 + 本地算出的查表依据
+  return { ...props.resolved, trace: local.trace }
 })
 
 const trace = computed<TraceStep[]>(() => result.value?.trace || [])
@@ -170,17 +198,14 @@ const acText = computed(() => {
   return t('qc.aql.acValue', { ac: r.ac, re: r.re })
 })
 
-function onLotQty(v: number | undefined) {
-  emit('change', { lotQty: v || 1, level: props.level || 'GENERAL_II', strictLevel: props.strictLevel || 'NORMAL', aql: props.aql ?? 1.0 })
-}
-function onLevel(v: QcLevel) {
-  emit('change', { lotQty: props.lotQty, level: v, strictLevel: props.strictLevel || 'NORMAL', aql: props.aql ?? 1.0 })
-}
-function onStrict(v: QcStrictLevel) {
-  emit('change', { lotQty: props.lotQty, level: props.level || 'GENERAL_II', strictLevel: v, aql: props.aql ?? 1.0 })
-}
-function onAql(v: number) {
-  emit('change', { lotQty: props.lotQty, level: props.level || 'GENERAL_II', strictLevel: props.strictLevel || 'NORMAL', aql: v })
+/** 改任意一项就把整组参数发出去（父组件持有真值，这里不做局部状态） */
+function emitChange(p: Partial<{ lotQty: number; level: QcLevel; strictLevel: QcStrictLevel; aql: number }>) {
+  emit('change', {
+    lotQty: p.lotQty ?? props.lotQty,
+    level: p.level ?? props.level ?? 'GENERAL_II',
+    strictLevel: p.strictLevel ?? props.strictLevel ?? 'NORMAL',
+    aql: p.aql ?? props.aql ?? 1.0
+  })
 }
 </script>
 
@@ -197,9 +222,7 @@ function onAql(v: number) {
   color: var(--muted);
   margin-bottom: 4px;
 }
-.aq-input .frow {
-  margin-bottom: 10px;
-}
+.aq-input .frow { margin-bottom: 10px; }
 .aq-chain {
   display: flex;
   align-items: stretch;
@@ -244,19 +267,13 @@ function onAql(v: number) {
   color: var(--meta);
   cursor: help;
 }
-.aq-info:hover {
-  color: var(--accent);
-}
+.aq-info:hover { color: var(--accent); }
 .aq-trace {
   max-width: 320px;
   line-height: 1.7;
 }
-.aq-trace-row {
-  font-size: var(--text-xs);
-}
-.aq-alert {
-  margin-top: 10px;
-}
+.aq-trace-row { font-size: var(--text-xs); }
+.aq-alert { margin-top: 10px; }
 .aq-outlets {
   display: flex;
   gap: 8px;
@@ -286,9 +303,7 @@ function onAql(v: number) {
   font-size: var(--text-2xs);
   color: var(--muted);
 }
-.aq-manual {
-  margin-top: 10px;
-}
+.aq-manual { margin-top: 10px; }
 .aq-note {
   margin: 8px 0 0;
   font-size: var(--text-xs);

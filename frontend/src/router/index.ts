@@ -25,6 +25,9 @@ export const router = createRouter({
     { path: '/erp/finance', component: () => import('@/views/ErpFinanceView.vue'), meta: { title: '财务管理' } },
     { path: '/erp/reports', component: () => import('@/views/ErpReportView.vue'), meta: { title: '经营报表' } },
     { path: '/erp/cost', component: () => import('@/views/ErpCostView.vue'), meta: { title: '成本核算' } },
+    // 质量管理：1 条路由 + 4 个 tab（看板 / 检验单 / 不良品 / 主数据）
+    // 不加 5 个一级菜单——ERP 组已有 11 项，加到 16 项在 1366×768 一体机上会出滚动条
+    { path: '/erp/quality', component: () => import('@/views/ErpQualityView.vue'), meta: { title: '质量管理' } },
     // 销售角色唯一可进的页面
     { path: '/erp/sales-query', component: () => import('@/views/SalesQueryView.vue'),
       meta: { title: '销售查询', roles: ['ADMIN', 'MANAGER', 'LEADER', 'SALES'] } },

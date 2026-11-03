@@ -73,7 +73,7 @@ export const RETURN_REASONS: readonly QcReturnReason[] = ['QUALITY', 'OTHER']
 
 /** 批量操作跳过原因 */
 export const SKIP_REASONS: readonly QcSkipReason[] = [
-  'DISPOSED', 'CONFLICT', 'NOT_FOUND', 'INVALID_STATE'
+  'DISPOSED', 'CONFLICT', 'NOT_FOUND', 'INVALID_STATE', 'ERROR'
 ]
 
 /* ---------- i18n 词条 ---------- */

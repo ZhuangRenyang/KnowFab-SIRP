@@ -6,7 +6,7 @@ import { http } from './http'
    前端能伪造的操作人没有意义。 */
 
 export type AuditCategory =
-  | 'DEVICE' | 'ENERGY' | 'ALARM' | 'REPORT' | 'SYSTEM' | 'MANUAL' | 'USER'
+  | 'DEVICE' | 'ENERGY' | 'ALARM' | 'REPORT' | 'QUALITY' | 'SYSTEM' | 'MANUAL' | 'USER'
 
 export type AuditAction =
   | 'CREATE' | 'UPDATE' | 'DELETE' | 'WRITE' | 'PURGE' | 'REVOKE' | 'RESET' | 'LOGIN'
@@ -51,7 +51,7 @@ export interface AuditResponse {
 
 /** 分类下拉的取值顺序（与后端枚举一致）；显示文案走 i18n */
 export const AUDIT_CATEGORIES: AuditCategory[] = [
-  'DEVICE', 'ENERGY', 'ALARM', 'REPORT', 'SYSTEM', 'MANUAL', 'USER'
+  'DEVICE', 'ENERGY', 'ALARM', 'REPORT', 'QUALITY', 'SYSTEM', 'MANUAL', 'USER'
 ]
 
 /** 后端枚举 → i18n 词条 key。显示文案不写死在代码里 */
