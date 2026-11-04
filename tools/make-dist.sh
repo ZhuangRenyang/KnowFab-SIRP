@@ -230,5 +230,5 @@ cat <<EOF
   sha256sum -c SHA256SUMS        # 核对完整性
   sudo ./install.sh
 
-提醒：这个包不带 application.yml，配置由 install.sh 按现场生成（含随机管理员密码）。
+提醒：这个包不带 application.yml，配置由 install.sh 按现场生成（管理员 admin / 123456）。
 EOF

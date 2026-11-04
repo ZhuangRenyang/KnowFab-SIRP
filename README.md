@@ -89,6 +89,16 @@ Write these on the handover sheet — the installer no longer prints a random pa
 > (`--db-pass 'xxx'` for `install.sh`, `DB_PASSWORD` in `.env` for Docker),
 > or change it in **System → Database password** and restart the service.
 
+### Which file to download
+
+Each release has three packages — they are **not** interchangeable:
+
+| File | Who uses it |
+|---|---|
+| `device-hub-<ver>-installer.zip` | **Server install — this is the one to hand to the customer.** Contains the jar, `install.sh` and the `bin/` operations scripts (backup / restore / upgrade). Unzip, then `sudo bash install.sh`. |
+| `device-hub-<ver>-update.zip` | The **signed upgrade package** for the web UI (*System → Check for updates*). The client only accepts this one (signature is verified). |
+| `device-hub-<ver>-portable.zip` | Windows **portable** build (bundles its own database, no install needed). |
+
 ## Install
 
 Three options — **① is the recommended one**: nothing to install on the target machine, a single

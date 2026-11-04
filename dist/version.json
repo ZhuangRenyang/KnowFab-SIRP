@@ -1,5 +1,6 @@
 {
-  "version": "1.0.23",
-  "url": "https://github.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.23/device-hub-1.0.23.zip",
-  "sha256": "8340f098f2e50bc71ed15bc58aeec1ca0040727b03125bcf6d4ed1b3545ee11e"
+  "version": "1.0.24",
+  "notes": "默认账号密码固定为 admin/123456（网页登录与数据库），不再随机生成密码文件；修正全厂需量与电量的计量口径（不再把机床的电与总表重复相加，演示库实测虚高 4.6 倍）；新增设备维修闭环（AI 诊断→转工单→结案回填→经验统计）；新增串口点表对拍（区间探测+二分定位空洞）；修复 5 个交付链路缺陷（安装清单漏脚本、zip 丢执行位、堆大小写死、缺 MySQL 客户端、重装后初始密码登不进去）。",
+  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.24/device-hub-1.0.24-update.zip",
+  "sha256": "c5cdc01cd3efe36c136ab32ef621aeb93ac95a687ed0fb705d871a1f33982413"
 }
