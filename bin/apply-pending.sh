@@ -13,7 +13,12 @@
 #   3. 都没有            → 什么都不做
 set -uo pipefail
 
-DIR="${DIR:-/opt/device-hub}"
+# 安装目录：**从脚本自身位置推导**（比环境变量可靠）。
+# systemd 的 ExecStartPre 不会带 DIR 进来，只靠默认值的话，
+# 装到非 /opt/device-hub 的目录时它会去动别人的目录（实测：
+# 每次启动都报 mkdir: cannot create directory /opt/device-hub: Permission denied）。
+_SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+DIR="${DIR:-$_SELF}"
 UPD="$DIR/updates"
 BAK="$DIR/backups"
 LOG="$DIR/logs/update.log"

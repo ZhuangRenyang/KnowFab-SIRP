@@ -13,7 +13,12 @@
 # 而且它比 systemd 的 ExecStartPre 多一层：**起不来就自动退回旧版本**。
 set -uo pipefail
 
-DIR="${DIR:-/opt/device-hub}"
+# 安装目录：**从脚本自身位置推导**（比环境变量可靠）。
+# systemd 的 ExecStartPre 不会带 DIR 进来，只靠默认值的话，
+# 装到非 /opt/device-hub 的目录时它会去动别人的目录（实测：
+# 每次启动都报 mkdir: cannot create directory /opt/device-hub: Permission denied）。
+_SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+DIR="${DIR:-$_SELF}"
 SVC="${SVC:-device-hub}"
 PORT="${PORT:-8080}"
 UPD="$DIR/updates"

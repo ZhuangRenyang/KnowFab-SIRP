@@ -423,6 +423,31 @@ public class UpdateService {
                 if (asset == null) {
                     r.put("error", "Release " + tag + " 里没有升级包附件（应为 device-hub-<版本>-update.zip）");
                 }
+                // ---------- 取升级包的 sha256 ----------
+                // Releases 的附件里**没有哈希字段**：Gitee 一直没有，GitHub 要 2022 之后
+                // 才有 assets[].digest。拿不到哈希 → 下载时校验必然失败 →
+                // 「应用升级」按钮永远是灰的（2026-11-04 真机实测：默认源是 Gitee，
+                // 客户检查到新版本却升不了，就是卡在这里）。
+                // 所以再取一次 version.json —— 它声明了升级包的 sha256（DH-25 的校验依据）。
+                if (asset != null && r.get("sha256") == null) {
+                    r.put("sha256", sha256FromAssets(root, asset));
+                    if (r.get("sha256") == null) {
+                        String rawBase = gitee
+                                ? "https://gitee.com/" + repo + "/raw/main/dist"
+                                : "https://raw.githubusercontent.com/" + repo + "/main/dist";
+                        try {
+                            com.fasterxml.jackson.databind.JsonNode vj =
+                                    mapper.readTree(httpGet(rawBase + "/version.json", 8000));
+                            // 只认与当前 latest 同版本的声明（main 分支上的 version.json
+                            // 永远是最新一版，历史版本对不上就别用）
+                            if (latest.equals(vj.path("version").asText(""))) {
+                                r.put("sha256", vj.path("sha256").asText(null));
+                            }
+                        } catch (Exception e) {
+                            log.warn("取不到 version.json 里的 sha256（{}）：{}", rawBase, e.getMessage());
+                        }
+                    }
+                }
             } catch (IllegalStateException e) {
                 if (String.valueOf(e.getMessage()).contains("404")) {
                     r.put("error", "仓库还没有发布过版本（" + (gitee ? "Gitee" : "GitHub") + " Releases 为空）");
@@ -478,20 +503,22 @@ public class UpdateService {
             try {
                 Files.createDirectories(inbox());
                 tmp = Files.createTempFile(inbox(), "dl-", ".zip");
-                byte[] data = httpGetBytes(u, 300_000);
 
                 // DH-25：先比对 version.json 声明的 sha256 —— 这一关查的是
                 // 「下载到的包是不是刚才看到的那个」。
                 // 验签能挡住伪造包、manifest 能挡住包内文件被换，
                 // 但挡不住「传输截断」和「仓库附件被换成另一个合法包」。
                 // 不一致时**换源重试**（很可能只是这个源的文件坏了），而不是直接失败。
-                String mismatch = hashMismatch(data, expectedSha256);
+                //
+                // **必须流式下载到文件**：升级包 80MB，整个读进 byte[] 会把堆吃光
+                // （真机实测：384MB 堆直接 OutOfMemoryError，页面表现为下载 500、
+                // 「应用升级」按钮永远灰着）。
+                String mismatch = downloadToFile(u, tmp, expectedSha256);
                 if (mismatch != null) {
                     lastErr = mismatch;
                     log.warn("从 {} 下载到的包校验不通过：{}", u, mismatch);
                     continue;   // 试下一个源；tmp 由 finally 删
                 }
-                Files.write(tmp, data);
                 Map<String, Object> r = register(out, tmp);
                 if (Boolean.TRUE.equals(r.get("ok"))) {
                     r.put("message", "已下载并校验通过，重启服务后生效");
@@ -587,6 +614,32 @@ public class UpdateService {
         return List.of(DEFAULT_SOURCE, FALLBACK_SOURCE);
     }
 
+    /**
+     * 从 Release 附件里取 sha256。
+     * <p>
+     * GitHub 2022 年后会在 assets[].digest 里给 {@code sha256:<hex>}；
+     * Gitee 没有这个字段（返回 null）。
+     *
+     * @return 64 位十六进制；没有就 null
+     */
+    private static String sha256FromAssets(com.fasterxml.jackson.databind.JsonNode root, String assetUrl) {
+        for (com.fasterxml.jackson.databind.JsonNode a : root.path("assets")) {
+            String url = a.path("browser_download_url").asText(null);
+            if (!assetUrl.equals(url)) {
+                continue;
+            }
+            String digest = a.path("digest").asText("");
+            if (digest.startsWith("sha256:")) {
+                return digest.substring("sha256:".length()).trim();
+            }
+            String direct = a.path("sha256").asText("");
+            if (direct != null && direct.matches("(?i)[0-9a-f]{64}")) {
+                return direct;
+            }
+        }
+        return null;
+    }
+
     private String httpGet(String url, int timeoutMs) throws Exception {
         return new String(httpGetBytes(url, timeoutMs), StandardCharsets.UTF_8);
     }
@@ -624,6 +677,41 @@ public class UpdateService {
             }
         }
         return false;
+    }
+
+    /**
+     * 流式下载到文件，并同时算出 sha256。
+     * <p>
+     * **为什么必须流式**：升级包有 80MB，用 {@code BodyHandlers.ofByteArray()}
+     * 整个读进堆，在 2G 内存的服务器上（堆 384~512MB）直接 OOM。
+     * 页面上的表现很隐蔽：接口返回 500、待应用包没生成、
+     * 「应用升级」按钮一直是灰的 —— 看起来像"不能升级"，其实是内存爆了。
+     *
+     * @return null 表示成功；哈希不一致时返回不一致说明（调用方据此换源重试）
+     */
+    private String downloadToFile(String url, Path dest, String expectedSha256) throws Exception {
+        java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
+                .connectTimeout(java.time.Duration.ofMillis(8000))
+                .followRedirects(java.net.http.HttpClient.Redirect.NORMAL)
+                .build();
+        java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder(java.net.URI.create(url))
+                .timeout(java.time.Duration.ofMillis(300_000))
+                .header("User-Agent", "KnowFab-SIRP-Updater")
+                .header("Accept", "application/vnd.github+json")
+                .GET().build();
+        java.net.http.HttpResponse<Path> resp = client.send(req,
+                java.net.http.HttpResponse.BodyHandlers.ofFile(dest));
+        if (resp.statusCode() / 100 != 2) {
+            throw new IllegalStateException("HTTP " + resp.statusCode());
+        }
+        if (expectedSha256 == null || expectedSha256.isBlank()) {
+            return null;
+        }
+        String actual = sha256(dest);   // 流式算，不把 80MB 读进堆
+        if (!actual.equalsIgnoreCase(expectedSha256)) {
+            return "哈希不一致（期望 " + expectedSha256 + "，实际 " + actual + "）";
+        }
+        return null;
     }
 
     private byte[] httpGetBytesRaw(String url, int timeoutMs) throws Exception {
@@ -712,7 +800,11 @@ public class UpdateService {
                         r.message = "manifest 里列了 " + p + "，但包里没这个文件";
                         return r;
                     }
-                    String actual = sha256(readAll(zf, e));
+                    // 流式算哈希：**不能**把 jar 整个读进内存（80MB），
+                    // 小内存机器上必 OOM（2026-11-04 真机实测：384MB 堆直接
+                    // OutOfMemoryError: Java heap space，表现为下载 500、
+                    // 「应用升级」按钮永远灰着）。
+                    String actual = sha256Of(zf, e);
                     if (f.getSha256() != null && !actual.equalsIgnoreCase(f.getSha256())) {
                         r.message = "文件 " + p + " 校验不通过（可能传输损坏）";
                         return r;
@@ -842,6 +934,31 @@ public class UpdateService {
         }
     }
 
+    /**
+     * 流式算 zip 内某个文件的 sha256 —— **不把文件读进内存**。
+     * <p>
+     * 升级包里的 device-hub.jar 有 80MB，用 readAllBytes() 整个读进堆，
+     * 在 2G 内存的服务器上（堆通常只有 384~512MB）会直接 OOM：
+     * 页面表现为「下载失败」，待应用包永远生成不出来，
+     * 「应用升级」按钮就一直禁用（2026-11-04 真机实测踩到）。
+     */
+    private static String sha256Of(ZipFile zf, ZipEntry e) throws Exception {
+        var md = java.security.MessageDigest.getInstance("SHA-256");
+        byte[] buf = new byte[64 * 1024];
+        try (InputStream in = zf.getInputStream(e)) {
+            int n;
+            while ((n = in.read(buf)) > 0) {
+                md.update(buf, 0, n);
+            }
+        }
+        byte[] d = md.digest();
+        StringBuilder sb = new StringBuilder();
+        for (byte b : d) {
+            sb.append(String.format("%02x", b));
+        }
+        return sb.toString();
+    }
+
     private static String sha256(byte[] data) throws Exception {
         var md = java.security.MessageDigest.getInstance("SHA-256");
         byte[] d = md.digest(data);
@@ -852,8 +969,22 @@ public class UpdateService {
         return sb.toString();
     }
 
+    /** 同上：文件可能是 80MB 的 jar，流式算，不要整个读进堆 */
     private static String sha256(Path p) throws Exception {
-        return sha256(Files.readAllBytes(p));
+        var md = java.security.MessageDigest.getInstance("SHA-256");
+        byte[] buf = new byte[64 * 1024];
+        try (InputStream in = Files.newInputStream(p)) {
+            int n;
+            while ((n = in.read(buf)) > 0) {
+                md.update(buf, 0, n);
+            }
+        }
+        byte[] d = md.digest();
+        StringBuilder sb = new StringBuilder();
+        for (byte b : d) {
+            sb.append(String.format("%02x", b));
+        }
+        return sb.toString();
     }
 
     private static String oneLine(String s) {
