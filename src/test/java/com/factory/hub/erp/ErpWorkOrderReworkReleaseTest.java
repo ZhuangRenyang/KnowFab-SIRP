@@ -99,4 +99,33 @@ class ErpWorkOrderReworkReleaseTest {
         assertEquals(Boolean.TRUE, r.get("ok"), "普通工单必须能下达：" + r.get("message"));
         verify(f.bomService).expand(any(), any(), any());
     }
+
+    @Test
+    @DisplayName("AC-06 返工单没有用料清单 → 领料必须抛异常（不生成 MATERIAL_OUT）")
+    void reworkOrderCannotIssueMaterial() {
+        // 这是「返工不重复计料」的**执行侧**保证：
+        // 返工单下达时不展开 BOM（上面两条用例守的是下达侧），所以用料清单是空的。
+        // 空清单 → 任何 skuId 都查不到用料行 → issue() 直接拒绝。
+        //
+        // 如果不拒绝会怎样：返工单也能领料 → 那批料被重复扣一次 →
+        // 材料成本凭空多计，而报表上一切正常（没有任何异常信号）。
+        Fx f = fx(ErpWorkOrder.TYPE_REWORK);
+        f.svc.release(ORDER_NO, "tester");
+        // 用料表里确实没有这张工单的任何行（下达时写的就是空快照）
+        org.mockito.Mockito.when(f.womRepo.findByWorkOrderIdOrderBySkuIdAsc(1L))
+                .thenReturn(java.util.List.of());
+
+        IllegalArgumentException ex = org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalArgumentException.class,
+                () -> f.svc.issue(ORDER_NO,
+                        java.util.List.of(new ErpWorkOrderService.IssueLine(77L, BigDecimal.ONE)),
+                        1L, "tester"),
+                "返工单没有用料清单，领料必须被拒绝——否则同一批料会被扣两次");
+        assertTrue(ex.getMessage().contains("用料清单"),
+                "报错要说清原因（不在用料清单里），不能只说\"领料失败\"：" + ex.getMessage());
+
+        // 而且**没有建出任何 MATERIAL_OUT 单据** —— 这才是 AC-06 要的那个结果
+        verify(f.stockService, never()).createManual(any(), any(), any(), any(), any(), any(),
+                any(), any());
+    }
 }
