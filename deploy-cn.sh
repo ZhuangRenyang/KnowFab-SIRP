@@ -58,15 +58,10 @@ for i in $(seq 1 60); do
     printf '\n'
     printf '  常用:   docker compose logs -f app\n'
     printf '          docker compose ps\n'
-    printf '          docker compose exec app cat /app/data/initial-admin.txt\n'
     printf '============================================================\033[0m\n'
-    PASS=$(docker compose exec -T app cat /app/data/initial-admin.txt 2>/dev/null || true)
-    if [ -n "$PASS" ]; then
-      printf '\n  %s\n' "$PASS"
-      warn "登录后请立刻修改密码，并删除容器内的 initial-admin.txt"
-    else
-      warn "管理员密码文件还没生成（首次播种中），稍后执行：docker compose exec app cat /app/data/initial-admin.txt"
-    fi
+    # 管理员密码是**固定的 123456**（存数据库），不再从容器里读密码文件——
+    # 应用早就不写那个文件了（2026-11-01 起默认密码就是 123456）。
+    warn "登录后请立刻在「系统 → 用户管理」里修改密码"
     exit 0
   fi
   sleep 5

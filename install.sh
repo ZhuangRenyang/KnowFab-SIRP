@@ -206,9 +206,8 @@ if [ ! -f "$DIR/application.yml" ]; then
   fi
   # 库里有 admin 吗？
   # 应用启动时如果发现 sys_user 里已有用户，**不会**改密码（那是保护用户已改的密码）。
-  # 所以此时再生成一份初始密码写进 INITIAL_ADMIN.txt，那份密码**永远登不进去**——
-  # 客户重装一次就再也进不去系统了（2026-11-04 真机实测踩到）。
-  # 这里先查库：已有 admin 就不生成密码文件，沿用原密码，并告诉用户怎么重置。
+  # 所以这时必须把密码同步进数据库（见下面 RESET_ADMIN 那段），否则客户还是登不进去。
+  # 这里先查库：已有 admin 就在装完时同步一次密码（只用一次，之后不再动）。
   ADMIN_EXISTS=0
   if command -v mysql >/dev/null 2>&1 && [ -n "$DB_PASS" ]; then
     # 注意 `|| true`：命令替换失败会让整条赋值语句返回非 0，
@@ -261,13 +260,12 @@ system:
     username: admin
     password: "$ADMIN_PASS"
 YML
-  # 这个文件只是**提醒**（密码是固定的 123456，不用靠它才知道），
-  # 但留着有实际用处：现场第一个登录的人会看到"登录后立刻改"。
-  printf '管理员账号：admin\n初始密码：%s\n\n登录后请立刻在「系统 → 用户管理」里改掉密码，并删除本文件。\n' \
-    "$ADMIN_PASS" > "$DIR/INITIAL_ADMIN.txt"
-  chmod 600 "$DIR/INITIAL_ADMIN.txt"
-  chown "$SVC_USER":"$SVC_USER" "$DIR/INITIAL_ADMIN.txt"
-  ok "管理员初始密码：$ADMIN_PASS（见 $DIR/INITIAL_ADMIN.txt）"
+  # **不生成任何密码文件**（2026-11-04 项目铁律）：
+  # 账号固定 admin，密码固定 123456，**存进数据库**。
+  # 之前生成过 INITIAL_ADMIN.txt——先是随机密码（客户不知道密码），
+  # 后是固定密码（文件成了多余的"密码在哪"来源，两处还可能对不上）。
+  # 现在只有一个真相来源：数据库。
+  ok "管理员账号：admin，密码：$ADMIN_PASS（存进数据库）"
   chown "$SVC_USER":"$SVC_USER" "$DIR/application.yml"
   ok "已生成配置 $DIR/application.yml"
 else
@@ -429,7 +427,7 @@ cat <<EOF
  配置文件   $DIR/application.yml
  日志       $DIR/logs/stdout.log   或   journalctl -u $APP -f
 
- 初始密码 $ADMIN_PASS（登录后请立刻在「系统 → 用户管理」里改掉）
+ 账号 admin / 密码 $ADMIN_PASS（存进数据库，**上线前请在「系统 → 用户管理」里改掉**）
 
  常用命令
    启停      systemctl {start|stop|restart|status} $APP
