@@ -297,6 +297,66 @@ labelling requires a [commercial license](COMMERCIAL-LICENSE.md).
 996491835@qq.com (please read the [handbook](docs/HANDBOOK.md) first; most answers are already
 there).
 
+## Backup & restore
+
+> 客户 IT 最先问的两个问题：「数据怎么备份」「丢了怎么恢复」。这一节就是答案。
+
+### 备份
+
+```bash
+./bin/backup.sh            # 保留 14 天（默认），输出到 backups/
+./bin/backup.sh 30         # 保留 30 天
+```
+
+加进 crontab（每天 02:30）：
+
+```bash
+30 2 * * * /opt/device-hub/bin/backup.sh >> /opt/device-hub/logs/backup.log 2>&1
+```
+
+脚本会做三件事：`mysqldump --single-transaction` 导出 → **校验文件真的能用**（`gzip -t` + 检查 dump 收尾标记）→ 清理过期备份。
+
+**校验不通过就不删旧备份**——顺序反了会变成「新备份是坏的，旧备份被删了，手里一份能用的都没有」。
+
+### 恢复
+
+```bash
+# ① 先恢复到演练库，核对无误（推荐）
+./bin/restore.sh backups/devicehub-20261104-023000.sql.gz devicehub_drill
+
+# ② 确认无误，再覆盖生产库（会要求输入库名确认，并自动先备份现状）
+./bin/restore.sh backups/devicehub-20261104-023000.sql.gz --force
+```
+
+它不会让你「手滑覆盖生产库」：
+
+| 目标库状态 | 行为 |
+|---|---|
+| 不存在 / 空库 | 直接恢复（自动建库） |
+| 已有数据 | **拒绝**，除非加 `--force`；加了也会先自动备份现状到 `backups/xxx-before-restore-*.sql.gz` |
+| **就是生产库** | 同上，且**要求把库名敲一遍**（不是按回车） |
+
+恢复完成后会核对**表数量**是否与备份文件一致——`mysql` 客户端在导入中途断掉时退出码不一定是非 0，光看「导入完成」会骗人。
+
+> ⚠️ 别手工 `gunzip | mysql`：没有闸门、不验证、密码还会留在命令历史里。
+
+### 演练记录
+
+2026-11-04 在 MySQL 8.4 上真跑过一次完整演练（不是"脚本能跑"，是"数据真能回来"）：
+
+| 检查项 | 结果 |
+|---|---|
+| 表数量 | 备份 3 张 → 恢复 3 张 |
+| 行数 | 50 / 200 / 0，逐表一致 |
+| 数据指纹（md5 聚合全表） | 两张表都与源库**完全相同** |
+| 中文与特殊字符 `<>&"'` | 完好 |
+| NULL 是否退化成空串 | 没有：16 个 `NULL` 仍是 `NULL` |
+| 列注释 / 引擎 / 字符集 | 保留（InnoDB + utf8mb4_0900_ai_ci） |
+
+演练还撞出一条真问题：MySQL 8 用**非 root 账号**跑 `mysqldump` 会报`Access denied; ... PROCESS privilege ... dump tablespaces`，但**退出码是 0、数据是完整的**——日志里天天出现 `Error:` 字样，运维要么被吓到、要么习惯性忽略（后者更糟）。
+已加 `--no-tablespaces` 消掉它，并把 `mysqldump` 的 stderr 单独收起来检查：**报 Error 就算失败，哪怕退出码是 0**。
+
+---
 ## Documentation
 
 | Document | What is inside |

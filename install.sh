@@ -362,8 +362,17 @@ cat <<EOF
    看授权    http://${IP:-服务器IP}:$PORT  → 弹出授权提示页
    升级      网页「系统」页上传升级包 → 点应用
              或命令行：sudo $DIR/bin/upgrade.sh 包路径
+   备份      sudo $DIR/bin/backup.sh [保留天数，默认 14]
+             输出到 $DIR/backups/，自带完整性校验
+   恢复      sudo $DIR/bin/restore.sh 备份文件 [目标库]
+             先恢复到演练库核对，确认无误再 --force 覆盖生产库
    卸载      systemctl disable --now $APP && rm -rf /etc/systemd/system/$APP.service $DIR
              用户数据在 $DIR/data 下，卸载前先备份
+
+ !! 备份要自己加定时任务（安装脚本不动你的 crontab）：
+      30 2 * * * $DIR/bin/backup.sh >> $DIR/logs/backup.log 2>&1
+    备份文件在 $DIR/backups/，**请定期拷到另一台机器**——
+    和数据库放在同一块盘上的备份，盘坏了一起没。
 
  注意：软件按机器码授权。换服务器/重装系统后机器码会变，
        要重新签发授权文件，这是防白嫖的设计，不是故障。

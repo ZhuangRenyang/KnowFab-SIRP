@@ -33,6 +33,14 @@ tools/__pycache__/
 __pycache__/
 *.pyc
 
+# ---- 数据库备份（bin/backup.sh 的输出）----
+# 里面是整个库的数据（含客户业务数据与账号信息），绝不能进 git / 交付包。
+# 只忽略目录不忽略脚本：bin/backup.sh 和 bin/restore.sh 是要交付的。
+/backups/
+
+# ---- 安装时生成的 application.yml（含数据库密码）----
+# install.sh 会写这个文件；仓库里不该有它。
+/application.yml
 # ---- 运行时覆盖配置：系统页「修改数据库密码」会写 config/application.yml（含密码） ----
 /config/
 

@@ -66,7 +66,8 @@ echo
 echo "一、必需文件"
 # 便携版包的内容与安装包不同（没有 install.sh / upgrade.sh），跳过这份清单；
 # 禁检项（私钥、源码、演示数据、CRLF）照查不误。
-REQUIRED="device-hub.jar install.sh bin/apply-pending.sh bin/upgrade.sh README.md"
+# 备份/恢复脚本也在必需清单里：少了它们，客户机上"备份功能"只是文档上的一句话。
+REQUIRED="device-hub.jar install.sh bin/apply-pending.sh bin/upgrade.sh bin/backup.sh bin/restore.sh README.md"
 if [ "$PORTABLE" = "1" ]; then
   REQUIRED="device-hub.jar"
 fi

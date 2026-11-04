@@ -6,7 +6,7 @@
 #   tools/make-dist.sh --build         先 mvn package 再打包
 #   tools/make-dist.sh --version 1.1.0 手工指定版本（一般不用，版本从 jar 里读）
 #
-# 包里只有五样东西：jar、install.sh、bin/ 两个升级脚本、README。
+# 包里只有这几样东西：jar、install.sh、bin/ 四个运维脚本、README。
 # 打完立刻跑 audit-dist.sh，审计不过就删掉 zip —— 宁可这次不发，也不要发一个
 # 带着私钥或演示数据的包出去。
 set -euo pipefail
@@ -101,15 +101,23 @@ mkdir -p "$STAGE/bin"
 [ -f "$ROOT/install.sh" ] || die "缺 install.sh"
 [ -f "$ROOT/bin/apply-pending.sh" ] || die "缺 bin/apply-pending.sh"
 [ -f "$ROOT/bin/upgrade.sh" ] || die "缺 bin/upgrade.sh"
+# 备份与恢复必须进包：客户机上没有这两个脚本，等于「备份功能不存在」。
+# 这不是假设——2026-11-04 查出来 bin/backup.sh 从来没被打进过包，
+# 而 install.sh 只 mkdir 了一个空的 backups/ 目录。
+[ -f "$ROOT/bin/backup.sh" ] || die "缺 bin/backup.sh"
+[ -f "$ROOT/bin/restore.sh" ] || die "缺 bin/restore.sh"
 [ -f "$ROOT/README.md" ] || die "缺 README.md"
 
 cp "$JAR" "$STAGE/device-hub.jar"
 cp "$ROOT/install.sh" "$STAGE/install.sh"
 cp "$ROOT/bin/apply-pending.sh" "$STAGE/bin/apply-pending.sh"
 cp "$ROOT/bin/upgrade.sh" "$STAGE/bin/upgrade.sh"
+cp "$ROOT/bin/backup.sh" "$STAGE/bin/backup.sh"
+cp "$ROOT/bin/restore.sh" "$STAGE/bin/restore.sh"
 cp "$ROOT/README.md" "$STAGE/README.md"
 
-chmod 755 "$STAGE/install.sh" "$STAGE/bin/apply-pending.sh" "$STAGE/bin/upgrade.sh"
+chmod 755 "$STAGE/install.sh" "$STAGE/bin/apply-pending.sh" "$STAGE/bin/upgrade.sh" \
+  "$STAGE/bin/backup.sh" "$STAGE/bin/restore.sh"
 chmod 644 "$STAGE/device-hub.jar" "$STAGE/README.md"
 
 JAR_SHA="$(sha256sum "$STAGE/device-hub.jar" | awk '{print $1}')"
