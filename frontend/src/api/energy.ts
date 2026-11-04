@@ -12,6 +12,13 @@ export interface TariffSegment {
 }
 
 export interface EnergyOverview {
+  /**
+   * 计量口径：METER = 已勾选总表，全厂只算总表（正确）；
+   * LEGACY = 没勾总表，全厂含所有设备，机床的电与总表重复计算（数字会偏高）。
+   */
+  meterMode?: 'METER' | 'LEGACY'
+  /** 总表（进线）列表 */
+  meters?: { code: string; name?: string; location?: string }[]
   todayKwh: number
   todayCost: number
   monthCost: number

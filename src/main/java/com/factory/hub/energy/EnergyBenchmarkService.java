@@ -54,6 +54,8 @@ public class EnergyBenchmarkService {
     private final ErpProdLineRepository lineRepo;
     private final BenchmarkStore store;
     private final ManualEntryService manualService;
+    /** 计量层级口径：有总表就只算总表（规则见 {@link MeterScope}） */
+    private final MeterScope scope;
 
     public EnergyBenchmarkService(EnergyRepository energyRepo,
                                   ProdHourlyRepository prodRepo,
@@ -62,7 +64,8 @@ public class EnergyBenchmarkService {
                                   DeviceService deviceService,
                                   ErpProdLineRepository lineRepo,
                                   BenchmarkStore store,
-                                  ManualEntryService manualService) {
+                                  ManualEntryService manualService,
+                                  MeterScope scope) {
         this.energyRepo = energyRepo;
         this.prodRepo = prodRepo;
         this.energyRollup = energyRollup;
@@ -71,6 +74,7 @@ public class EnergyBenchmarkService {
         this.lineRepo = lineRepo;
         this.store = store;
         this.manualService = manualService;
+        this.scope = scope;
     }
 
     /**
@@ -130,10 +134,13 @@ public class EnergyBenchmarkService {
             outByDevice.merge(e.getKey(), e.getValue()[2], Double::sum);
         }
 
+        // 全厂电量按计量口径：有总表就只算总表（机床的电已含在总表里）
         double totalKwh = 0d;
-        for (double v : kwhByDevice.values()) {
-            totalKwh += v;
+        for (String code : scope.pick(kwhByDevice.keySet())) {
+            totalKwh += kwhByDevice.getOrDefault(code, 0d);
         }
+        // 产量**不按口径过滤**：产量是机床计的，总表没有产量，
+        // 跟着过滤会让分母变 0、单耗算不出来
         double totalOut = 0d;
         for (double v : outByDevice.values()) {
             totalOut += v;
@@ -176,8 +183,12 @@ public class EnergyBenchmarkService {
             } else {
                 kwh = 0d;
                 output = 0d;
-                for (String code : codes) {
+                // 分子（电量）按计量口径：范围内有总表就只算总表
+                for (String code : scope.pick(codes)) {
                     kwh += kwhByDevice.getOrDefault(code, 0d);
+                }
+                // 分母（产量）取范围内全部设备：产量是机床计的，不存在重复
+                for (String code : codes) {
                     output += outByDevice.getOrDefault(code, 0d);
                 }
             }

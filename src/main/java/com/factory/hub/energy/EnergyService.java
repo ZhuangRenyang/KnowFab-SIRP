@@ -38,13 +38,17 @@ public class EnergyService {
     /** 产线上的 workshop 字段是用能单元（车间）的唯一来源——不新表，避免"两处维护车间" */
     private final com.factory.hub.erp.ErpProdLineRepository lineRepo;
 
+    /** 计量层级口径：有总表就只算总表（规则见 {@link MeterScope}） */
+    private final MeterScope scope;
+
     public EnergyService(EnergyRepository repo,
                          EnergyRollup rollup,
                          TariffStore tariffStore,
                          SnapshotStore snapshot,
                          DeviceService deviceService,
                          ManualEntryService manualService,
-                         com.factory.hub.erp.ErpProdLineRepository lineRepo) {
+                         com.factory.hub.erp.ErpProdLineRepository lineRepo,
+                         MeterScope scope) {
         this.repo = repo;
         this.rollup = rollup;
         this.tariffStore = tariffStore;
@@ -52,6 +56,21 @@ public class EnergyService {
         this.deviceService = deviceService;
         this.manualService = manualService;
         this.lineRepo = lineRepo;
+        this.scope = scope;
+    }
+
+    /**
+     * 全厂口径下该计入哪些设备。
+     * <p>
+     * 有总表 → 只算总表（机床的电已含在总表里，一起加是重复计算）；
+     * 没有总表（客户还没勾）→ 全算，并退回旧口径（不偷偷改客户现有数字）。
+     */
+    private java.util.Set<String> plantScope() {
+        java.util.Set<String> all = new java.util.LinkedHashSet<>();
+        for (com.factory.hub.model.DeviceEntity d : deviceService.all()) {
+            all.add(d.getCode());
+        }
+        return scope.pick(all);
     }
 
     /**
@@ -67,8 +86,8 @@ public class EnergyService {
         long trendStart = startOf(today.minusDays(Math.max(1, days) - 1L), zone);
         long cut = upperBound();
 
-        // ---- 当前小时的实时量 ----
-        Map<String, double[]> liveSeg = rollup.liveBySegment();
+        // ---- 当前小时的实时量（按计量口径过滤：只算总表）----
+        Map<String, double[]> liveSeg = rollup.liveBySegmentOf(plantScope());
         double liveKwh = 0d;
         double liveCost = 0d;
         for (double[] a : liveSeg.values()) {
@@ -79,9 +98,10 @@ public class EnergyService {
         boolean liveToday = liveHour >= todayStart;
         boolean liveMonth = liveHour >= monthStart;
 
-        // ---- 今日 / 本月 ----
-        double[] t = total(todayStart, cut);
-        double[] m = total(monthStart, cut);
+        // ---- 今日 / 本月（按计量口径：全厂只算总表，避免重复计算）----
+        java.util.Set<String> counted = plantScope();
+        double[] t = total(counted, todayStart, cut);
+        double[] m = total(counted, monthStart, cut);
         if (liveToday) {
             t[0] += liveKwh;
             t[1] += liveCost;
@@ -101,7 +121,7 @@ public class EnergyService {
 
         // ---- 峰谷分布 ----
         Map<String, double[]> segMap = new HashMap<>();
-        for (Object[] r : repo.sumBySegment(todayStart, cut)) {
+        for (Object[] r : repo.sumBySegmentOf(counted, todayStart, cut)) {
             segMap.put(String.valueOf(r[0]), new double[]{d(r[1]), d(r[2])});
         }
         if (liveToday) {
@@ -164,6 +184,15 @@ public class EnergyService {
         double power = currentPower();
 
         Map<String, Object> out = new LinkedHashMap<>();
+        // 计量口径标记：LEGACY = 没标总表，全厂含所有设备（机床的电与总表重复计算）
+        out.put("meterMode", scope.legacy() ? "LEGACY" : "METER");
+        out.put("meters", scope.meters().stream().map(d -> {
+            Map<String, Object> mm = new LinkedHashMap<>();
+            mm.put("code", d.getCode());
+            mm.put("name", d.getName());
+            mm.put("location", d.getLocation());
+            return mm;
+        }).toList());
         out.put("todayKwh", round(t[0], 2));
         out.put("todayCost", round(t[1], 2));
         out.put("monthKwh", round(m[0], 2));
@@ -240,14 +269,39 @@ public class EnergyService {
         }
 
         // 2. 设备 → 产线 → 车间
+        //
+        // 计量层级口径：**每台设备在它所属的最细层级（产线 / 未分配组）内判断
+        // 是否被总表覆盖**——有表就只算表，没有就全算。
+        // 这样：产线级没有表时，机床的电就是产线的电（对）；
+        //         产线级有表时，机床的电已含在表里，不重复计（也对）。
+        // 不能简单地全局取"只有表"，否则产线级的电会全变成 0。
         Map<Long, com.factory.hub.erp.ErpProdLine> lineById = new HashMap<>();
         for (com.factory.hub.erp.ErpProdLine l : lineRepo.findAll()) {
             lineById.put(l.getId(), l);
         }
+
+        // 先按最细层级把设备分组，再对每组用 scope.pick 决定谁计入
+        List<DeviceEntity> allDevices = deviceService.all();
+        Map<Long, java.util.List<String>> codesOfLine = new LinkedHashMap<>();
+        java.util.List<String> unassignedCodes = new ArrayList<>();
+        for (DeviceEntity dev : allDevices) {
+            Long lineId = dev.getProdLineId();
+            if (lineId == null || !lineById.containsKey(lineId)) {
+                unassignedCodes.add(dev.getCode());
+            } else {
+                codesOfLine.computeIfAbsent(lineId, k -> new ArrayList<>()).add(dev.getCode());
+            }
+        }
+        java.util.Set<String> countedUnassigned = scope.pick(unassignedCodes);
+        Map<Long, java.util.Set<String>> countedOfLine = new LinkedHashMap<>();
+        for (Map.Entry<Long, java.util.List<String>> e : codesOfLine.entrySet()) {
+            countedOfLine.put(e.getKey(), scope.pick(e.getValue()));
+        }
+
         Map<Long, double[]> perLine = new LinkedHashMap<>();          // [kwh, cost, backfill, deviceCount]
         Map<String, double[]> perWorkshop = new LinkedHashMap<>();    // [kwh, cost, backfill, deviceCount, lineCount]
         double[] unassigned = new double[4];
-        for (DeviceEntity dev : deviceService.all()) {
+        for (DeviceEntity dev : allDevices) {
             double[] v = perDevice.get(dev.getCode());
             double kwh = v == null ? 0d : v[0];
             double cost = v == null ? 0d : v[1];
@@ -255,10 +309,18 @@ public class EnergyService {
             Long lineId = dev.getProdLineId();
             com.factory.hub.erp.ErpProdLine line = lineId == null ? null : lineById.get(lineId);
             if (line == null) {
+                // 未分配组：组内有总表就只算总表
+                if (!countedUnassigned.contains(dev.getCode())) {
+                    continue;
+                }
                 unassigned[0] += kwh;
                 unassigned[1] += cost;
                 unassigned[2] += bf;
                 unassigned[3] += 1;
+                continue;
+            }
+            // 产线级：产线内有总表就只算总表
+            if (!countedOfLine.getOrDefault(line.getId(), java.util.Set.of()).contains(dev.getCode())) {
                 continue;
             }
             double[] pl = perLine.computeIfAbsent(line.getId(), k -> new double[4]);
@@ -285,12 +347,16 @@ public class EnergyService {
             }
         }
 
+        // 合计 = 各层级计入的量之和（与"分项合计 = 全厂"的自洽要求一致）
         double totalKwh = 0d, totalCost = 0d, totalBf = 0d;
-        for (double[] a : perDevice.values()) {
+        for (double[] a : perLine.values()) {
             totalKwh += a[0];
             totalCost += a[1];
             totalBf += a[2];
         }
+        totalKwh += unassigned[0];
+        totalCost += unassigned[1];
+        totalBf += unassigned[2];
 
         // 3. 组装：车间（含其下产线）
         List<Map<String, Object>> workshops = new ArrayList<>();
@@ -377,14 +443,16 @@ public class EnergyService {
                 ? upperBound()
                 : month.plusMonths(1).atDay(1).atStartOfDay(zone).toInstant().toEpochMilli();
 
+        // 电度电费按计量口径算：全厂只算总表，避免机床的电与总表重复计费
+        java.util.Set<String> counted = plantScope();
         Map<String, double[]> segMap = new LinkedHashMap<>();
-        for (Object[] r : repo.sumBySegment(from, to)) {
+        for (Object[] r : repo.sumBySegmentOf(counted, from, to)) {
             segMap.put(String.valueOf(r[0]), new double[]{d(r[1]), d(r[2])});
         }
         // 当前小时还没结算进库，补进来才对得上「到今天为止」的账单
         long liveHour = rollup.currentHourStart();
         if (current && liveHour >= from) {
-            for (Map.Entry<String, double[]> e : rollup.liveBySegment().entrySet()) {
+            for (Map.Entry<String, double[]> e : rollup.liveBySegmentOf(counted).entrySet()) {
                 double[] a = segMap.computeIfAbsent(e.getKey(), k -> new double[2]);
                 a[0] += e.getValue()[0];
                 a[1] += e.getValue()[1];
@@ -676,8 +744,12 @@ public class EnergyService {
     }
 
     /** 取区间的总量和总电费。聚合查询没数据时会返回一行 [null, null] */
-    private double[] total(long from, long to) {
-        List<Object[]> rows = repo.totalBetween(from, to);
+    /** 区间总量与总电费（**只算 counted 里的设备**——计量层级口径） */
+    private double[] total(java.util.Set<String> counted, long from, long to) {
+        if (counted.isEmpty()) {
+            return new double[2];
+        }
+        List<Object[]> rows = repo.totalBetweenOf(counted, from, to);
         return rows.isEmpty() ? new double[2] : pair(rows.get(0));
     }
 

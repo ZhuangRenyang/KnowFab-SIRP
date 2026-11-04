@@ -299,6 +299,34 @@ public class EnergyRollup {
         return out;
     }
 
+    /**
+     * 当前这一小时各时段的实时电量，**只限指定的一组设备**。
+     * <p>
+     * 计量层级（进线口径）：某范围内有总表就只算总表——机床的电已含在总表里，
+     * 一起加就是重复计算。规则见 {@code MeterScope}。
+     *
+     * @param codes 允许计入的设备编号；null 或空 = 不限制
+     */
+    public synchronized Map<String, double[]> liveBySegmentOf(java.util.Collection<String> codes) {
+        java.util.Set<String> allow = codes == null || codes.isEmpty()
+                ? null : new java.util.HashSet<>(codes);
+        Map<String, double[]> out = new HashMap<>();
+        for (Map.Entry<String, Bucket> e : current.entrySet()) {
+            String key = e.getKey();
+            int i = key.indexOf('|');
+            if (i <= 0) {
+                continue;
+            }
+            if (allow != null && !allow.contains(key.substring(0, i))) {
+                continue;
+            }
+            double[] arr = out.computeIfAbsent(key.substring(i + 1), k -> new double[2]);
+            arr[0] += e.getValue().kwh;
+            arr[1] += e.getValue().cost;
+        }
+        return out;
+    }
+
     /** 当前这一小时各设备的实时电量 */
     public synchronized Map<String, double[]> liveByDevice() {
         Map<String, double[]> out = new HashMap<>();

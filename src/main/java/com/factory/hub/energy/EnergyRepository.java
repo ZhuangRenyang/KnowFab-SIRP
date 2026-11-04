@@ -81,6 +81,29 @@ public interface EnergyRepository extends JpaRepository<EnergyRecord, Long> {
     List<Object[]> sumByHour(@Param("from") long from, @Param("to") long to);
 
     /**
+     * 按电价时段汇总，**只限指定的一组设备**（进线口径用）。
+     * <p>
+     * 计量层级：某范围内有总表就只算总表，没有才全算 —— 规则见 {@code MeterScope}。
+     */
+    @Query("""
+            select e.segType, sum(e.kwh), sum(e.cost)
+            from EnergyRecord e
+            where e.deviceCode in :codes and e.hourStart >= :from and e.hourStart < :to
+            group by e.segType
+            """)
+    List<Object[]> sumBySegmentOf(@Param("codes") java.util.Collection<String> codes,
+                                  @Param("from") long from, @Param("to") long to);
+
+    /** 区间总量和总电费，**只限指定的一组设备**（进线口径用） */
+    @Query("""
+            select sum(e.kwh), sum(e.cost)
+            from EnergyRecord e
+            where e.deviceCode in :codes and e.hourStart >= :from and e.hourStart < :to
+            """)
+    List<Object[]> totalBetweenOf(@Param("codes") java.util.Collection<String> codes,
+                                  @Param("from") long from, @Param("to") long to);
+
+    /**
      * 区间总量和总电费。没数据时返回一行 [null, null]。
      * <p>
      * 必须返回 List&lt;Object[]&gt; 而不是 Object[]：单行多列的聚合查询

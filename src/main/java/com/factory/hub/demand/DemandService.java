@@ -37,13 +37,22 @@ public class DemandService {
     private final DemandStore store;
     private final DemandTracker tracker;
     private final DeviceService deviceService;
+    /**
+     * 计量层级口径——与能耗模块<b>共用同一份定义</b>（{@code MeterScope}）。
+     * <p>
+     * 口径只有一处定义：需量与电量必须用同一套规则，
+     * 否则同一个页面上「需量按总表算、电量按所有设备算」，用户会发现两个数对不上。
+     */
+    private final com.factory.hub.energy.MeterScope scope;
 
     public DemandService(DemandWindowRepository repo, DemandStore store,
-                         DemandTracker tracker, DeviceService deviceService) {
+                         DemandTracker tracker, DeviceService deviceService,
+                         com.factory.hub.energy.MeterScope scope) {
         this.repo = repo;
         this.store = store;
         this.tracker = tracker;
         this.deviceService = deviceService;
+        this.scope = scope;
     }
 
     /* ==================== 概览 ==================== */
@@ -60,9 +69,9 @@ public class DemandService {
         // 客户还没勾选任何总表时**退回旧口径**（不偷偷改客户现有数字），
         // 但返回 meterMode=LEGACY，界面必须明确告知口径问题 —— 不说就等于让客户
         // 拿着一个虚高的数去跟供电局对账。
-        List<DeviceEntity> meters = deviceService.meters();
-        List<String> meterCodes = meters.stream().map(DeviceEntity::getCode).toList();
-        boolean legacy = meterCodes.isEmpty();
+        List<DeviceEntity> meters = scope.meters();
+        List<String> meterCodes = new java.util.ArrayList<>(scope.meterCodes());
+        boolean legacy = scope.legacy();
 
         // 配置：全厂用全局那份；指定某块总表就用它自己那份（没配过则回退全局）
         DemandConfig cfg = ALL.equals(dev) ? currentConfig() : store.forMeter(dev);

@@ -17,6 +17,11 @@
 
     <el-alert v-if="warn" :title="warn" type="warning" show-icon :closable="false" class="warn" />
 
+    <!-- 口径提示：没标总表时全厂电量把总表和机床一起加了，数字会偏高 -->
+    <div v-if="ov?.meterMode === 'LEGACY'" class="meter-warn">
+      {{ t('energy.meterLegacyWarn') }}
+    </div>
+
     <div class="kpis">
       <div class="ebox"><span>{{ t('energy.kpiTodayKwh') }}</span><b class="num">{{ num(ov?.todayKwh, 1) }}<i>kWh</i></b></div>
       <div class="ebox"><span>{{ t('energy.kpiTodayCost') }}</span><b class="num">{{ num(ov?.todayCost, 2) }}<i>{{ t('energy.currency') }}</i></b></div>
