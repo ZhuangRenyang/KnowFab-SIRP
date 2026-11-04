@@ -17,6 +17,10 @@ public interface DemandWindowRepository extends JpaRepository<DemandWindow, Long
 
     List<DemandWindow> findByWindowStart(long windowStart);
 
+    /** 只查指定的一组设备（进线/总表）：全厂需量口径只累加总表，机床的电已含在总表里 */
+    List<DemandWindow> findByDeviceCodeInAndWindowStartBetween(
+            java.util.Collection<String> deviceCodes, long from, long to);
+
     @Modifying
     @Transactional
     @Query("delete from DemandWindow d where d.windowStart < :before")

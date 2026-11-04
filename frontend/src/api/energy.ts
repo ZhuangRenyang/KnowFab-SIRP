@@ -47,6 +47,16 @@ export interface DemandConfig {
 export interface DemandData {
   ok: boolean
   config: DemandConfig
+  /**
+   * 计量口径：
+   * - `METER` = 已勾选总表，全厂需量只累加总表（正确口径）
+   * - `LEGACY` = **还没勾任何总表**，全厂含所有设备，机床的电与总表重复计算
+   *
+   * LEGACY 时界面必须提示，不能让客户拿着虚高的数去跟供电局对账。
+   */
+  meterMode?: 'METER' | 'LEGACY'
+  /** 总表（进线）列表：每块表 = 一条进线，各存一份需量配置 */
+  meters?: { code: string; name?: string; location?: string }[]
   status: { level?: 'OVER' | 'WARN' | string; message?: string; headroomKw?: number }
   billing: { cost: number; modeText: string; formula: string; demandCost: number; capacityCost: number; mode: string }
   monthMax: { kw: number; atText: string }
@@ -188,7 +198,12 @@ export interface BenchmarkReport {
 export const energyApi = {
   overview: () => http.get<EnergyOverview>('/api/energy/overview?days=7'),
   rank: (range: string) => http.get<EnergyRankItem[]>(`/api/energy/devices?range=${range}`),
-  demand: () => http.get<DemandData>('/api/energy/demand'),
+  /**
+   * 需量与基本电费。
+   * @param device 总表（进线）编号；不传 = 全厂
+   */
+  demand: (device?: string) =>
+    http.get<DemandData>('/api/energy/demand' + (device ? '?device=' + encodeURIComponent(device) : '')),
   byNode: (range: string) => http.get<EnergyByNode>(`/api/energy/by-node?range=${range}`),
   benchmarkReport: (range: string) =>
     http.get<BenchmarkReport>(`/api/energy/benchmark-report?range=${range}`),

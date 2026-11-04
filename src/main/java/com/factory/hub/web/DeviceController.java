@@ -106,7 +106,7 @@ public class DeviceController {
                 d.isApiKeyEnabled(),
                 d.getEnabled(), d.getApiKey(), d.getPointsJson(),
                 d.getProdSkuId(), d.getProdWhId(), d.getProdResetHour(), d.isProdAutoStockin(),
-                d.getDailyTarget(), d.getIdealCycleSec()));
+                d.getDailyTarget(), d.getIdealCycleSec(), d.isMeter()));
     }
 
     /** 新增或按 code 覆盖 */
@@ -425,6 +425,9 @@ public class DeviceController {
         d.setProdWhId(req.prodWarehouseId());
         d.setProdResetHour(req.prodResetHour() == null ? 0 : Math.max(0, Math.min(23, req.prodResetHour())));
         d.setProdAutoStockin(req.prodAutoStockin() != null && req.prodAutoStockin());
+        // 是否总表（进线计量点）：默认 false。标错会让全厂需量直接错成单机功率，
+        // 所以这里是「显式勾选才生效」，不做任何自动推断
+        d.setIsMeter(req.isMeter() != null && req.isMeter());
         // 日目标：空/0 = 不设完成率；负数按 0 处理
         d.setDailyTarget(req.dailyTarget() == null || req.dailyTarget() <= 0 ? null : req.dailyTarget());
         // DH-15 理想节拍：<=0 当作没配（0 秒/件会让理论产量除零）

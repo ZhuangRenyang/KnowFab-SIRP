@@ -90,6 +90,41 @@ public class DemandTracker {
     }
 
     /** 当前窗口的实时需量（kW），前端「当前负荷」用 */
+    /**
+     * 当前窗口功率，只累加指定的一组设备。
+     * <p>
+     * 进线口径用这个：全厂需量只该累加总表，机床的电已经包含在总表里了，
+     * 一起加就是重复计算（演示库实测虚高 3.85 倍）。
+     *
+     * @param onlyDevices null 或空集合 = 不限制（所有设备）
+     */
+    public double currentWindowKw(String deviceCode, long now,
+                                  java.util.Set<String> onlyDevices) {
+        double sum = 0;
+        long win = now - (now % WINDOW_MS);
+        for (Map.Entry<String, Double> e : live.entrySet()) {
+            int idx = e.getKey().lastIndexOf('|');
+            if (idx <= 0) {
+                continue;
+            }
+            if (Long.parseLong(e.getKey().substring(idx + 1)) != win) {
+                continue;
+            }
+            String dev = e.getKey().substring(0, idx);
+            if (deviceCode != null && !deviceCode.isEmpty() && !deviceCode.equals(dev)) {
+                continue;
+            }
+            if (onlyDevices != null && !onlyDevices.isEmpty() && !onlyDevices.contains(dev)) {
+                continue;
+            }
+            sum += e.getValue();
+        }
+        // 窗口还没走完，按已过时间折算成平均功率更接近电费单口径；
+        // 但折算会把「刚过 1 分钟就用了 10 度」放大成 600kW 的假峰值，
+        // 所以只做保守处理：按整 15 分钟算，宁可显示偏低也不制造假警报
+        return sum * 4d;
+    }
+
     public double currentWindowKw(String deviceCode, long now) {
         long win = now - (now % WINDOW_MS);
         double sum = 0;

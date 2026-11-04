@@ -15,4 +15,7 @@ public interface DeviceRepository extends JpaRepository<DeviceEntity, Long> {
     List<DeviceEntity> findByEnabledTrue();
 
     List<DeviceEntity> findAllByOrderByIdAsc();
+
+    /** 标记为总表（进线计量点）的设备：需量全厂口径只累加这些 */
+    List<DeviceEntity> findByIsMeterTrueOrderByCodeAsc();
 }

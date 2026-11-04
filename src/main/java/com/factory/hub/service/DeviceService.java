@@ -39,6 +39,16 @@ public class DeviceService {
         return repo.findByCode(code).orElse(null);
     }
 
+    /**
+     * 所有标记为总表（进线计量点）的设备。
+     * <p>
+     * 需量的全厂口径只累加这些——机床等分表的电已经包含在总表里，加进来就重复了。
+     * 返回空列表表示客户还没勾选任何总表，此时需量退回旧口径（见 DemandService）。
+     */
+    public List<DeviceEntity> meters() {
+        return repo.findByIsMeterTrueOrderByCodeAsc();
+    }
+
     /** 解析点表 JSON。解析失败不让整个服务挂掉，只是这台设备采不了 */
     public List<PointDef> pointsOf(DeviceEntity device) {
         List<PointDef> list = new ArrayList<>();

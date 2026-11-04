@@ -77,6 +77,16 @@
         </div>
       </div>
 
+      <div class="sec">{{ t('devForm.secMeter') }}{{ t('devForm.secMeterHint') }}</div>
+      <el-form-item label-width="90px">
+        <el-switch v-model="f.isMeter" :active-text="t('devForm.switchOn')" :inactive-text="t('devForm.switchOff')" />
+      </el-form-item>
+      <div v-if="f.isMeter" class="frow">
+        <el-form-item :label="t('devForm.meterHintLabel')">
+          <div class="hint-line">{{ t('devForm.meterHint') }}</div>
+        </el-form-item>
+      </div>
+
       <div class="sec">{{ t('devForm.secStock') }}{{ t('devForm.secStockHint') }}</div>
       <el-form-item label-width="90px">
         <el-switch v-model="f.prodAutoStockin" :active-text="t('devForm.switchOn')" :inactive-text="t('devForm.switchOff')" />
@@ -208,6 +218,8 @@ const f = reactive({
   prodResetHour: 0, prodAutoStockin: false,
   dailyTarget: undefined as number | undefined,
   idealCycleSec: undefined as number | undefined
+,  /** 是否总表（进线计量点）：需量与基本电费的全厂口径只累加总表 */
+  isMeter: false
 })
 
 /* 切协议时给行业默认端口：TCP 族 502；RTU 走串口不动端口（模板里 @change 引用，
@@ -341,7 +353,7 @@ function resetDefaults() {
     unitId: 1, unitId2: 1, timeoutMs: 800, apiKey: '', apiKeyEnabled: true, servoBrand: '',
     pointsText: JSON.stringify(TPL.machine, null, 2),
     prodSkuId: undefined, prodWarehouseId: undefined, prodResetHour: 0, prodAutoStockin: false,
-    dailyTarget: undefined, idealCycleSec: undefined
+    dailyTarget: undefined, idealCycleSec: undefined, isMeter: false
   })
   tplId.value = ''
   tplNote.value = ''
@@ -387,6 +399,7 @@ watch(visible, async (v) => {
     prodResetHour: c.prodResetHour ?? 0, prodAutoStockin: !!c.prodAutoStockin,
     dailyTarget: c.dailyTarget ?? undefined,
     idealCycleSec: c.idealCycleSec ?? undefined
+,    isMeter: !!c.isMeter
   })
   try {
     f.pointsText = JSON.stringify(JSON.parse(c.pointsJson || '[]'), null, 2)
@@ -434,6 +447,7 @@ async function save() {
     prodWarehouseId: f.prodWarehouseId ?? null,
     prodResetHour: Number(f.prodResetHour) || 0,
     prodAutoStockin: f.prodAutoStockin,
+    isMeter: f.isMeter,
     dailyTarget: f.dailyTarget ? Number(f.dailyTarget) : null,
     // DH-15 理想节拍：0 和不填一样（没配就是没配，性能率算不出来）
     idealCycleSec: f.idealCycleSec ? Number(f.idealCycleSec) : null

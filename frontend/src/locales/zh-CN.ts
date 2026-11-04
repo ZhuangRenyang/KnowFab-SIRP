@@ -1233,6 +1233,10 @@ export default {
   },
 
   devForm: {
+    secMeter: '计量口径',
+    secMeterHint: '（总表 = 进线计量点）',
+    meterHintLabel: '说明',
+    meterHint: '勾上表示这台是总表（进线计量点）。需量与基本电费的全厂口径只累加总表——机床等分表的电已经包含在总表里，一起加会重复计算。',
     titleEdit: '编辑设备',
     titleNew: '新增设备',
     scanTip: '不知道设备的 IP / 点表？',
@@ -1441,6 +1445,8 @@ export default {
   },
 
   energy: {
+    meterAll: '全厂（各总表合计）',
+    meterLegacyWarn: '未勾选总表：全厂需量把总表和机床的电一起加了（机床的电已含在总表里），数字会偏高。请在设备编辑里把总表勾上「总表 / 进线计量点」。',
     rangeLabel: '统计口径',
     today: '今日',
     last7d: '近 7 天',

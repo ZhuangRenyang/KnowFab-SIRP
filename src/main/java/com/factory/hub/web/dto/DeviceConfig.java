@@ -33,6 +33,8 @@ public record DeviceConfig(
         Boolean prodAutoStockin,
         Integer dailyTarget,
         /* DH-15：理想节拍（秒/件），OEE 性能因子用 */
-        Double idealCycleSec
+        Double idealCycleSec,
+        /* 是否总表（进线计量点）：参与需量与基本电费的全厂口径 */
+        Boolean isMeter
 ) {
 }

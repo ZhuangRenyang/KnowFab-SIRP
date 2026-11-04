@@ -1,5 +1,6 @@
 package com.factory.hub.demand;
 
+import com.factory.hub.model.DeviceEntity;
 import com.factory.hub.service.DeviceService;
 import org.springframework.stereotype.Service;
 
@@ -50,16 +51,35 @@ public class DemandService {
     public Map<String, Object> overview(String monthParam, String device) {
         YearMonth month = parseMonth(monthParam);
         String dev = (device == null || device.isBlank()) ? ALL : device;
-        DemandConfig cfg = currentConfig();
+
+        // ---- 进线（总表）口径 ----
+        // 全厂需量只该累加**总表**：机床的电已经包含在总表里了，一起加就是重复计算。
+        // 演示库实测（2026-11-04）：总表峰值 235.8kW、机床之和 671kW，
+        // 相加后是真实值的 3.85 倍 —— 需量虚高、基本电费虚高、合同需量告警误报。
+        //
+        // 客户还没勾选任何总表时**退回旧口径**（不偷偷改客户现有数字），
+        // 但返回 meterMode=LEGACY，界面必须明确告知口径问题 —— 不说就等于让客户
+        // 拿着一个虚高的数去跟供电局对账。
+        List<DeviceEntity> meters = deviceService.meters();
+        List<String> meterCodes = meters.stream().map(DeviceEntity::getCode).toList();
+        boolean legacy = meterCodes.isEmpty();
+
+        // 配置：全厂用全局那份；指定某块总表就用它自己那份（没配过则回退全局）
+        DemandConfig cfg = ALL.equals(dev) ? currentConfig() : store.forMeter(dev);
 
         ZoneId zone = ZoneId.systemDefault();
         long from = month.atDay(1).atStartOfDay(zone).toInstant().toEpochMilli();
         long to = month.plusMonths(1).atDay(1).atStartOfDay(zone).toInstant().toEpochMilli();
         long now = System.currentTimeMillis();
 
-        List<DemandWindow> rows = ALL.equals(dev)
-                ? repo.findByWindowStartBetween(from, Math.min(to, now))
-                : repo.findByDeviceCodeAndWindowStartBetween(dev, from, Math.min(to, now));
+        List<DemandWindow> rows;
+        if (ALL.equals(dev)) {
+            rows = legacy
+                    ? repo.findByWindowStartBetween(from, Math.min(to, now))
+                    : repo.findByDeviceCodeInAndWindowStartBetween(meterCodes, from, Math.min(to, now));
+        } else {
+            rows = repo.findByDeviceCodeAndWindowStartBetween(dev, from, Math.min(to, now));
+        }
 
         // 全厂口径要把同一窗口的几块表加起来，单表口径直接取自己的值
         Map<Long, Double> byWindow = new LinkedHashMap<>();
@@ -72,7 +92,8 @@ public class DemandService {
 
         // 当前窗口还没落库，补进来才看得到实时值
         long curWin = tracker.currentWindowStart(now);
-        double liveKw = tracker.currentWindowKw(ALL.equals(dev) ? null : dev, now);
+        double liveKw = tracker.currentWindowKw(ALL.equals(dev) ? null : dev, now,
+                legacy ? null : new java.util.HashSet<>(meterCodes));
         if (liveKw > 0) {
             byWindow.merge(curWin, liveKw, (a, b) -> Math.max(a, b));
         }
@@ -92,6 +113,9 @@ public class DemandService {
         out.put("device", dev);
         out.put("deviceName", ALL.equals(dev) ? "全厂" : nameOf(dev));
         out.put("config", cfg);
+        // 口径标记：LEGACY = 没标总表，全厂含所有设备（可能重复计算），界面要提示
+        out.put("meterMode", legacy ? "LEGACY" : "METER");
+        out.put("meters", metersOf(meters));
         out.put("monthMax", Map.of(
                 "kw", round1(peakKw),
                 "at", peakWin,
@@ -209,6 +233,19 @@ public class DemandService {
                 ? String.format("%s kW × %s 元/kW·月", round1(peakKw), trim(cfg.getDemandPrice()))
                 : String.format("%s kVA × %s 元/kVA·月", trim(cfg.getTransformerKva()), trim(cfg.getCapacityPrice())));
         return m;
+    }
+
+    /** 总表（进线）列表：给前端做选择器用 */
+    private static List<Map<String, Object>> metersOf(List<DeviceEntity> meters) {
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (DeviceEntity d : meters) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("code", d.getCode());
+            m.put("name", d.getName());
+            m.put("location", d.getLocation());
+            list.add(m);
+        }
+        return list;
     }
 
     /** 距离合同需量还有多少余量 */

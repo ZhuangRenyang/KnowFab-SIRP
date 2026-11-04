@@ -2,6 +2,7 @@ package com.factory.hub.demand;
 
 import com.factory.hub.audit.AuditLog;
 import com.factory.hub.audit.AuditService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -25,13 +26,16 @@ public class DemandController {
     private final DemandStore store;
     private final DemandWindowRepository repo;
     private final AuditService audit;
+    private final ObjectMapper mapper;
 
     public DemandController(DemandService service, DemandStore store,
-                            DemandWindowRepository repo, AuditService audit) {
+                            DemandWindowRepository repo, AuditService audit,
+                            ObjectMapper mapper) {
         this.service = service;
         this.store = store;
         this.repo = repo;
         this.audit = audit;
+        this.mapper = mapper;
     }
 
     @GetMapping
@@ -40,18 +44,44 @@ public class DemandController {
         return service.overview(month, device);
     }
 
+    /**
+     * 取需量配置。
+     * <p>
+     * @param device 总表（进线）编号；不传 = 全局那份（兼作各进线的默认值）
+     */
     @GetMapping("/config")
-    public Map<String, Object> config() {
-        DemandConfig cfg = store.current();
+    public Map<String, Object> config(@RequestParam(required = false) String device) {
+        boolean perMeter = device != null && !device.isBlank();
+        DemandConfig cfg = perMeter ? store.forMeter(device) : store.current();
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("ok", true);
+        out.put("device", perMeter ? device : null);
         out.put("config", cfg);
         out.put("warnings", cfg.validate());
         return out;
     }
 
+    /**
+     * 保存需量配置。
+     * <p>
+     * body 里带 {@code device} = 保存到那块总表（进线）名下；不带 = 保存为全局默认。
+     * 多路进线分别跟供电局签合同，合同需量与单价都不同，必须能各存各的。
+     */
     @PostMapping("/config")
-    public Map<String, Object> save(@RequestBody DemandConfig cfg) {
+    public Map<String, Object> save(@RequestBody Map<String, Object> body) {
+        Map<String, Object> src = body == null ? Map.of() : body;
+        Object devObj = src.get("device");
+        String device = devObj == null ? null : String.valueOf(devObj).trim();
+        boolean perMeter = device != null && !device.isBlank();
+        DemandConfig cfg;
+        try {
+            cfg = mapper.convertValue(src, DemandConfig.class);
+        } catch (Exception e) {
+            Map<String, Object> bad = new LinkedHashMap<>();
+            bad.put("ok", false);
+            bad.put("message", "参数格式不对：" + e.getMessage());
+            return bad;
+        }
         // 合同需量填 0 等于把预警关掉，客户不会意识到，所以直接拦
         if (cfg.getContractDemandKw() <= 0) {
             Map<String, Object> bad = new LinkedHashMap<>();
@@ -60,9 +90,15 @@ public class DemandController {
                     + "不想预警可以关掉「启用预警」开关，别填 0");
             return bad;
         }
-        store.save(cfg);
+        if (perMeter) {
+            store.saveForMeter(device, cfg);
+        } else {
+            store.save(cfg);
+        }
         audit.ok(AuditLog.CAT_ENERGY, AuditLog.ACT_UPDATE, "demand", "基本电费配置",
-                "保存基本电费配置：计费模式=" + cfg.getBillingMode()
+                "保存基本电费配置："
+                        + (perMeter ? "进线 " + device + "；" : "全局默认；")
+                        + "计费模式=" + cfg.getBillingMode()
                         + "，合同需量=" + cfg.getContractDemandKw() + " kW"
                         + "，变压器容量=" + cfg.getTransformerKva() + " kVA"
                         + "，需量单价=" + cfg.getDemandPrice() + "，容量单价=" + cfg.getCapacityPrice());

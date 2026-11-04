@@ -121,6 +121,22 @@ public class DeviceEntity {
     private boolean prodAutoStockin = false;
 
     /**
+     * 是否总表（进线计量点）。
+     * <p>
+     * <b>为什么要有这个标记</b>：实测发现全厂需量口径有缺陷——
+     * {@code EnergyRollup} 把所有设备的能耗都喂给需量窗口，而全厂口径又把各设备功率相加，
+     * 但机床的电已经包含在总表里。演示库实测：总表峰值 235.8kW、机床之和 671kW，
+     * 相加后是真实值的 <b>3.85 倍</b> —— 需量虚高、基本电费虚高、合同需量告警误报。
+     * <p>
+     * 标记后：全厂需量 = Σ(标记为总表的设备)，每块总表 = 一条进线，各存一份需量配置。
+     * <p>
+     * ⚠️ 标错（把机床标成总表）会让全厂需量直接错成单机功率——所以这个标记
+     * **不自动推断**，由客户在现场设备表单里勾选。
+     */
+    @Column(name = "is_meter")
+    private boolean isMeter = false;
+
+    /**
      * 主计数器口径（DH-15 补）：{@link #COUNTER_TOTAL} / {@link #COUNTER_GOOD}，默认 TOTAL。
      * <p>
      * <b>这一列解决的是一个"代码永远猜不出来"的事实</b>：{@code prod_hourly.output}
@@ -356,6 +372,9 @@ public class DeviceEntity {
 
     public boolean isProdAutoStockin() { return prodAutoStockin; }
     public void setProdAutoStockin(boolean prodAutoStockin) { this.prodAutoStockin = prodAutoStockin; }
+
+    public boolean isMeter() { return isMeter; }
+    public void setIsMeter(boolean isMeter) { this.isMeter = isMeter; }
 
     public String getCounterMode() { return counterMode; }
     public void setCounterMode(String counterMode) { this.counterMode = counterMode; }

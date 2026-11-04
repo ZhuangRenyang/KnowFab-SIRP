@@ -56,7 +56,11 @@ public class DataInitializer implements ApplicationRunner {
         repo.save(build("INJ-01", "一号注塑机", "二车间 B 区", "sim", 1500, 60d, sampleInjection()));
         repo.save(build("PRESS-01", "315T 冲压机", "一车间 C 区", "sim", 800, 70d, samplePress()));
         // 总电表没有产量，理想节拍也没意义 → 传 null
-        repo.save(build("METER-01", "一车间总电表", "配电房", "sim", 2000, null, sampleMeter()));
+        // 标为总表（进线计量点）：需量的全厂口径只累加总表，机床的电已经含在总表里了，
+        // 一起加会重复计算（演示库实测虚高 3.85 倍）
+        DeviceEntity meter = build("METER-01", "一车间总电表", "配电房", "sim", 2000, null, sampleMeter());
+        meter.setIsMeter(true);
+        repo.save(meter);
     }
 
     /** 老库升级：模拟设备没有电量点就补上，让能耗页有数据可看 */
@@ -109,7 +113,9 @@ public class DataInitializer implements ApplicationRunner {
         if (!allSim || hasMeter) {
             return;
         }
-        repo.save(build("METER-01", "一车间总电表", "配电房", "sim", 2000, null, sampleMeter()));
+        DeviceEntity meter = build("METER-01", "一车间总电表", "配电房", "sim", 2000, null, sampleMeter());
+        meter.setIsMeter(true);
+        repo.save(meter);
         log.info("演示环境已补充「METER-01 一车间总电表」——这是现场最省事的接入方式："
                 + "不改机器，只在电控柜里加一块多功能电表，走 485 读电量");
     }

@@ -38,6 +38,19 @@
         <span>{{ todayFallback ? t('energy.peakRange', { kw: num(dm?.today?.peakKw, 0) }) : t('energy.peakToday', { kw: num(dm?.today?.peakKw, 0) }) }}
           <template v-if="dm?.today?.peakAt && dm.today.peakAt !== '--'"> @ {{ dm.today.peakAt }}</template>
         </span>
+        <!-- 进线选择：多路进线分别跟供电局签合同，需量与基本电费各算各的 -->
+        <div class="acts">
+          <el-select v-if="(dm?.meters || []).length" v-model="meterSel" size="small"
+                     style="width:190px" @change="reloadDemand">
+            <el-option value="" :label="t('energy.meterAll')" />
+            <el-option v-for="m in dm?.meters || []" :key="m.code"
+                       :value="m.code" :label="m.name || m.code" />
+          </el-select>
+        </div>
+      </div>
+      <!-- 口径提示：没标总表时全厂含所有设备，机床的电与总表重复计算 -->
+      <div v-if="dm?.meterMode === 'LEGACY'" class="meter-warn">
+        {{ t('energy.meterLegacyWarn') }}
       </div>
       <div ref="demandEl" class="chart"></div>
       <div class="dinfo" v-html="demandInfo"></div>
@@ -254,6 +267,8 @@ const ov = ref<EnergyOverview | null>(null)
 const rank = ref<EnergyRankItem[]>([])
 const node = ref<EnergyByNode | null>(null)
 const dm = ref<DemandData | null>(null)
+/** 选中的总表（进线）；空 = 全厂 */
+const meterSel = ref('')
 const picked = ref('')
 const detail = ref<any>(null)
 const tariffOpen = ref(false), demandOpen = ref(false), bmOpen = ref(false)
@@ -407,7 +422,7 @@ async function load() {
     const [o, , d] = await Promise.all([
       energyApi.overview(),
       loadRank(),
-      energyApi.demand().catch(() => null)
+      energyApi.demand(meterSel.value || undefined).catch(() => null)
     ])
     loadNode()
     loadBenchmark()
@@ -415,6 +430,14 @@ async function load() {
     if (d && d.ok) dm.value = d
     if (picked.value) loadDetail(picked.value)
   } catch (e: any) { console.error('能耗数据加载失败', e) }
+}
+
+/** 切换进线（总表）后只重载需量，不必重拉整页 */
+async function reloadDemand() {
+  try {
+    const d = await energyApi.demand(meterSel.value || undefined)
+    if (d && d.ok) dm.value = d
+  } catch (e: any) { console.error('需量加载失败', e) }
 }
 
 async function loadRank() {
@@ -574,5 +597,16 @@ usePolling(load, 15000, { immediate: true })
 .total-row td { border-top: 1px solid var(--border); padding-top: 10px; }
 .minibar.ghost { background: var(--border); }
 .bad { color: var(--alarm); }
+/* 口径提示：没标总表时全厂含所有设备，数字可能虚高，必须说清 */
+.meter-warn {
+  margin: var(--space-2) 0;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-2xs);
+  line-height: 1.7;
+  color: var(--warn, var(--alarm));
+  background: var(--surface-2);
+  border-left: 2px solid var(--warn, var(--alarm));
+  border-radius: var(--radius-sm);
+}
 
 </style>

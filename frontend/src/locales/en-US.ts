@@ -1229,6 +1229,10 @@ unitPerKva: 'CNY/kVA·mo',
   },
 
   devForm: {
+    secMeter: 'Metering scope',
+    secMeterHint: '(meter = incoming-line metering point)',
+    meterHintLabel: 'Note',
+    meterHint: 'Check this when the device is a meter (incoming line). The plant demand total adds only meters — power from sub-meters is already inside the meter, so adding both double-counts.',
     titleEdit: 'Edit device',
     titleNew: 'Add device',
     scanTip: 'Do not know the IP or point table?',
@@ -1437,6 +1441,8 @@ unitPerKva: 'CNY/kVA·mo',
   },
 
   energy: {
+    meterAll: 'All (sum of meters)',
+    meterLegacyWarn: 'No meter marked: the plant total adds the meter and the machines together (machine power is already inside the meter), so it reads high. Mark the meter as "Meter / incoming-line point" in the device form.',
     rangeLabel: 'Range',
     today: 'Today',
     last7d: 'Last 7 days',
