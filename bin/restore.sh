@@ -84,7 +84,23 @@ case "$TARGET" in
   *[!A-Za-z0-9_-]*) echo "库名只能包含字母、数字、下划线和短横线：$TARGET" >&2; exit 2 ;;
 esac
 
-MYSQL_CLIENT="$(command -v mysql || echo /usr/bin/mysql)"
+# 引擎与客户端：MariaDB 10.5 起客户端叫 mariadb（官方 mariadb:11 镜像里
+# 根本没有 mysql 这个命令），只找 mysql 会 "command not found"。
+ENGINE="$(printf '%s' "$(read_yml url)" | sed -n 's|^jdbc:||p' | cut -d: -f1)"
+pick() {
+  for c in "$@"; do
+    p="$(command -v "$c" 2>/dev/null)" && { printf '%s' "$p"; return 0; }
+  done
+  return 1
+}
+
+# 两个名字都要找：URL 写 jdbc:mysql:// 也可能连的是 MariaDB，
+# 而 MariaDB 10.5+ 的客户端叫 mariadb（官方镜像里没有 mysql 命令）
+case "${ENGINE:-mysql}" in
+  mysql)   MYSQL_CLIENT="$(pick mysql mariadb || echo /usr/bin/mysql)" ;;
+  mariadb) MYSQL_CLIENT="$(pick mariadb mysql || echo /usr/bin/mariadb)" ;;
+  *)       MYSQL_CLIENT="$(pick mysql mariadb || echo /usr/bin/mysql)" ;;
+esac
 run_sql() {  # run_sql <库名|""> <SQL>
   if [ -n "$1" ]; then
     MYSQL_PWD="$DB_PASS" "$MYSQL_CLIENT" -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" \
@@ -98,7 +114,7 @@ run_sql() {  # run_sql <库名|""> <SQL>
 echo "═══════════════════════════════════════════════════════"
 echo " 恢复备份"
 echo "   文件   : $FILE"
-echo "   目标库 : $TARGET@$DB_HOST:$DB_PORT"
+echo "   目标库 : $ENGINE:$TARGET@$DB_HOST:$DB_PORT"
 [ "$TARGET" = "$PROD_DB" ] && echo "   ⚠ 这就是 application.yml 里配置的生产库"
 echo "═══════════════════════════════════════════════════════"
 

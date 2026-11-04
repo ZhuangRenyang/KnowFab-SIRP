@@ -47,17 +47,55 @@ DB_USER="${DB_USER:-devicehub}"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 FILE="$OUT_DIR/${DB_NAME}-${STAMP}.sql.gz"
 
+# ---------- 选工具：MySQL 和 MariaDB 的命令名不一样 ----------
+# MariaDB 10.5 起把工具改名为 mariadb-dump / mariadb，
+# 官方 mariadb:11 镜像里**没有** mysqldump / mysql 这些名字。
+#
+# ⚠️ 关键：**URL 的协议名 ≠ 实际数据库**。
+# 项目只带了 mysql-connector-j（能连 MariaDB），所以客户用 MariaDB 时
+# JDBC URL 通常还是 jdbc:mysql:// —— 从 URL 判出来是 mysql，
+# 但那台机器上可能只有 mariadb-dump。所以每个分支都**双向找**：
+# 先找本引擎自己的名字，再找另一家的，最后才猜固定路径。
+pick() {  # pick <候选1> [候选2...] → 第一个存在的绝对路径
+  for c in "$@"; do
+    p="$(command -v "$c" 2>/dev/null)" && { printf '%s' "$p"; return 0; }
+  done
+  return 1
+}
+
 case "$ENGINE" in
   mysql)
-    MYSQLDUMP="$(command -v mysqldump || echo /usr/bin/mysqldump)"
-    MYSQL="$MYSQLDUMP"; ;;
+    # 也有可能是「用 jdbc:mysql:// 连 MariaDB」的机器，所以要回退找 mariadb-*
+    DUMP_BIN="$(pick mysqldump mariadb-dump || echo /usr/bin/mysqldump)"
+    CLIENT_BIN="$(pick mysql mariadb || echo /usr/bin/mysql)"
+    ;;
+  mariadb)
+    DUMP_BIN="$(pick mariadb-dump mysqldump || echo /usr/bin/mariadb-dump)"
+    CLIENT_BIN="$(pick mariadb mysql || echo /usr/bin/mariadb)"
+    ;;
   postgresql|pgsql)
-    MYSQL="$(command -v pg_dump || echo /usr/bin/pg_dump)"; ;;
+    DUMP_BIN="$(pick pg_dump || echo /usr/bin/pg_dump)"
+    CLIENT_BIN="$(pick psql || echo /usr/bin/psql)"
+    ;;
   *)
-    echo "不认识的数据库引擎：$ENGINE" >&2; exit 1; ;;
+    echo "不认识的数据库引擎：$ENGINE（支持 mysql / mariadb / postgresql）" >&2
+    exit 1 ;;
 esac
 
-echo "[$(date '+%F %T')] 备份 $DB_NAME@$DB_HOST:$DB_PORT → $FILE"
+# ---------- 选项探测 ----------
+# 不同数据库/不同版本支持的选项不一样，**硬写会直接失败**：
+# · MariaDB 的 mysqldump 不认 --set-gtid-purged（那是 MySQL 的 GTID 选项，
+#   MariaDB 的 GTID 是另一套实现）→ 报 "unknown variable" 并**输出零字节文件**；
+# · --no-tablespaces 是 MySQL 5.7.31+ 才有的，老版本/MariaDB 未必认。
+# 所以探一下再决定加不加，不猜版本。
+supports() { "$DUMP_BIN" --help 2>&1 | grep -q -- "$1"; }
+
+OPTS="--single-transaction --routines --triggers --default-character-set=utf8mb4"
+supports --set-gtid-purged && OPTS="$OPTS --set-gtid-purged=OFF"
+supports --no-tablespaces && OPTS="$OPTS --no-tablespaces"
+
+echo "[$(date '+%F %T')] 备份 $ENGINE:$DB_NAME@$DB_HOST:$DB_PORT → $FILE"
+echo "[$(date '+%F %T')] 工具 $DUMP_BIN $OPTS"
 
 # 半截文件不能留：mysqldump 失败 / 磁盘满时这里会退出，
 # 但 gzip 已经把文件创建出来了。留着它，下次出事后可能被当成"有效备份"拿去恢复。
@@ -80,12 +118,12 @@ ERRFILE="$OUT_DIR/.backup.err"
 if [ "$ENGINE" = "mysql" ]; then
   # 密码用 MYSQL_PWD 环境变量传，不放命令行：ps 能看见同机的全部命令行参数，
   # `-p密码` 等于把库密码写在墙上。
-  # --no-tablespaces：逻辑备份恢复到新库不需要表空间语句，去掉它就不用 PROCESS 权限
-  MYSQL_PWD="$DB_PASS" "$MYSQL" -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" \
-    --single-transaction --routines --triggers --set-gtid-purged=OFF --no-tablespaces \
-    --default-character-set=utf8mb4 "$DB_NAME" 2>"$ERRFILE" | gzip > "$FILE"
+  # $OPTS 故意不加引号：它是一串要拆开的参数（上面按探测结果拼的）
+  # shellcheck disable=SC2086
+  MYSQL_PWD="$DB_PASS" "$DUMP_BIN" -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" \
+    $OPTS "$DB_NAME" 2>"$ERRFILE" | gzip > "$FILE"
 else
-  PGPASSWORD="$DB_PASS" "$MYSQL" -h"$DB_HOST" -p"$DB_PORT" -U"$DB_USER" -d"$DB_NAME" \
+  PGPASSWORD="$DB_PASS" "$DUMP_BIN" -h"$DB_HOST" -p"$DB_PORT" -U"$DB_USER" -d"$DB_NAME" \
     2>"$ERRFILE" | gzip > "$FILE"
 fi
 
