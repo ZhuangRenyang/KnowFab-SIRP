@@ -74,36 +74,61 @@ const upMsg = ref('')
 const upOk = ref(false)
 const applyMsg = ref('')
 
-async function check() {
+/**
+ * @param force true = 绕过服务端 10 分钟缓存，真的重新联网探测
+ *
+ * 默认走缓存：连不上的源每次都要等满超时（8 秒/源），而版本号不会每分钟变。
+ * 缓存命中时明确告诉用户「N 分钟前查过」，并给一个「重新检查」的出口——
+ * **不能让用户以为这是刚查的**，那是另一种形式的假数据。
+ */
+async function check(force = false) {
   checking.value = true
   checkMsg.value = t('upd.connecting')
   sources.value = []
   try {
-    const r = await systemApi.check()
+    const r = await systemApi.check(force)
     if (!r.ok) { checkMsg.value = r.message || t('upd.checkFailed'); return }
+    // 缓存提示：秒数 -> 人话
+    const age = r.cached
+      ? (r.cacheAgeSec && r.cacheAgeSec >= 60
+          ? t('upd.cachedMinAgo', { n: Math.floor(r.cacheAgeSec / 60) })
+          : t('upd.cachedJustNow'))
+      : ''
+    const cacheHint = r.cached
+      ? `<br><span class="cache-hint">${age} · `
+        + `<el-button link type="primary" size="small" class="recheck">${t('upd.recheck')}</el-button></span>`
+      : ''
     if (r.hasUpdate) {
       checkMsg.value = '<b>' + t('upd.foundNew', { ver: r.latest, cur: r.currentVersion || '' }) + '</b>'
         + (r.notes ? '<br>' + t('upd.notesPrefix') + r.notes : '')
-        + `<br><el-button type="primary" size="small" data-url="${encodeURIComponent(r.url || '')}" class="dl">${t('upd.downloadBtn')}</el-button>`
+        + `<br><el-button type="primary" size="small" data-url="${encodeURIComponent(r.url || '')}"`
+        + ` data-sha="${encodeURIComponent(r.sha256 || '')}" class="dl">${t('upd.downloadBtn')}</el-button>`
+        + cacheHint
     } else {
-      checkMsg.value = r.message || ''
+      checkMsg.value = (r.message || '') + cacheHint
     }
     sources.value = r.sources || []
-    /* 下载按钮动态绑定（v-html 内无法用 Vue 事件） */
+    /* 下载按钮与「重新检查」动态绑定（v-html 内无法用 Vue 事件） */
     requestAnimationFrame(() => {
       const btn = document.querySelector('.dl') as HTMLElement | null
-      btn?.addEventListener('click', () => download(decodeURIComponent(btn.dataset.url || '')), { once: true })
+      btn?.addEventListener('click', () => download(
+        decodeURIComponent(btn.dataset.url || ''),
+        decodeURIComponent(btn.dataset.sha || '')), { once: true })
+
+      const re = document.querySelector('.recheck') as HTMLElement | null
+      re?.addEventListener('click', () => check(true), { once: true })
     })
   } catch (e: any) {
     checkMsg.value = t('upd.checkFailed') + '：' + (e?.message || '')
   } finally { checking.value = false }
 }
 
-async function download(url: string) {
+async function download(url: string, sha256?: string) {
   if (!url) { ElMessage.warning(t('upd.noUrl')); return }
   checkMsg.value = t('upd.downloading')
   try {
-    const r = await systemApi.download(url)
+    // sha256 来自 check 结果（version.json 声明），后端下载完先比对再验签
+    const r = await systemApi.download(url, sha256)
     if (r && r.ok === false) { checkMsg.value = t('upd.downloadFailed') + (r.message || ''); return }
     checkMsg.value = t('upd.downloaded', { ver: r.version || '' })
     emit('changed')
@@ -186,4 +211,10 @@ async function rollback() {
 .info code { background: var(--surface-3); padding: 1px 5px; border-radius: 4px; }
 .offline { margin-top: var(--space-4); }
 .hint { font-size: var(--text-xs); color: var(--muted); line-height: 1.9; }
+
+/* 缓存提示：不能让它看起来像"刚查到的"——"3 分钟前查过"必须能一眼看到 */
+.cache-hint { font-size: var(--text-2xs); color: var(--meta); }
+
+/* 缓存提示：不能让它看起来像"刚查到的"——"3 分钟前查过"必须能一眼看到 */
+.cache-hint { font-size: var(--text-2xs); color: var(--meta); }
 </style>

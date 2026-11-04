@@ -1645,6 +1645,10 @@ export default {
     notesPrefix: '说明：',
     downloading: '正在下载（包有几十 MB，慢一点正常）…',
     downloadFailed: '下载失败：',
+// —— 检查更新的缓存提示（DH-26） ——
+cachedJustNow: '刚刚查过',
+cachedMinAgo: '{n} 分钟前查过',
+recheck: '重新检查',
     downloadBtn: '下载并校验',
     downloaded: '已下载并验签通过（{ver}），到下面「应用与回滚」里应用。',
     noUrl: '更新源没给下载地址，请手工下载后用「上传并校验」',

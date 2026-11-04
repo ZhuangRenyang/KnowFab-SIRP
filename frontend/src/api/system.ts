@@ -52,9 +52,20 @@ export interface CheckResult {
   latest?: string
   notes?: string
   url?: string
+  /**
+   * 升级包的 sha256（version.json 里声明）。
+   * 下载时带回去，后端会先比对再验签——挡住「传输截断」和
+   * 「仓库附件被换成另一个合法包」这两种签名挡不住的情况。
+   */
+  sha256?: string
   currentVersion?: string
   message?: string
   sources?: CheckSource[]
+  /** true = 这份结果来自服务端 10 分钟缓存，没有真的重新联网 */
+  cached?: boolean
+  cachedAt?: number
+  /** 缓存年龄（秒）：界面据此显示「N 分钟前查过」 */
+  cacheAgeSec?: number
 }
 
 export interface MigrationFile {
@@ -104,8 +115,20 @@ export interface DbPasswordResult {
 export const systemApi = {
   version: () => http.get<{ ok: boolean; version: string; buildTime: string; schemaVersion: string }>('/api/system/version'),
   status: () => http.get<UpdateStatus>('/api/system/update/status'),
-  check: () => http.get<CheckResult>('/api/system/update/check'),
-  download: (url: string) => http.post<{ ok: boolean; message?: string; version?: string }>('/api/system/update/download', { url }),
+  /**
+   * 检查更新。默认走服务端 10 分钟缓存（连不上的源每次都要等满超时）；
+   * `force=true` 绕过缓存真去探测，用于界面上的「重新检查」。
+   */
+  check: (force = false) =>
+    http.get<CheckResult>('/api/system/update/check' + (force ? '?force=true' : '')),
+  /**
+   * 下载并校验升级包。
+   * @param sha256 检查更新时 version.json 里声明的包哈希——传了就先比对再验签，
+   *               挡住「传输截断」和「仓库附件被换成另一个合法包」。
+   */
+  download: (url: string, sha256?: string) =>
+    http.post<{ ok: boolean; message?: string; version?: string }>(
+      '/api/system/update/download', { url, sha256: sha256 || null }),
   upload: (file: File) => {
     const fd = new FormData()
     fd.append('file', file)

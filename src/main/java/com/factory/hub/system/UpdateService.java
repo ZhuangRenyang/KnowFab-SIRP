@@ -252,16 +252,56 @@ public class UpdateService {
 
     /* ==================== 联网检查更新 ==================== */
 
+    /* ==================== 探测结果缓存（DH-26） ==================== */
+
     /**
-     * 依次问每个更新源有没有新版本。
+     * 上次检查的结果。版本号不会每分钟变，而连不上的源每次都要等满超时。
+     * <p>
+     * 现场最常见的是「只有 Gitee 通、GitHub 连不上」：每点一次检查更新都要干等
+     * 8 秒超时，而这 8 秒里唯一发生的事是「又确认了一次连不上」。
+     * 缓存 10 分钟，但留 {@code force} 让用户能主动重查。
+     */
+    private volatile CheckCache checkCache;
+
+    /** sourceKey 存的是源列表：客户改了更新源，旧缓存必须失效 */
+    private record CheckCache(String sourceKey, long at, Map<String, Object> result) {
+    }
+
+    private static final long CHECK_CACHE_MS = 10 * 60 * 1000L;
+
+    /**
+     * 依次问每个更新源有没有新版本（默认走 10 分钟缓存）。
      * <p>
      * 只做"有没有"，不做"自动装上"——装不装、什么时候装必须人点头。
      * 车间服务器半夜自动升级然后起不来，这个责任没人担得起。
      */
     public Map<String, Object> check() {
+        return check(false);
+    }
+
+    /**
+     * @param force true = 忽略缓存，真的重新探测所有源（界面上的「重新检查」）
+     */
+    public Map<String, Object> check(boolean force) {
+        List<String> list = sourceList();
+        String sourceKey = String.join("|", list);
+        long nowMs = System.currentTimeMillis();
+
+        if (!force) {
+            CheckCache c = checkCache;
+            if (c != null && c.sourceKey().equals(sourceKey)
+                    && nowMs - c.at() < CHECK_CACHE_MS) {
+                // 返回副本：调用方改了不能污染缓存
+                Map<String, Object> hit = new LinkedHashMap<>(c.result());
+                hit.put("cached", true);
+                hit.put("cachedAt", c.at());
+                hit.put("cacheAgeSec", (nowMs - c.at()) / 1000);
+                return hit;
+            }
+        }
+
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("currentVersion", versionService.version());
-        List<String> list = sourceList();
         if (list.isEmpty()) {
             out.put("ok", false);
             out.put("reachable", false);
@@ -320,6 +360,9 @@ public class UpdateService {
                         + "可稍后重试，或用「上传并校验」离线升级。");
             }
         }
+        out.put("cached", false);
+        // 存副本：返回给调用方的那份可能被改动，缓存必须是独立的
+        checkCache = new CheckCache(sourceKey, nowMs, new LinkedHashMap<>(out));
         return out;
     }
 
@@ -412,6 +455,15 @@ public class UpdateService {
      * 读清单有兜底不代表下载有兜底，这一步补的就是这个缺口。
      */
     public Map<String, Object> download(String url) {
+        return download(url, null);
+    }
+
+    /**
+     * @param expectedSha256 检查更新时 version.json 里声明的包哈希（DH-25）。
+     *                       传了就比对，为空就跳过——这是**传输完整性**这一层，
+     *                       和后面的验签（防伪造）、manifest 逐文件校验（防篡改）是三道不同的关。
+     */
+    public Map<String, Object> download(String url, String expectedSha256) {
         Map<String, Object> out = new LinkedHashMap<>();
         if (url == null || url.isBlank()) {
             return fail(out, "没给下载地址");
@@ -427,6 +479,18 @@ public class UpdateService {
                 Files.createDirectories(inbox());
                 tmp = Files.createTempFile(inbox(), "dl-", ".zip");
                 byte[] data = httpGetBytes(u, 300_000);
+
+                // DH-25：先比对 version.json 声明的 sha256 —— 这一关查的是
+                // 「下载到的包是不是刚才看到的那个」。
+                // 验签能挡住伪造包、manifest 能挡住包内文件被换，
+                // 但挡不住「传输截断」和「仓库附件被换成另一个合法包」。
+                // 不一致时**换源重试**（很可能只是这个源的文件坏了），而不是直接失败。
+                String mismatch = hashMismatch(data, expectedSha256);
+                if (mismatch != null) {
+                    lastErr = mismatch;
+                    log.warn("从 {} 下载到的包校验不通过：{}", u, mismatch);
+                    continue;   // 试下一个源；tmp 由 finally 删
+                }
                 Files.write(tmp, data);
                 Map<String, Object> r = register(out, tmp);
                 if (Boolean.TRUE.equals(r.get("ok"))) {
@@ -458,6 +522,42 @@ public class UpdateService {
      * 生成候选下载地址：主地址 + 另一个源的同一附件。
      * 只对标准的 /releases/download/&lt;tag&gt;/&lt;file&gt; 形式做推导，其他形式原样返回。
      */
+    /**
+     * 比对下载到的内容与 version.json 声明的 sha256（DH-25）。
+     * <p>
+     * 这一关查的是「下载到的包是不是刚才看到的那个」——
+     * 验签能挡住伪造包、manifest 能挡住包内文件被换，
+     * 但挡不住**传输截断**和**仓库附件被换成另一个合法包**。
+     * <p>
+     * 抽成 static 纯函数是为了能单测：想真测 download()，得先起一个 https 服务
+     * 喂它一个包，成本太高；而这段判断恰恰是最容易写错的部分。
+     *
+     * @return null 表示通过（或本来就没声明哈希）；否则是给人看的差异说明
+     */
+    static String hashMismatch(byte[] data, String expectedSha256) {
+        if (expectedSha256 == null || expectedSha256.isBlank()) {
+            return null;   // 没声明就不查（离线包、自建镜像可能没有）
+        }
+        if (data == null) {
+            return "下载到的内容是空的";
+        }
+        String actual = MigrationScript.sha256(data);
+        if (actual.equalsIgnoreCase(expectedSha256.trim())) {
+            return null;
+        }
+        return "包内容与 version.json 声明的 sha256 不一致（声明 "
+                + shortHash(expectedSha256) + "，实际 " + shortHash(actual) + "）";
+    }
+
+    /** 报错里只显示前 12 位：完整 64 位哈希在界面上没法看，也记不住 */
+    private static String shortHash(String h) {
+        if (h == null) {
+            return "(空)";
+        }
+        String t = h.trim();
+        return t.length() <= 12 ? t : t.substring(0, 12) + "…";
+    }
+
     private List<String> candidateUrls(String primary) {
         List<String> list = new ArrayList<>();
         list.add(primary);

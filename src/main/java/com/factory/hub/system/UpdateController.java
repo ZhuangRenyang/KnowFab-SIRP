@@ -69,17 +69,25 @@ public class UpdateController {
         return out;
     }
 
-    /** 联网检查：按配置的更新源问一遍有没有新版本 */
+    /**
+     * 联网检查：按配置的更新源问一遍有没有新版本。
+     * <p>
+     * 默认走 10 分钟缓存——连不上的源每次都要等满超时（8 秒/源），
+     * 而版本号不会每分钟变。界面上的「重新检查」传 {@code force=true} 绕过缓存。
+     */
     @GetMapping("/update/check")
-    public Map<String, Object> check() {
-        return updateService.check();
+    public Map<String, Object> check(
+            @RequestParam(value = "force", defaultValue = "false") boolean force) {
+        return updateService.check(force);
     }
 
     /** 从更新源下载并验签。地址由前端从 check 结果里带回来 */
     @PostMapping("/update/download")
     public Map<String, Object> download(@RequestBody Map<String, String> body) {
         String url = body == null ? null : body.get("url");
-        Map<String, Object> out = updateService.download(url);
+        // 前端把 check 结果里的 sha256 带回来，下载完先比对（DH-25 传输完整性）
+        String sha256 = body == null ? null : body.get("sha256");
+        Map<String, Object> out = updateService.download(url, sha256);
         // source 是实际用上的那个地址（主源挂了会自动走备用源），比请求里带的准
         Object source = out == null ? null : out.get("source");
         String from = source == null ? url : String.valueOf(source);
