@@ -13,7 +13,7 @@ Linux  ：终端里执行 ./start.sh
   1. 下载 Java 17 运行环境（约 45MB）到 runtime/jre
   2. 下载 MariaDB 便携版（约 90MB）到 runtime/mariadb
   3. 初始化数据库到 runtime/data
-  4. 生成 config/application.yml（数据库密码随机）
+  4. 生成 config/application.yml（数据库账号 admin / 123456）
   5. 创建默认管理员 admin / 123456（可在 config/application.yml 覆盖）
 
 以后再启动就很快（只启动，不再下载）。

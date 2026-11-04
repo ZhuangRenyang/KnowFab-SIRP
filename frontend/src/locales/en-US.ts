@@ -1602,7 +1602,7 @@ unitPerKva: 'CNY/kVA·mo',
   },
   db: {
     title: 'Database password',
-    hint: 'Change the MySQL password for the devicehub account; restart the service afterwards',
+    hint: 'Change the MySQL password for the admin account; restart the service afterwards',
     defaultAccount: 'Default user: ',
     defaultPassword: 'Default password: ',
     defaultNote: '(If it has never been changed since installation, enter it in Current password; otherwise use the new one you recorded.)',

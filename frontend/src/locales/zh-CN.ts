@@ -1606,7 +1606,7 @@ export default {
   },
   db: {
     title: '数据库密码',
-    hint: '修改 devicehub 账号的 MySQL 密码，改完需重启系统',
+    hint: '修改 admin 账号的 MySQL 密码，改完需重启系统',
     defaultAccount: '默认账号：',
     defaultPassword: '默认密码：',
     defaultNote: '（装好后没改过，就在「当前密码」里填这个；改过则填你记录的新密码）',

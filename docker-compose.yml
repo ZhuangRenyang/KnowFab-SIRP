@@ -13,14 +13,14 @@ services:
       --character-set-server=utf8mb4
       --collation-server=utf8mb4_unicode_ci
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-knowfab2026}
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-123456}
       # 首次启动自动创建 devicehub 库——这就是"零数据库配置"的实现
       MYSQL_DATABASE: devicehub
       # 还要创建应用真正使用的那个账号：
       # 只设 MYSQL_DATABASE 只会建库，不会建用户，应用拿内置的 devicehub 用户去连会
       # Access denied，容器起不来（交付链路整体不可用）。
-      MYSQL_USER: ${DB_USER:-devicehub}
-      MYSQL_PASSWORD: ${DB_PASSWORD:-knowfab2026}
+      MYSQL_USER: ${DB_USER:-admin}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-123456}
     volumes:
       - mysql-data:/var/lib/mysql
     healthcheck:

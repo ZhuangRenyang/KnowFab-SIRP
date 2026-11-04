@@ -5,8 +5,8 @@
     </div>
 
     <div class="tip">
-      <b>{{ t('db.defaultAccount') }}</b><code>devicehub</code>
-      <b>{{ t('db.defaultPassword') }}</b><code>DeviceHub2026</code>
+      <b>{{ t('db.defaultAccount') }}</b><code>admin</code>
+      <b>{{ t('db.defaultPassword') }}</b><code>123456</code>
       <span>{{ t('db.defaultNote') }}</span>
     </div>
 

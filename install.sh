@@ -3,9 +3,10 @@
 # device-hub 一键安装（Ubuntu / Debian / 麒麟 / CentOS 通用）
 #
 # 用法：
-#   sudo bash install.sh --db-pass '你的数据库密码'
+#   sudo bash install.sh
 #                                     默认装到 /opt/device-hub，端口 8080。
-#                                     数据库默认连本机 MySQL：127.0.0.1:3306/device_hub
+#                                     数据库默认连本机 MySQL：127.0.0.1:3306/devicehub
+#                                     账号 admin / 密码 123456（--db-pass 可覆盖）
 #                                     （H2 已废弃，MySQL 8 必须先装好、建好库）
 #   sudo bash install.sh --db-pass '...' \
 #        --db-host 10.0.0.5 --db-port 3306 --db-name device_hub --db-user devicehub
@@ -34,9 +35,9 @@ ALLOW_WEB_RESTART=1
 DB="mysql"             # mysql（默认）| pg。H2 已废弃（2026-10-27），驱动已从包里移除
 DB_HOST="127.0.0.1"
 DB_PORT=""
-DB_NAME="device_hub"
-DB_USER="device_hub"
-DB_PASS=""
+DB_NAME="devicehub"
+DB_USER="admin"
+DB_PASS="123456"
 ONLINE=0
 SOURCE="global"         # cn（Gitee，建好后替换地址）| global（GitHub，默认）| 自定义目录地址
 while [ $# -gt 0 ]; do
@@ -63,7 +64,9 @@ done
   echo "--db 只能是 mysql / pg"; exit 1
 }
 # MySQL 现在是硬前提（要并 ERP、长期数据），密码必须给：数据库连接不是能猜的东西
-[ -n "$DB_PASS" ] || die "缺 --db-pass '数据库密码'（MySQL/PG 是必装前提，不再有免安装的 H2 兜底）"
+# 数据库密码默认 123456（项目铁律 R4：账号密码都固定，不随机生成）。
+# 要用别的密码就 --db-pass 'xxx' 覆盖。
+[ -n "$DB_PASS" ] || DB_PASS="123456"
 case "$DB_PASS" in
   *"'"*) die "数据库密码请勿包含单引号（会破坏生成的配置文件）" ;;
 esac

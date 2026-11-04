@@ -25,8 +25,8 @@ sudo bash deploy.sh        # 国内服务器：sudo bash deploy-cn.sh
 
 ```sql
 CREATE DATABASE devicehub DEFAULT CHARSET utf8mb4 COLLATE utf8mb4_general_ci;
-CREATE USER 'devicehub'@'localhost' IDENTIFIED BY '你的密码';
-GRANT ALL PRIVILEGES ON devicehub.* TO 'devicehub'@'localhost';
+CREATE USER 'admin'@'localhost' IDENTIFIED BY '123456';
+GRANT ALL PRIVILEGES ON devicehub.* TO 'admin'@'localhost';
 ```
 
 连接配置三选一（优先级从高到低）：

@@ -34,7 +34,7 @@
 
 **前置条件**
 ------------
-- 本地 MySQL 在 127.0.0.1:3306，用户 devicehub / DeviceHub2026
+- 本地 MySQL 在 127.0.0.1:3306，用户 admin / 123456
 - devicehub 用户对 devicehub_verify 库有 ALL 权限（没有就用有权限的库）
 - 端口默认 8131（可用 --port 改）
 
@@ -60,8 +60,8 @@ JAR = os.path.join(PROJ, "target", "device-hub.jar")
 MVN = r"D:\mywebss\myWeb\KnowFab-SIRP\tools\apache-maven-3.9.9\bin\mvn.cmd"
 
 DB_NAME = "devicehub_verify"
-DB_USER = "devicehub"
-DB_PASS = "DeviceHub2026"
+DB_USER = "admin"
+DB_PASS = "123456"
 ADMIN_PASS = "123456"
 
 # 升级前后都要对比的存量表（表 → 基线行数由脚本自己记录）

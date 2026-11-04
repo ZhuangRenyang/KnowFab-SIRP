@@ -24,14 +24,11 @@ ok "Docker $(docker --version | awk '{print $3}' | tr -d ,) / compose 就绪"
 # ---------- 2. 生成 .env（已存在则复用） ----------
 if [ ! -f .env ]; then
   say "生成 .env（随机数据库密码 + 国内 Maven 镜像）"
-  rand_hex() {
-    if command -v openssl >/dev/null 2>&1; then openssl rand -hex 16
-    else head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n'; fi
-  }
   {
     echo "# 由 deploy-cn.sh 自动生成于 $(date '+%Y-%m-%d %H:%M:%S')"
     echo "APP_PORT=8080"
-    echo "DB_PASSWORD=sirp_$(rand_hex)"
+    echo "DB_USER=admin"
+    echo "DB_PASSWORD=123456"
     echo "MAVEN_MIRROR=https://maven.aliyun.com/repository/public"
     echo "NPM_REGISTRY=https://registry.npmmirror.com"
   } > .env

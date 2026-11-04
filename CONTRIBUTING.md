@@ -66,8 +66,8 @@ Requirements: JDK 17, Maven, Node 18+, and a MySQL 8 or MariaDB instance.
 ```bash
 # 1. database
 mysql -uroot -e "CREATE DATABASE devicehub CHARACTER SET utf8mb4;
-  CREATE USER 'devicehub'@'localhost' IDENTIFIED BY 'DeviceHub2026';
-  GRANT ALL ON devicehub.* TO 'devicehub'@'localhost';"
+  CREATE USER 'admin'@'localhost' IDENTIFIED BY '123456';
+  GRANT ALL ON devicehub.* TO 'admin'@'localhost';"
 
 # 2. backend (http://localhost:8080)
 mvn spring-boot:run

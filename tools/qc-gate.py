@@ -25,8 +25,8 @@ JAR = os.path.join(ROOT, "target", "device-hub.jar")
 JAVA = "java"
 MYSQL_HOST = "127.0.0.1"
 MYSQL_PORT = 3306
-MYSQL_USER = "devicehub"
-MYSQL_PASS = "DeviceHub2026"
+MYSQL_USER = "admin"
+MYSQL_PASS = "123456"
 ADMIN_PASS = "123456"
 
 

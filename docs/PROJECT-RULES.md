@@ -42,10 +42,50 @@
 - **同步只做一次。** `DEVICEHUB_RESET_ADMIN=1` 用一次性 systemd drop-in，
   启完立刻撤掉 → 之后再重启**不会**重置，客户改过的密码得以保留。
 
-### 不受此规则约束的
+---
 
-- **数据库密码**（`deploy.sh` 生成的 `.env` 里的 `MYSQL_PASSWORD`）：那个要强且随机，
-  客户也不需要记住它。与管理员密码是两回事。
+---
+
+## R4 数据库默认账号密码（2026-11-04 定）
+
+### 规矩
+
+- 数据库默认登录账号 **`admin`**，默认密码 **`123456`**
+- **不随机生成数据库密码**
+- 与管理员密码一样：**永远不要写进任何密码文件**
+- 用户/客户在系统后台改自己的密码
+
+### 为什么和 R1 一样处理
+
+一开始数据库密码是随机的（`deploy.sh` 生成 `.env` 写 `sirp_<随机>`，
+便携版 `start.sh` 生成 16 位随机串）。问题很实际：
+
+- 客户拿到包不知道数据库密码 → 要翻文件、要问人
+- 现场实施经常卡在这一步
+- 随机密码**没法记在交付单上**，也没法口头交接
+
+固定 `admin` / `123456` 之后，**交付单上能直接写**，
+装机师傅照着敲就行。安全风险用交付流程兜：
+上线前在系统后台改密码（管理员密码），
+数据库密码需要更强时用 `--db-pass` / `.env` 覆盖。
+
+### 执行范围
+
+| 位置 | 要求 |
+|---|---|
+| 应用 `application.yml` | `username: ${DEVICEHUB_DB_USER:admin}`、`password: ${DEVICEHUB_DB_PASSWORD:123456}` |
+| `install.sh` | `DB_USER="admin"`、`DB_PASS="123456"`（`--db-pass` 可覆盖，不再必填） |
+| `docker-compose.yml` | `MYSQL_USER: ${DB_USER:-admin}`、`MYSQL_PASSWORD: ${DB_PASSWORD:-123456}` |
+| `deploy.sh` / `deploy-cn.sh` | `.env` 写 `DB_USER=admin` / `DB_PASSWORD=123456`；**删掉 `rand_hex` 随机生成** |
+| `tools/portable/start.sh` | `PWD_DB="123456"`；`CREATE USER 'admin'@...`；**删掉随机生成与其注释** |
+| 前端「数据库密码」面板 | 默认账号/密码提示改成 admin / 123456 |
+| 测试脚本 | `qc-gate.py` / `qc-e2e.py` / `upgrade-drill.py` 的默认账号密码同步 |
+
+### 数据库名不在这条规则里
+
+库名固定 `devicehub`（原来 install.sh 默认写的是 `device_hub`，
+和 application.yml / docker-compose 不一致——已统一）。
+
 
 ---
 

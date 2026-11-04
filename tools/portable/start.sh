@@ -7,7 +7,7 @@
 #   RESET_DB=1 ./start.sh       重建数据库（会清空业务数据）
 #
 # 自动完成：Java 17（缺则下载）→ MariaDB 便携版（缺则下载并初始化到 runtime/data）
-#          → 生成 config/application.yml（随机数据库密码）→ 启动 → 打开浏览器（有 GUI 时）
+#          → 生成 config/application.yml（数据库账号 admin / 123456）→ 启动 → 打开浏览器（有 GUI 时）
 #
 # 全部数据都在本目录：runtime/data 是数据库，runtime/logs 是日志；卸载=删目录。
 # 不需要 Docker / MySQL / Python / Git。
@@ -173,14 +173,9 @@ fi
 
 # ---------- 3. 配置 ----------
 if [ ! -f "$CONF_FILE" ]; then
-  say '生成配置文件（随机数据库密码，仅本机可见）'
+  say '生成配置文件（数据库账号 admin / 123456，仅本机可见）'
   mkdir -p "$CONF_DIR"
-  # 数据库密码：随机 16 位（**不是**管理员密码——R1 只管管理员那个，见
-  # docs/PROJECT-RULES.md；数据库密码面向的是攻击面，要强度，不给客户记）。
-  # 踩过的坑：管道接 head -c 时，head 读够就退出会给上游发 SIGPIPE，
-  # tr 因此退出码 141；配合开头的 set -euo pipefail，整个脚本会在这里直接终止
-  # （便携版 Linux 首次启动必崩）。所以把 tr 放进进程替换，让 head 去截断它。
-  PWD_DB="$(LC_ALL=C head -c 16 < <(tr -dc 'a-km-zA-HJ-NP-Z2-9' </dev/urandom))"
+  PWD_DB="123456"
   cat >"$CONF_FILE" <<YML
 # 由便携启动器自动生成（首次运行）。改端口/密码可以直接改这里。
 server:
@@ -206,12 +201,12 @@ PWD_DB="$(sed -nE 's/^ *password: *"([^"]+)".*/\1/p' "$CONF_FILE" | head -1)"
 
 say '确保数据库与账号存在'
 SQL="CREATE DATABASE IF NOT EXISTS devicehub DEFAULT CHARSET utf8mb4 COLLATE utf8mb4_general_ci;
-CREATE USER IF NOT EXISTS 'devicehub'@'127.0.0.1' IDENTIFIED BY '$PWD_DB';
-CREATE USER IF NOT EXISTS 'devicehub'@'localhost' IDENTIFIED BY '$PWD_DB';
-ALTER USER 'devicehub'@'127.0.0.1' IDENTIFIED BY '$PWD_DB';
-ALTER USER 'devicehub'@'localhost' IDENTIFIED BY '$PWD_DB';
-GRANT ALL PRIVILEGES ON devicehub.* TO 'devicehub'@'127.0.0.1';
-GRANT ALL PRIVILEGES ON devicehub.* TO 'devicehub'@'localhost';
+CREATE USER IF NOT EXISTS 'admin'@'127.0.0.1' IDENTIFIED BY '$PWD_DB';
+CREATE USER IF NOT EXISTS 'admin'@'localhost' IDENTIFIED BY '$PWD_DB';
+ALTER USER 'admin'@'127.0.0.1' IDENTIFIED BY '$PWD_DB';
+ALTER USER 'admin'@'localhost' IDENTIFIED BY '$PWD_DB';
+GRANT ALL PRIVILEGES ON devicehub.* TO 'admin'@'127.0.0.1';
+GRANT ALL PRIVILEGES ON devicehub.* TO 'admin'@'localhost';
 FLUSH PRIVILEGES;"
 "$DB_DIR/bin/mariadb" --no-defaults -u root -h 127.0.0.1 -P "$DB_PORT" -e "$SQL" \
   || die '创建数据库失败（端口被占用或 datadir 损坏；可 RESET_DB=1 重来，注意清数据）'

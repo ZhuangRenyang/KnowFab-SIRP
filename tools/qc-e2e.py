@@ -35,7 +35,7 @@ ROOT = PROJ
 DB_HOST = os.environ.get("DEVICEHUB_DB_HOST", "127.0.0.1")
 DB_PORT = int(os.environ.get("DEVICEHUB_DB_PORT", "3306"))
 DB_USER = os.environ.get("DEVICEHUB_DB_USER", "devicehub")
-DB_PASS = os.environ.get("DEVICEHUB_DB_PASSWORD", "DeviceHub2026")
+DB_PASS = os.environ.get("DEVICEHUB_DB_PASSWORD", "123456")
 # 用已授权的验证库名。devicehub 用户只对固定几个库有权限，
 # 不能自己 create 新库——那是本地环境的授权限制，不是脚本的问题。
 DB_NAME = "devicehub_verify"

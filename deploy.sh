@@ -22,19 +22,16 @@ ok "Docker $(docker --version | awk '{print $3}' | tr -d ,) / compose 就绪"
 
 # ---------- 2. 生成 .env（已存在则复用，不覆盖） ----------
 if [ ! -f .env ]; then
-  say "生成 .env（随机数据库密码）"
-  rand_hex() {
-    if command -v openssl >/dev/null 2>&1; then openssl rand -hex 16
-    else head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n'; fi
-  }
+  say "生成 .env"
   {
     echo "# 由 deploy.sh 自动生成于 $(date '+%Y-%m-%d %H:%M:%S')"
     echo "APP_PORT=8080"
-    echo "DB_PASSWORD=sirp_$(rand_hex)"
+    echo "DB_USER=admin"
+    echo "DB_PASSWORD=123456"
     echo "MAVEN_MIRROR="
   } > .env
   chmod 600 .env
-  ok ".env 已生成（含随机数据库密码，权限 600）"
+  ok ".env 已生成（数据库账号 admin / 123456，权限 600）"
 else
   ok ".env 已存在，沿用现有配置"
 fi
