@@ -41,6 +41,12 @@
       </div>
       <div ref="demandEl" class="chart"></div>
       <div class="dinfo" v-html="demandInfo"></div>
+      <!--
+        计算参数条：合同需量/两个单价/变压器容量/计费方式都能在**当前页**直接改，
+        改完立刻按真实峰值重算基本电费。不保存就不影响任何人（试算不落库、不写审计）。
+        放在这里而不是弹窗里，是因为现场最常问的是"报 400 还是 500""按需量还是按容量划算"。
+      -->
+      <DemandCalcBar :config="dm?.config || null" :can-edit="canCfg" @saved="load" />
     </div>
 
     <div class="panels">
@@ -231,6 +237,7 @@ import { useEcharts } from '@/composables/useEcharts'
 import { usePolling } from '@/composables/usePolling'
 import TariffDialog from '@/components/energy/TariffDialog.vue'
 import DemandDialog from '@/components/energy/DemandDialog.vue'
+import DemandCalcBar from '@/components/energy/DemandCalcBar.vue'
 import BenchmarkDialog from '@/components/energy/BenchmarkDialog.vue'
 
 const auth = useAuthStore()

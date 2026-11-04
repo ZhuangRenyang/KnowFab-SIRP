@@ -60,6 +60,29 @@ export interface DemandData {
   current: { kw: number; elapsedSec: number }
 }
 
+/**
+ * 基本电费试算结果。
+ *
+ * 试算**不落库、不写审计、不影响任何人的配置**——
+ * 只是把「这组参数」喂给后端同一套计费公式跑一遍。
+ * 所以口径只有一处（后端 `DemandService.billing/status`），前端不自己算。
+ */
+export interface DemandPreview {
+  ok: boolean
+  /** 峰值取真实数据，不可改 */
+  peakKw: number
+  billing: DemandData['billing']
+  status: DemandData['status']
+  /** 已保存的配置（用来回显"现在是多少"） */
+  saved: DemandConfig
+  /** 这次试算用的参数 */
+  probe: DemandConfig
+  /** 试算参数与已保存配置是否有差异（前端据此显示「未保存」与保存按钮） */
+  changed: boolean
+  warnings?: string[]
+  message?: string
+}
+
 export interface TariffPlan {
   name: string
   segments: { name: string; type: string; start: string; end: string; price: number }[]
@@ -182,6 +205,13 @@ export const energyApi = {
   saveTariff: (plan: { name: string; segments: TariffPlan['segments'] }) =>
     http.post<{ ok: boolean; message?: string; warnings?: string[] }>('/api/energy/tariff', plan),
   demandConfig: () => http.get<{ config: DemandConfig; warnings?: string[] }>('/api/energy/demand/config'),
+  /**
+   * 基本电费试算：拿一组「还不想保存」的参数算一遍。
+   *
+   * 不传的字段以已保存配置为底；`month` 不传是本月、`device` 不传是全厂。
+   */
+  demandPreview: (p: Partial<DemandConfig> & { month?: string; device?: string }) =>
+    http.post<DemandPreview>('/api/energy/demand/preview', p),
   saveDemandConfig: (c: DemandConfig) =>
     http.post<{ ok: boolean; message?: string }>('/api/energy/demand/config', c)
 }

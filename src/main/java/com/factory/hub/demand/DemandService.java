@@ -128,6 +128,70 @@ public class DemandService {
     }
 
     /** 基本电费两种算法都摆出来，客户自己看哪种划算 */
+    /**
+     * 试算：用一组「还不想保存」的参数，按当前月峰值算基本电费。
+     * <p>
+     * <b>为什么要有这个接口</b>：客户现场常见「我这个月要是把合同需量报成 400 会怎样」
+     * 「换成按容量计费划不划算」这类问题。以前只能改配置→保存→看结果→再改回来，
+     * 改一次就写一次审计、还影响别人看到的数。
+     * <p>
+     * <b>试算不落库、不写审计、不影响任何人的配置</b>——
+     * 它只是把 {@link #billing} 和 {@link #status} 这两段纯计算
+     * 喂给一组临时参数跑一遍。口径只有一处（就是那两个私有方法），
+     * 前端不自己算，避免"同一笔电费两个地方算"。
+     * <p>
+     * 峰值来自真实数据（不可改），可改的是合同需量、两个单价、变压器容量与计费方式。
+     */
+    public Map<String, Object> preview(DemandConfig probe, String monthParam, String device) {
+        // 峰值取真实数据：想要"如果峰值是 X"这种假设，那是另一个功能，不在试算里
+        Map<String, Object> real = overview(monthParam, device);
+        double peakKw = 0;
+        Object mm = real.get("monthMax");
+        if (mm instanceof Map<?, ?> m && m.get("kw") instanceof Number n) {
+            peakKw = n.doubleValue();
+        }
+
+        DemandConfig saved = currentConfig();
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("ok", true);
+        out.put("peakKw", round1(peakKw));
+        out.put("billing", billing(probe, peakKw));
+        out.put("status", status(probe, peakKw));
+        out.put("saved", configMap(saved));
+        out.put("probe", configMap(probe));
+        // 与已保存配置是否有差异：前端据此显示「未保存」标记与「保存为默认」按钮
+        out.put("changed", !sameNumbers(saved, probe));
+        out.put("warnings", probe.validate());
+        return out;
+    }
+
+    /** 配置的对外形状（试算结果里要回显"已保存的是多少"，前端好做对比） */
+    private Map<String, Object> configMap(DemandConfig c) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("contractDemandKw", c.getContractDemandKw());
+        m.put("demandPrice", c.getDemandPrice());
+        m.put("transformerKva", c.getTransformerKva());
+        m.put("capacityPrice", c.getCapacityPrice());
+        m.put("billingMode", c.getBillingMode());
+        m.put("warnRatio", c.getWarnRatio());
+        m.put("enabled", c.isEnabled());
+        return m;
+    }
+
+    /**
+     * 五个**参与计算**的数字是否有变。
+     * <p>
+     * 只比这几个：warnRatio 影响预警文案不影响钱，enabled 只是开关，
+     * 它们变了不算「试算参数变了」，不该让「保存」按钮亮起来。
+     */
+    private boolean sameNumbers(DemandConfig a, DemandConfig b) {
+        return a.getContractDemandKw() == b.getContractDemandKw()
+                && a.getDemandPrice() == b.getDemandPrice()
+                && a.getTransformerKva() == b.getTransformerKva()
+                && a.getCapacityPrice() == b.getCapacityPrice()
+                && String.valueOf(a.getBillingMode()).equals(String.valueOf(b.getBillingMode()));
+    }
+
     private Map<String, Object> billing(DemandConfig cfg, double peakKw) {
         double demandCost = cfg.demandCost(peakKw);
         double capacityCost = cfg.capacityCost();

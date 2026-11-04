@@ -15,6 +15,7 @@ declare module 'vue' {
     AiConfigDialog: typeof import('./src/components/ai/AiConfigDialog.vue')['default']
     BenchmarkDialog: typeof import('./src/components/energy/BenchmarkDialog.vue')['default']
     DbPasswordPanel: typeof import('./src/components/system/DbPasswordPanel.vue')['default']
+    DemandCalcBar: typeof import('./src/components/energy/DemandCalcBar.vue')['default']
     DemandDialog: typeof import('./src/components/energy/DemandDialog.vue')['default']
     DeviceDetail: typeof import('./src/components/DeviceDetail.vue')['default']
     DeviceFormDialog: typeof import('./src/components/DeviceFormDialog.vue')['default']

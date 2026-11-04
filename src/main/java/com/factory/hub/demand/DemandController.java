@@ -73,6 +73,66 @@ public class DemandController {
         return out;
     }
 
+    /**
+     * 试算：用一组临时参数算基本电费，**不保存、不写审计、不影响别人**。
+     * <p>
+     * 场景：「合同需量报 400 还是 500」「按需量还是按容量划算」——
+     * 以前只能改配置→保存→看结果→改回来，改一次写一次审计。
+     * <p>
+     * {@code month} 不传就是本月；{@code device} 不传是全厂。
+     * <b>峰值取自真实数据不可改</b>：可改的是合同需量、两个单价、变压器容量、计费方式。
+     */
+    @PostMapping("/preview")
+    public Map<String, Object> preview(@RequestBody Map<String, Object> body) {
+        try {
+            // ⚠️ 必须 snapshot() 不能 current()：current() 返回共享引用，
+            // 下面那句 setContractDemandKw 会把全应用的配置改掉（还不落库）
+            DemandConfig probe = store.snapshot();
+            if (body != null) {
+                if (body.get("contractDemandKw") != null) {
+                    probe.setContractDemandKw(num(body.get("contractDemandKw"), probe.getContractDemandKw()));
+                }
+                if (body.get("demandPrice") != null) {
+                    probe.setDemandPrice(num(body.get("demandPrice"), probe.getDemandPrice()));
+                }
+                if (body.get("transformerKva") != null) {
+                    probe.setTransformerKva(num(body.get("transformerKva"), probe.getTransformerKva()));
+                }
+                if (body.get("capacityPrice") != null) {
+                    probe.setCapacityPrice(num(body.get("capacityPrice"), probe.getCapacityPrice()));
+                }
+                if (body.get("billingMode") != null) {
+                    probe.setBillingMode(str(body.get("billingMode")));
+                }
+            }
+            Object month = body == null ? null : body.get("month");
+            Object device = body == null ? null : body.get("device");
+            return service.preview(probe,
+                    month == null ? null : String.valueOf(month),
+                    device == null ? null : String.valueOf(device));
+        } catch (Exception e) {
+            Map<String, Object> bad = new LinkedHashMap<>();
+            bad.put("ok", false);
+            bad.put("message", e.getMessage() == null ? "试算失败" : e.getMessage());
+            return bad;
+        }
+    }
+
+    private static double num(Object v, double dft) {
+        if (v instanceof Number n) {
+            return n.doubleValue();
+        }
+        try {
+            return Double.parseDouble(String.valueOf(v).trim());
+        } catch (Exception e) {
+            return dft;
+        }
+    }
+
+    private static String str(Object v) {
+        return v == null ? null : String.valueOf(v).trim();
+    }
+
     /** 清演示需量数据，交付前用 */
     @PostMapping("/purge")
     public Map<String, Object> purge(@RequestBody(required = false) Map<String, Object> body) {
