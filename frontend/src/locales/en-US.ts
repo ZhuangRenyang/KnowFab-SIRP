@@ -1,6 +1,7 @@
 /** English (en-US) */
 export default {
   common: {
+    close: 'Close',
     reqFail: 'Request failed',
     ok: 'OK',
     saveTplTitle: 'Save as device template',
@@ -717,6 +718,37 @@ export default {
     empty: 'Collecting data… (the latest 180 samples load once a device is selected)'
   },
 
+  maint: {
+    title: 'Diagnosis & Maintenance',
+    diagnoseBtn: 'Diagnose',
+    analyzing: 'Analyzing, usually 5~10 seconds...',
+    byAi: 'AI diagnosis',
+    byLocal: 'Local advice',
+    localHint: 'AI is off or the call failed; this comes from the code dictionary and history',
+    historyTitle: 'Past similar cases ({n})',
+    resolvedTitle: 'Maintenance result',
+    fillTitle: 'Record the actual cause',
+    fillHint: 'These two fields are the only reference for the next similar alarm. "Fixed it" teaches nothing.',
+    causeCategory: 'Cause category',
+    pickCategory: 'Pick a category',
+    rootCause: 'Actual cause',
+    rootCausePh: 'e.g. regenerative resistor terminal loose, bus voltage spikes on deceleration',
+    solution: 'How it was fixed',
+    solutionPh: 'e.g. re-terminated and tightened, added 0.5s to deceleration time',
+    parts: 'Parts replaced',
+    partsPh: 'What was replaced (leave blank if none)',
+    downtime: 'Downtime',
+    downtimeMin: '{n} min downtime',
+    startBtn: 'Start work',
+    resolveBtn: 'Close & record',
+    cancelBtn: 'Cancel order',
+    cancelWhy: 'Reason for cancelling',
+    cancelWhyPh: 'e.g. false alarm / duplicate / handled elsewhere',
+    needReason: 'Give a reason — the "how many alarms are false" number comes only from here',
+    needCategory: 'Pick a cause category: without it we cannot tell what mostly breaks on this machine',
+    needCause: 'Write the actual cause — it is the only reference for the next similar alarm',
+    resolvedOk: 'Closed. This experience will be used for the next similar alarm.',
+  },
   alarm: {
     open: 'Open',
     openHint: 'Unacknowledged + acknowledged but not recovered',

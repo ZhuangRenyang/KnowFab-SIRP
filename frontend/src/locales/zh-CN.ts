@@ -5,6 +5,7 @@
  */
 export default {
   common: {
+    close: '关闭',
     reqFail: '请求失败',
     ok: '确定',
     saveTplTitle: '存为设备模板',
@@ -721,6 +722,37 @@ export default {
     empty: '数据积累中…（选中设备后自动拉取近 180 条趋势）'
   },
 
+  maint: {
+    title: '设备诊断与维修',
+    diagnoseBtn: '诊断',
+    analyzing: '正在分析，通常 5~10 秒…',
+    byAi: 'AI 诊断',
+    byLocal: '本地建议',
+    localHint: '未启用 AI 或调用失败，这是按字典与历史给出的',
+    historyTitle: '历史同类记录（{n} 条）',
+    resolvedTitle: '维修结果',
+    fillTitle: '填写实际原因',
+    fillHint: '这两项是下次同类报警能参考的全部依据。只写「修好了」，下次还是从零猜。',
+    causeCategory: '原因分类',
+    pickCategory: '选择分类',
+    rootCause: '实际原因',
+    rootCausePh: '例如：再生电阻接线端子松动，减速时母线电压冲高',
+    solution: '怎么修的',
+    solutionPh: '例如：重接端子并紧固，延长减速时间 0.5 秒',
+    parts: '换件',
+    partsPh: '换了什么（没有就留空）',
+    downtime: '停机时长',
+    downtimeMin: '停机 {n} 分钟',
+    startBtn: '开始维修',
+    resolveBtn: '结案并记录',
+    cancelBtn: '取消维修单',
+    cancelWhy: '取消原因',
+    cancelWhyPh: '例如：误报 / 重复报 / 已在别处处理',
+    needReason: '请写明取消原因——「多少报警是误报」这个数只能从这里来',
+    needCategory: '请选择原因分类：没有分类就统计不出「这台机主要坏在哪一类」',
+    needCause: '请写清实际原因，这是下次同类报警能参考的全部依据',
+    resolvedOk: '已结案，这条经验会用于下次同类报警的诊断',
+  },
   alarm: {
     open: '待处理',
     openHint: '未确认 + 已确认未恢复',

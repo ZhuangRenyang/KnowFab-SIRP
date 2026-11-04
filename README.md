@@ -225,6 +225,10 @@ cable, zero PLC code changes:
 - **Device connectivity** — Modbus TCP / RTU / pass-through; subnet + slave-id double scan for
   discovery; point tables as JSON; relay + limit-switch counting (the old-press lifesaver); a
   built-in simulator so you can develop without hardware
+- **Maintenance loop** — an alarm can be diagnosed with AI (fed the servo-code dictionary, this
+  machine's past cases, and device facts), turned into a maintenance order, and closed with the
+  *actual* cause recorded. The next identical alarm then leads with "last time on this machine it
+  was X". With no AI configured you still get dictionary + history, clearly labelled as local advice.
 - **Manual data entry** — network outages or missed meter readings can be filled in by hand
   (split per day, revocable). Reports show a separate "manual" line, never mixed with collected data.
 - **Operation audit** — every configuration change (device, tariff, demand billing, shift plan,

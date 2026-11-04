@@ -76,6 +76,7 @@
           </div>
           <div class="act">
             <el-button v-if="e.state === 'ACTIVE'" size="small" @click="ack(e)">{{ t('alarm.ack') }}</el-button>
+            <el-button size="small" @click="diagnose(e)">{{ t('maint.diagnoseBtn') }}</el-button>
           </div>
         </div>
       </div>
@@ -89,6 +90,7 @@
 
     <RuleDialog v-model="ruleOpen" @changed="refresh" />
     <NotifyDialog v-model="notifyOpen" @changed="loadSummary" />
+    <MaintDialog v-model="maintOpen" :alarm="maintAlarm" @changed="refresh" />
   </div>
 </template>
 
@@ -106,6 +108,7 @@ import {
 } from '@/api/alarms'
 import RuleDialog from '@/components/alarm/RuleDialog.vue'
 import NotifyDialog from '@/components/alarm/NotifyDialog.vue'
+import MaintDialog from '@/components/alarm/MaintDialog.vue'
 
 const { t } = useI18n()
 
@@ -118,6 +121,14 @@ const page = ref(1), pages = ref(1), total = ref(0)
 const f = reactive({ state: 'OPEN', level: 'ALL', range: '7d' })
 const q = ref('')
 const ruleOpen = ref(false), notifyOpen = ref(false)
+const maintOpen = ref(false)
+const maintAlarm = ref<AlarmItem | null>(null)
+
+/** 打开 AI 诊断弹窗：诊断在弹窗里自动跑（点了就该等结果，不用再点一次） */
+function diagnose(e: AlarmItem) {
+  maintAlarm.value = e
+  maintOpen.value = true
+}
 const trendEl = ref<HTMLElement>()
 
 /* 下拉字典：值不变，标签走 i18n */

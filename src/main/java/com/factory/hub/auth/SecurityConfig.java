@@ -139,6 +139,10 @@ public class SecurityConfig {
                         .hasAnyRole("ADMIN", "MANAGER", "LEADER")
                         .requestMatchers(HttpMethod.PUT, "/api/erp/qc/inspections/*")
                         .hasAnyRole("ADMIN", "MANAGER", "LEADER")
+                        // 设备维修：班组长在车间现场修机器，让他找管理员点一下不现实。
+                        // 与「班组长本来就能确认告警」同一条逻辑。必须排在下面的 erp 通配之前。
+                        .requestMatchers(HttpMethod.POST, "/api/erp/maint/**")
+                        .hasAnyRole("ADMIN", "MANAGER", "LEADER")
                         .requestMatchers(HttpMethod.POST, "/api/erp/**").hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.PUT, "/api/erp/**").hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.DELETE, "/api/erp/**").hasAnyRole("ADMIN", "MANAGER")
