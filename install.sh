@@ -219,14 +219,13 @@ if [ ! -f "$DIR/application.yml" ]; then
           | tr -d '\r' || true)
     [ "$CNT" = "1" ] && ADMIN_EXISTS=1
   fi
-  if [ "$ADMIN_EXISTS" = "1" ]; then
-    # 已有 admin：application.yml 里仍要填一个值（应用启动会读它），
-    # 但填随机占位而不是标记串——万一用户日后删了 admin，这个值会变成真密码。
-    ADMIN_PASS="$(head -c 32 /dev/urandom | base64 | tr -dc 'A-Za-z2-9' | head -c 12)"
-    warn "数据库里已有管理员 admin —— 沿用原密码，不生成初始密码文件"
-  else
-    ADMIN_PASS="$(head -c 32 /dev/urandom | base64 | tr -dc 'A-Za-z2-9' | head -c 12)"
-  fi
+  # 管理员初始密码：**固定 123456**（2026-11-04 用户明确要求）。
+  # 之前这里随机生成 + 写进 INITIAL_ADMIN.txt，有两个实际问题：
+  #   ① 客户拿到包不知道密码（得先翻文件），而现场习惯就是先试 123456
+  #   ② 库里已有 admin 时应用**不会**改密码 → 文件里那份随机密码永远登不进去
+  # 现在密码固定，且装完会把它同步进数据库（见下面 RESET_ADMIN 那段），
+  # 所以任何时候用 admin / 123456 都能登录。
+  ADMIN_PASS="123456"
   if [ "$DB" = "mysql" ]; then
     DB_URL="jdbc:mysql://$DB_HOST:$DB_PORT/$DB_NAME?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true&rewriteBatchedStatements=true"
     DB_DRV="com.mysql.cj.jdbc.Driver"
@@ -262,20 +261,13 @@ system:
     username: admin
     password: "$ADMIN_PASS"
 YML
-  if [ "$ADMIN_EXISTS" = "1" ]; then
-    rm -f "$DIR/INITIAL_ADMIN.txt"
-    warn "数据库里已有管理员 admin —— 沿用原密码，不生成初始密码文件"
-    warn "  忘了密码就重置（不需要改代码）："
-    warn "    sudo systemctl edit device-hub   # 加一行 Environment=DEVICEHUB_RESET_ADMIN=1"
-    warn "    sudo systemctl restart device-hub"
-    warn "    # 起来后把上面那行删掉，否则每次重启都会重置"
-  else
-    printf '管理员账号：admin\n初始密码：%s\n\n登录后请立刻在「系统 → 用户管理」里改掉，并删除本文件。\n' \
-      "$ADMIN_PASS" > "$DIR/INITIAL_ADMIN.txt"
-    chmod 600 "$DIR/INITIAL_ADMIN.txt"
-    chown "$SVC_USER":"$SVC_USER" "$DIR/INITIAL_ADMIN.txt"
-    ok "已生成管理员初始密码（见 $DIR/INITIAL_ADMIN.txt）"
-  fi
+  # 这个文件只是**提醒**（密码是固定的 123456，不用靠它才知道），
+  # 但留着有实际用处：现场第一个登录的人会看到"登录后立刻改"。
+  printf '管理员账号：admin\n初始密码：%s\n\n登录后请立刻在「系统 → 用户管理」里改掉密码，并删除本文件。\n' \
+    "$ADMIN_PASS" > "$DIR/INITIAL_ADMIN.txt"
+  chmod 600 "$DIR/INITIAL_ADMIN.txt"
+  chown "$SVC_USER":"$SVC_USER" "$DIR/INITIAL_ADMIN.txt"
+  ok "管理员初始密码：$ADMIN_PASS（见 $DIR/INITIAL_ADMIN.txt）"
   chown "$SVC_USER":"$SVC_USER" "$DIR/application.yml"
   ok "已生成配置 $DIR/application.yml"
 else
@@ -393,6 +385,16 @@ fi
 
 # ---------- 5. 启动与自检 ----------
 say "启动服务"
+# 库里已有 admin 时，它现在的密码可能不是 123456（应用不覆盖已有用户的密码）。
+# 这里用**应用自带的** DEVICEHUB_RESET_ADMIN=1 机制同步一次：
+# 该变量只在启动时读一次，把密码重置成配置里的值（也就是 123456）。
+# 同步完就把这个一次性 drop-in 撤掉，否则以后每次重启都会重置密码。
+if [ "$ADMIN_EXISTS" = "1" ]; then
+  mkdir -p "/etc/systemd/system/$APP.service.d"
+  printf '[Service]\nEnvironment=DEVICEHUB_RESET_ADMIN=1\n' \
+    > "/etc/systemd/system/$APP.service.d/reset-once.conf"
+  systemctl daemon-reload
+fi
 systemctl restart "$APP"
 
 printf '   等待就绪'
@@ -409,6 +411,13 @@ for i in $(seq 1 40); do
   fi
 done
 
+# 同步完撤掉一次性变量（当前进程已读过它，不受影响；下次重启不再重置）
+if [ "$ADMIN_EXISTS" = "1" ]; then
+  rm -f "/etc/systemd/system/$APP.service.d/reset-once.conf"
+  systemctl daemon-reload
+  ok "已把管理员密码同步为 $ADMIN_PASS"
+fi
+
 IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
 cat <<EOF
 
@@ -420,7 +429,7 @@ cat <<EOF
  配置文件   $DIR/application.yml
  日志       $DIR/logs/stdout.log   或   journalctl -u $APP -f
 
-$([ "$ADMIN_EXISTS" = "1" ] && echo " 数据库里已有管理员，沿用原密码（重装不会改密码）" || echo " 初始密码见  $DIR/INITIAL_ADMIN.txt（登录后立刻改）")
+ 初始密码 $ADMIN_PASS（登录后请立刻在「系统 → 用户管理」里改掉）
 
  常用命令
    启停      systemctl {start|stop|restart|status} $APP
