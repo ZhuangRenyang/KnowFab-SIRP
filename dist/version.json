@@ -1,6 +1,6 @@
 {
-  "version": "1.0.24",
-  "notes": "默认账号密码固定为 admin/123456（网页登录与数据库），不再随机生成密码文件；修正全厂需量与电量的计量口径（不再把机床的电与总表重复相加，演示库实测虚高 4.6 倍）；新增设备维修闭环（AI 诊断→转工单→结案回填→经验统计）；新增串口点表对拍（区间探测+二分定位空洞）；修复 5 个交付链路缺陷（安装清单漏脚本、zip 丢执行位、堆大小写死、缺 MySQL 客户端、重装后初始密码登不进去）。",
-  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.24/device-hub-1.0.24-update.zip",
-  "sha256": "c5cdc01cd3efe36c136ab32ef621aeb93ac95a687ed0fb705d871a1f33982413"
+  "version": "1.0.25",
+  "notes": "修复「检查到新版本却升不了」——三个叠在一起的 bug：①Gitee 的附件没有 sha256 字段，后端解析不到，下载时哈希校验必失败（默认更新源正是 Gitee，等于升级功能在默认配置下完全不可用），改为优先取 assets[].digest、没有则拉 raw 的 version.json；②下载升级包用 ofByteArray 把 80MB 整个读进堆，2G 内存的服务器直接 OutOfMemoryError（页面表现为下载失败、按钮永远灰着），改为流式落盘 + 64KB 缓冲边读边算哈希；③Java 的 HttpClient 默认协商 HTTP/2，Gitee 的大响应体流会中途 EOF（同一地址 curl 完全正常），改为显式 HTTP/1.1。另修 bin 脚本硬编码安装目录的问题（非标准目录安装时每次启动都报 Permission denied）。",
+  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.25/device-hub-1.0.25-update.zip",
+  "sha256": "e842014dc5740c4809813ef565942c6488ac08a727b3da7f3947a438a2aba500"
 }
