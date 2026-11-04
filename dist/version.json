@@ -1,6 +1,5 @@
 {
   "version": "1.0.23",
-  "notes": "报表页的 OEE 更好用了：示例设备预配了理想节拍，打开就能看到可用率和性能率（之前三项全是「--」）；全厂 OEE 不会被没产量的电表拖成算不出来；趋势图算不出 OEE 时会退一步画出能算的可用率。另外修了模拟器的一个老问题：产量是按轮询次数算的，改一下采集频率产量就跟着变，现在改成按运行时间算，实时数据和历史数据也对得上了",
-  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.23/device-hub-1.0.23-update.zip",
-  "sha256": "f7c22ff6fb30907812ee6c76e0e3539d33d6ef71389197b0b27bf69db07cba64"
+  "url": "https://github.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.23/device-hub-1.0.23.zip",
+  "sha256": "9564b6d861fec519c14a9fd411dfe805461be4fb79c59fd8527dda2c73217397"
 }

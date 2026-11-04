@@ -83,7 +83,7 @@ export default {
     password: 'Contraseña',
     submit: 'Iniciar sesión',
     submitting: 'Iniciando sesión…',
-    hint: 'Si olvidó su contraseña, pida a un administrador que la restablezca. La contraseña inicial está en data/initial-admin.txt del servidor.',
+    hint: 'Si olvidó su contraseña, pida a un administrador que la restablezca. Acceso predeterminado: admin / 123456 (cámbielo tras el primer inicio de sesión).',
     needInput: 'Introduzca usuario y contraseña',
     networkError: 'No se puede conectar con el servidor. Compruebe que el servicio esté en marcha.',
     failed: 'Error al iniciar sesión',

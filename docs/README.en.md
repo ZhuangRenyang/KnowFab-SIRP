@@ -25,7 +25,7 @@ Three supported paths, all covered in the [main README](../README.md#install):
 
 What the portable build does on first start: downloads JRE 17 and MariaDB 11.4 into
 `runtime/`, initialises the schema in `runtime/data`, writes `config/application.yml` with a random
-database password, generates a random admin password into `data/initial-admin.txt`, then serves
+database password, then serves
 `http://localhost:8080/app/`.
 
 Ports and data:

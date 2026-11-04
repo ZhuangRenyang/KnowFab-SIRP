@@ -603,7 +603,7 @@ export default {
     password: '密码',
     submit: '登 录',
     submitting: '登录中…',
-    hint: '忘记密码找管理员重置 · 初始密码在服务器 data/initial-admin.txt',
+    hint: '忘记密码找管理员重置 · 默认账号 admin / 123456（首次登录后请改掉）',
     needInput: '请输入用户名和密码',
     networkError: '连不上服务器，检查服务是否在跑',
     failed: '登录失败',

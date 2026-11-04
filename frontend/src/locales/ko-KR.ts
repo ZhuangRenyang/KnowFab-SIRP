@@ -83,7 +83,7 @@ export default {
     password: '비밀번호',
     submit: '로그인',
     submitting: '로그인 중…',
-    hint: '비밀번호를 잊으셨다면 관리자에게 재설정을 요청하세요. 초기 비밀번호는 서버의 data/initial-admin.txt 에 있습니다.',
+    hint: '비밀번호를 잊으셨다면 관리자에게 재설정을 요청하세요. 기본 로그인은 admin / 123456 입니다(첫 로그인 후 변경).',
     needInput: '사용자 이름과 비밀번호를 입력하세요',
     networkError: '서버에 연결할 수 없습니다. 서비스가 실행 중인지 확인하세요.',
     failed: '로그인에 실패했습니다',

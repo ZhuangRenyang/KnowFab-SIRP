@@ -81,14 +81,6 @@ port_busy() { # port
   (echo >/dev/tcp/127.0.0.1/"$1") >/dev/null 2>&1
 }
 
-rand_pwd() {
-  # 16 位，去掉易混字符。
-  # 注意：管道接 head -c 时，head 读够就退出会给上游发 SIGPIPE，
-  # tr 因此退出码 141；配合开头的 set -euo pipefail，整个脚本会在这里直接终止
-  # （便携版 Linux 首次启动必崩）。改成把 tr 放进进程替换，让 head 去截断它。
-  LC_ALL=C head -c 16 < <(tr -dc 'a-km-zA-HJ-NP-Z2-9' </dev/urandom)
-}
-
 [ -f "$JAR" ] || die "找不到 device-hub.jar（请把脚本放在解压后的目录里）"
 mkdir -p "$RT" "$LOG_DIR"
 
@@ -183,7 +175,12 @@ fi
 if [ ! -f "$CONF_FILE" ]; then
   say '生成配置文件（随机数据库密码，仅本机可见）'
   mkdir -p "$CONF_DIR"
-  PWD_DB="$(rand_pwd)"
+  # 数据库密码：随机 16 位（**不是**管理员密码——R1 只管管理员那个，见
+  # docs/PROJECT-RULES.md；数据库密码面向的是攻击面，要强度，不给客户记）。
+  # 踩过的坑：管道接 head -c 时，head 读够就退出会给上游发 SIGPIPE，
+  # tr 因此退出码 141；配合开头的 set -euo pipefail，整个脚本会在这里直接终止
+  # （便携版 Linux 首次启动必崩）。所以把 tr 放进进程替换，让 head 去截断它。
+  PWD_DB="$(LC_ALL=C head -c 16 < <(tr -dc 'a-km-zA-HJ-NP-Z2-9' </dev/urandom))"
   cat >"$CONF_FILE" <<YML
 # 由便携启动器自动生成（首次运行）。改端口/密码可以直接改这里。
 server:
@@ -241,12 +238,10 @@ done
 [ "$READY" = "1" ] || die "等待启动超时，见 runtime/logs/app.log"
 
 URL="http://localhost:$PORT/app/"
-ADMIN_PWD=""
-if [ -f "$HERE/data/initial-admin.txt" ]; then
-  ADMIN_PWD="$(sed -nE 's/^密码：(.*)$/\1/p' "$HERE/data/initial-admin.txt" | head -1)"
-fi
-LOGIN_LINE="${ADMIN_PWD:+admin / $ADMIN_PWD（首次登录请改密码）}"
-[ -n "$LOGIN_LINE" ] || LOGIN_LINE='admin / 你设置的密码（首次密码在 data/initial-admin.txt）'
+# 管理员账号密码是**固定的**（R1，见 docs/PROJECT-RULES.md）：
+# admin / 123456，存数据库。**不生成任何密码文件**，
+# 所以也不需要去读什么 initial-admin.txt（应用早就不写了）。
+LOGIN_LINE='admin / 123456（默认密码，登录后请立刻改）'
 
 cat <<EOF
 

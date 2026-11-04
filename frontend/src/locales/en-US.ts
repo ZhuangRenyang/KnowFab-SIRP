@@ -599,7 +599,7 @@ export default {
     password: 'Password',
     submit: 'Sign in',
     submitting: 'Signing in…',
-    hint: 'Forgot your password? Ask an administrator. Initial password is in data/initial-admin.txt on the server.',
+    hint: 'Forgot your password? Ask an administrator to reset it. Default login: admin / 123456 (change it after first login).',
     needInput: 'Please enter your username and password',
     networkError: 'Cannot reach the server. Check that the service is running.',
     failed: 'Sign-in failed',

@@ -83,7 +83,7 @@ export default {
     password: 'Passwort',
     submit: 'Anmelden',
     submitting: 'Anmeldung…',
-    hint: 'Passwort vergessen? Bitten Sie einen Administrator um das Zurücksetzen. Das Anfangspasswort steht in data/initial-admin.txt auf dem Server.',
+    hint: 'Passwort vergessen? Bitten Sie einen Administrator um das Zurücksetzen. Standard-Login: admin / 123456 (nach der ersten Anmeldung ändern).',
     needInput: 'Bitte Benutzername und Passwort eingeben',
     networkError: 'Server nicht erreichbar. Prüfen Sie, ob der Dienst läuft.',
     failed: 'Anmeldung fehlgeschlagen',

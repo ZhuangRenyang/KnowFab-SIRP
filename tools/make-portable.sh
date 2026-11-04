@@ -43,6 +43,9 @@ cp tools/portable/start.ps1 tools/portable/start.bat tools/portable/stop.bat \
    tools/portable/README-portable.txt "$STAGE/"
 chmod +x "$STAGE/start.sh" "$STAGE/stop.sh" 2>/dev/null || true
 mv "$STAGE/README-portable.txt" "$STAGE/使用说明.txt"
+# 版本与完整性：客户要能自己看装的是哪版、自己核对没被改过
+printf '%s\n' "$VERSION" > "$STAGE/VERSION.txt"
+( cd "$STAGE" && sha256sum device-hub.jar > SHA256SUMS ) 2>/dev/null || true
 
 rm -f "$ZIP"
 # 打包前先审计：私钥/源码/演示数据混进便携包一样是事故

@@ -106,8 +106,17 @@ EOF
 [ -d "$ROOT/backups" ] && fail "发现 backups/ 目录（含旧 jar）"
 
 # 开发/测试脚本
+# 例外白名单：start.bat / stop.bat / install.ps1 是**给 Windows 客户用的启动脚本**
+# （客户要双击 start.bat），不是开发脚本。以前一律拦掉，
+# 结果便携版包**一直打不出来**（2026-11-04 发现）。
+# 别的 .bat / .ps1 仍然禁止（那才是开发用的）。
 while IFS= read -r p; do
-  [ -n "$p" ] && fail "发现开发脚本：${p#$ROOT/}"
+  [ -n "$p" ] || continue
+  base="$(basename "$p")"
+  case "$base" in
+    start.bat|start.ps1|stop.bat|stop.sh|install.ps1) continue ;;
+  esac
+  fail "发现开发脚本：${p#$ROOT/}"
 done <<EOF
 $(find "$ROOT" -type f \( -name 'mock-*.js' -o -name '*.bat' -o -name '*.cmd' -o -name 'run*.js' -o -name '*.ps1' \) 2>/dev/null)
 EOF
