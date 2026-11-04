@@ -72,6 +72,23 @@ can start it with one command.
 
 ---
 
+## Default accounts
+
+Both accounts are **fixed values** (project rule R1 / R4 — never randomly generated,
+never written to a password file):
+
+| What | Host / URL | User | Password |
+|---|---|---|---|
+| **Web login** | the address printed at the end of install (`http://<server>:8080/app/`) | `admin` | `123456` |
+| **Database (MySQL/MariaDB)** | `127.0.0.1:3306`, database `devicehub` | `admin` | `123456` |
+
+Write these on the handover sheet — the installer no longer prints a random password to look up.
+
+> **Change them before go-live.** The web password: top-right user menu → change password
+> (minimum 8 characters). The database password: override it at install time
+> (`--db-pass 'xxx'` for `install.sh`, `DB_PASSWORD` in `.env` for Docker),
+> or change it in **System → Database password** and restart the service.
+
 ## Install
 
 Three options — **① is the recommended one**: nothing to install on the target machine, a single
