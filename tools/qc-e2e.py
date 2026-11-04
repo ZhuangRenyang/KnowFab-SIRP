@@ -29,10 +29,13 @@ import urllib.request
 PROJ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ROOT = PROJ
 
-DB_HOST = "127.0.0.1"
-DB_PORT = 3306
-DB_USER = "devicehub"
-DB_PASS = "DeviceHub2026"
+# 数据库连接：默认本机标准环境，但**允许环境变量覆盖**——
+# 真机/容器里 MySQL 经常不在 3306（2026-11-04 在云服务器上跑就撞上了这个）。
+# 变量名与 install.sh / 项目的 DEVICEHUB_DB_PASSWORD 保持一致。
+DB_HOST = os.environ.get("DEVICEHUB_DB_HOST", "127.0.0.1")
+DB_PORT = int(os.environ.get("DEVICEHUB_DB_PORT", "3306"))
+DB_USER = os.environ.get("DEVICEHUB_DB_USER", "devicehub")
+DB_PASS = os.environ.get("DEVICEHUB_DB_PASSWORD", "DeviceHub2026")
 # 用已授权的验证库名。devicehub 用户只对固定几个库有权限，
 # 不能自己 create 新库——那是本地环境的授权限制，不是脚本的问题。
 DB_NAME = "devicehub_verify"
@@ -159,12 +162,19 @@ def start_service(port, logfile):
     env["DEVICEHUB_DB_PASSWORD"] = DB_PASS
     env["NO_PROXY"] = "127.0.0.1,localhost"
     env["no_proxy"] = "127.0.0.1,localhost"
+    # 用户名必须用 --spring.datasource.username 单独传，**不能**塞进 URL 的 user=：
+    # Spring Boot 的 username/password 会覆盖 URL 里的同名参数（DataSourceProperties
+    # 就是这么做的），URL 里写了也白写 → 还是用 application.yml 的默认 devicehub
+    # → 连不上 → Hibernate 拿不到 JDBC metadata → 报「Unable to determine Dialect」，
+    # 报错完全看不出是账号问题（真机上就踩了这个）。
+    # 密码走 DEVICEHUB_DB_PASSWORD 环境变量（application.yml 里就是这么配的）。
     url = ("jdbc:mysql://%s:%d/%s?useUnicode=true&characterEncoding=utf8"
            "&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true"
            % (DB_HOST, DB_PORT, DB_NAME))
     cmd = ["java", "-Xms256m", "-Xmx512m", "-jar", JAR,
            "--server.port=%d" % port,
            "--spring.datasource.url=" + url,
+           "--spring.datasource.username=" + DB_USER,
            "--system.admin.password=" + ADMIN_PASS]
     with open(logfile, "wb") as f:
         p = subprocess.Popen(cmd, stdout=f, stderr=subprocess.STDOUT, cwd=PROJ, env=env)
