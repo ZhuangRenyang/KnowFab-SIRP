@@ -97,10 +97,16 @@ pick() {
 # 两个名字都要找：URL 写 jdbc:mysql:// 也可能连的是 MariaDB，
 # 而 MariaDB 10.5+ 的客户端叫 mariadb（官方镜像里没有 mysql 命令）
 case "${ENGINE:-mysql}" in
-  mysql)   MYSQL_CLIENT="$(pick mysql mariadb || echo /usr/bin/mysql)" ;;
-  mariadb) MYSQL_CLIENT="$(pick mariadb mysql || echo /usr/bin/mariadb)" ;;
-  *)       MYSQL_CLIENT="$(pick mysql mariadb || echo /usr/bin/mysql)" ;;
+  mysql)   MYSQL_CLIENT="$(pick mysql mariadb || true)" ;;
+  mariadb) MYSQL_CLIENT="$(pick mariadb mysql || true)" ;;
+  *)       MYSQL_CLIENT="$(pick mysql mariadb || true)" ;;
 esac
+if [ -z "$MYSQL_CLIENT" ]; then
+  echo "找不到 mysql / mariadb 客户端（MySQL 客户端没装）" >&2
+  echo "  装它：sudo apt-get install -y default-mysql-client   # Debian/Ubuntu" >&2
+  echo "        或：sudo yum install -y mysql                    # CentOS/RHEL" >&2
+  exit 1
+fi
 run_sql() {  # run_sql <库名|""> <SQL>
   if [ -n "$1" ]; then
     MYSQL_PWD="$DB_PASS" "$MYSQL_CLIENT" -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" \

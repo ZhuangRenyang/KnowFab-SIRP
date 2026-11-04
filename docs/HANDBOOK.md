@@ -884,9 +884,9 @@ POST /api/energy/demand/purge {"confirm":true}     清演示数据
 把 `device-hub.jar`、`install.sh`、`bin/` 一起拷到服务器同一个目录，然后：
 
 ```bash
-sudo ./install.sh                    # 默认 /opt/device-hub，端口 8080
-sudo PORT=9000 ./install.sh          # 换端口
-sudo ./install.sh --allow-web-restart # 允许网页上点升级直接重启（见 10.3）
+sudo bash install.sh                    # 默认 /opt/device-hub，端口 8080
+sudo env PORT=9000 bash install.sh          # 换端口
+sudo bash install.sh --allow-web-restart # 允许网页上点升级直接重启（见 10.3）
 ```
 
 脚本做四件事，**可以重复执行**（装坏了重跑，不会覆盖 data）：
@@ -1034,10 +1034,10 @@ Linux 默认是 7200 秒——无线网桥掉线、NAT 表老化这类"静默断
 一键安装时数据库参数**必填**，连不上直接终止（不再有"先装上再说"的兜底）：
 
 ```bash
-sudo ./install.sh --db-pass '你的密码'                        # 默认连 127.0.0.1:3306/device_hub
-sudo ./install.sh --db-pass '你的密码' \
+sudo bash install.sh --db-pass '你的密码'                        # 默认连 127.0.0.1:3306/device_hub
+sudo bash install.sh --db-pass '你的密码' \
      --db-host 10.0.0.5 --db-port 3306 --db-name device_hub --db-user devicehub
-sudo ./install.sh --db pg --db-pass '你的密码' --db-host 10.0.0.5   # PG 可选
+sudo bash install.sh --db pg --db-pass '你的密码' --db-host 10.0.0.5   # PG 可选
 ```
 
 脚本会先探端口，**连不上就 die** 并给出排查清单；装好后写 `$DIR/application.yml`
@@ -1088,9 +1088,9 @@ Docker 部署的用 `docker compose exec mysql mysqldump ...`，volume 记得一
 服务器能上外网时，不用先拷 jar：
 
 ```bash
-sudo ./install.sh --online                      # 默认国内源（Gitee）
-sudo ./install.sh --online --source global      # 海外客户用 GitHub raw
-sudo ./install.sh --online --source https://你的OSS/device-hub/dist
+sudo bash install.sh --online                      # 默认国内源（Gitee）
+sudo bash install.sh --online --source global      # 海外客户用 GitHub raw
+sudo bash install.sh --online --source https://你的OSS/device-hub/dist
 ```
 
 地址可以写死在脚本里（`REPO_CN` / `REPO_GLOBAL`），也可以用环境变量临时覆盖：
@@ -1213,7 +1213,7 @@ curl "http://服务器:8080/open/v1/CNC-01/alarms?key=cnc01_xxxxxxxx&open=false"
 
 | 项 | 为什么 |
 |---|---|
-| 服务端口 | 要同步改 systemd 启动参数和防火墙，重装时 `PORT=9000 ./install.sh` |
+| 服务端口 | 要同步改 systemd 启动参数和防火墙，重装时 `sudo env PORT=9000 bash install.sh` |
 | 数据库地址 / 密码 | 换库要停服、导数据，在线切会让表结构对不上 |
 | 升级暂存目录 | 和 `bin/apply-pending.sh` 约定死了，改了升级静默失效 |
 | 采集数据目录 | 客户全部业务数据，只读展示，避免手抖 |
@@ -1323,7 +1323,7 @@ jar 内部也查：必须有 `static/app/index.html`（否则页面 404）和 `M
 （否则升级时数据库迁移不执行），且不能有 `.java`、私钥。
 
 **这条审计不是形式主义**。写它的当天就抓到一个真问题：所有 `.sh` 都是 CRLF 换行——
-在 Windows 上看不出任何异常，发到客户的 Ubuntu 上，`sudo ./install.sh` 第一行就报
+在 Windows 上看不出任何异常，发到客户的 Ubuntu 上，`sudo bash install.sh` 第一行就报
 `bash: $'\r': command not found`，客户的第一反应是"这软件装不上"。
 
 **客户侧三步**：
@@ -1331,7 +1331,7 @@ jar 内部也查：必须有 `static/app/index.html`（否则页面 404）和 `M
 ```bash
 unzip device-hub-1.0.0.zip && cd device-hub-1.0.0
 sha256sum -c SHA256SUMS      # 先确认文件完整
-sudo ./install.sh
+sudo bash install.sh
 ```
 
 > 别把两种包搞混：`make-dist.sh` 出的**安装包**给第一次部署用；

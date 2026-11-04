@@ -150,7 +150,7 @@ prints the access URL plus the initial password.
 sudo bash install.sh --db-pass 'your-mysql-password'
 ```
 
-Installs to `/opt/device-hub` and registers a systemd service. Use `sudo PORT=9000 ./install.sh ...`
+Installs to `/opt/device-hub` and registers a systemd service. Use `sudo env PORT=9000 bash install.sh ...`
 to change the port, or `--db pg` for PostgreSQL. You can also skip the script and run
 `java -jar device-hub.jar` directly (database password via `DEVICEHUB_DB_PASSWORD`, or change it
 later on the System page).

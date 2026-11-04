@@ -34,6 +34,34 @@ die() { printf '失败：%s\n' "$*" >&2; exit 1; }
 
 JAR="$ROOT/target/device-hub.jar"
 
+# ---------- 打包前断言：jar 必须是**当前**代码编出来的 ----------
+# 2026-11-04 真机实测踩到：改完代码只跑了 `mvn test`（不产出 jar），
+# make-dist.sh 拿到的还是上一次的 target/device-hub.jar ——
+# 交付包里**没有**新功能，服务器上 404，而本地单测全绿、审计全过。
+# 所以这里断言 jar 的时间戳比所有源文件新，且抽查关键 class 在里面。
+JAR_MTIME=$(python -c "import os,sys;print(int(os.path.getmtime(sys.argv[1])))" "$JAR" 2>/dev/null || echo 0)
+if [ "$JAR_MTIME" = "0" ]; then
+  die "找不到 $JAR —— 先跑 mvn package 再打包"
+fi
+STALE=$(python - "$JAR" "$ROOT/src" <<'PYEOF'
+import os, sys
+jar, src = sys.argv[1], sys.argv[2]
+jm = os.path.getmtime(jar)
+newer = []
+for base, _, files in os.walk(src):
+    for f in files:
+        if f.endswith(('.java', '.yml', '.sql')):
+            p = os.path.join(base, f)
+            if os.path.getmtime(p) > jm + 1:
+                newer.append(os.path.relpath(p, os.path.dirname(src)))
+print(len(newer))
+PYEOF
+)
+if [ "$STALE" != "0" ]; then
+  die "jar 比源文件旧（$STALE 个源文件更新）—— 跑 mvn clean package 后再打包，否则交付包里是上一版代码"
+fi
+say "jar 时效检查通过（比所有源文件新）"
+
 # ---------- 1. 构建 ----------
 if [ "$DO_BUILD" -eq 1 ]; then
   MVN_BIN="${MVN:-}"
@@ -150,10 +178,23 @@ fi
 say "生成压缩包"
 rm -f "$ZIP"
 python - "$STAGE" "$ZIP" <<'PY' || die "压缩失败"
-import os, shutil, sys
+import os, shutil, sys, zipfile
 src, out = sys.argv[1], sys.argv[2]
 shutil.make_archive(out[:-4], "zip", root_dir=os.path.dirname(src),
                     base_dir=os.path.basename(src))
+
+# shutil.make_archive **不保存 Unix 权限**（Windows 上打的包尤其明显）：
+# 解压出来 install.sh 是 -rw-rw-rw-，客户第一条 `./install.sh` 直接 Permission denied。
+# 这里把权限写进 zip 的 external_attr，Info-ZIP 的 unzip 会还原。
+# 双保险：文档里的命令也统一写成 `sudo bash install.sh`，不依赖执行位。
+with zipfile.ZipFile(out) as z:
+    entries = [(i, z.read(i.filename)) for i in z.infolist()]
+with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+    for info, data in entries:
+        mode = 0o755 if info.filename.endswith(".sh") else 0o644
+        info.external_attr = (mode & 0xFFFF) << 16
+        z.writestr(info, data)
+print("   已写入 Unix 权限（.sh = 755）")
 PY
 
 ZIP_SHA="$(sha256sum "$ZIP" | awk '{print $1}')"

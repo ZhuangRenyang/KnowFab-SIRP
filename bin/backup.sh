@@ -56,6 +56,17 @@ FILE="$OUT_DIR/${DB_NAME}-${STAMP}.sql.gz"
 # JDBC URL 通常还是 jdbc:mysql:// —— 从 URL 判出来是 mysql，
 # 但那台机器上可能只有 mariadb-dump。所以每个分支都**双向找**：
 # 先找本引擎自己的名字，再找另一家的，最后才猜固定路径。
+# 没装 MySQL/MariaDB 客户端时**明确说清怎么装**。
+# 原来这里给个假路径兜底（/usr/bin/mysqldump），运行时才失败，
+# 报错是「command not found」——现场根本不知道该装什么。
+die_client() {
+  echo "找不到 mysqldump / mysql 客户端（MySQL 客户端没装）" >&2
+  echo "  装它：sudo apt-get install -y default-mysql-client   # Debian/Ubuntu" >&2
+  echo "        或：sudo yum install -y mysql                    # CentOS/RHEL" >&2
+  echo "  没有客户端就没法备份——服务端装了不代表命令行工具装了" >&2
+  exit 1
+}
+
 pick() {  # pick <候选1> [候选2...] → 第一个存在的绝对路径
   for c in "$@"; do
     p="$(command -v "$c" 2>/dev/null)" && { printf '%s' "$p"; return 0; }
@@ -66,12 +77,16 @@ pick() {  # pick <候选1> [候选2...] → 第一个存在的绝对路径
 case "$ENGINE" in
   mysql)
     # 也有可能是「用 jdbc:mysql:// 连 MariaDB」的机器，所以要回退找 mariadb-*
-    DUMP_BIN="$(pick mysqldump mariadb-dump || echo /usr/bin/mysqldump)"
-    CLIENT_BIN="$(pick mysql mariadb || echo /usr/bin/mysql)"
+    DUMP_BIN="$(pick mysqldump mariadb-dump || true)"
+    [ -n "$DUMP_BIN" ] || die_client
+    CLIENT_BIN="$(pick mysql mariadb || true)"
+    [ -n "$CLIENT_BIN" ] || die_client
     ;;
   mariadb)
-    DUMP_BIN="$(pick mariadb-dump mysqldump || echo /usr/bin/mariadb-dump)"
-    CLIENT_BIN="$(pick mariadb mysql || echo /usr/bin/mariadb)"
+    DUMP_BIN="$(pick mariadb-dump mysqldump || true)"
+    [ -n "$DUMP_BIN" ] || die_client
+    CLIENT_BIN="$(pick mariadb mysql || true)"
+    [ -n "$CLIENT_BIN" ] || die_client
     ;;
   postgresql|pgsql)
     DUMP_BIN="$(pick pg_dump || echo /usr/bin/pg_dump)"
@@ -88,7 +103,13 @@ esac
 #   MariaDB 的 GTID 是另一套实现）→ 报 "unknown variable" 并**输出零字节文件**；
 # · --no-tablespaces 是 MySQL 5.7.31+ 才有的，老版本/MariaDB 未必认。
 # 所以探一下再决定加不加，不猜版本。
-supports() { "$DUMP_BIN" --help 2>&1 | grep -q -- "$1"; }
+# 注意：**不要用 grep -q**。它一匹配上就提前退出，管道另一端的 mysqldump 收到
+# SIGPIPE 而非零退出 —— 在 `set -o pipefail` 下整个管道状态变成非 0，
+# 于是 supports 永远返回「不支持」，所有选项都被悄悄丢掉。
+# 这个 bug 只在 Linux 上出现（mysqldump --help 输出长，够 grep 提前退出），
+# Windows 上输出短反而测不出来 —— 而客户机全是 Linux。
+# 改成不用 -q，让 grep 读完整个输入，返回码就只反映匹配与否。
+supports() { "$DUMP_BIN" --help 2>&1 | grep -F -- "$1" >/dev/null; }
 
 OPTS="--single-transaction --routines --triggers --default-character-set=utf8mb4"
 supports --set-gtid-purged && OPTS="$OPTS --set-gtid-purged=OFF"

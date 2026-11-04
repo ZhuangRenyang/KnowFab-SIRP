@@ -3,16 +3,16 @@
 # device-hub 一键安装（Ubuntu / Debian / 麒麟 / CentOS 通用）
 #
 # 用法：
-#   sudo ./install.sh --db-pass '你的数据库密码'
+#   sudo bash install.sh --db-pass '你的数据库密码'
 #                                     默认装到 /opt/device-hub，端口 8080。
 #                                     数据库默认连本机 MySQL：127.0.0.1:3306/device_hub
 #                                     （H2 已废弃，MySQL 8 必须先装好、建好库）
-#   sudo ./install.sh --db-pass '...' \
+#   sudo bash install.sh --db-pass '...' \
 #        --db-host 10.0.0.5 --db-port 3306 --db-name device_hub --db-user devicehub
 #                                     指定数据库位置和账号
-#   sudo ./install.sh --db pg --db-pass '...'   用 PostgreSQL（可选）
-#   sudo PORT=9000 ./install.sh --db-pass '...'   换端口
-#   sudo ./install.sh --no-web-restart --db-pass '...'
+#   sudo bash install.sh --db pg --db-pass '...'   用 PostgreSQL（可选）
+#   sudo env PORT=9000 bash install.sh --db-pass '...'   换端口
+#   sudo bash install.sh --no-web-restart --db-pass '...'
 #                                     关闭"网页一键重启/升级自动重启"
 #                                     （默认开启：只给 devicehub 用户加一条 sudoers，
 #                                      仅允许 systemctl restart device-hub，别的都不行。
@@ -26,6 +26,10 @@ APP="device-hub"
 DIR="${DIR:-/opt/device-hub}"
 SVC_USER="${SVC_USER:-devicehub}"
 PORT="${PORT:-8080}"
+# JVM 堆大小。默认 1024m 是按 4G+ 机器定的；现场 2G 小机器上光这一项
+# 就能把机器拖垮（还要给 MySQL 和别的服务留内存）。
+# 允许用 JAVA_OPTS 覆盖：sudo env JAVA_OPTS="-Xms128m -Xmx384m" ./install.sh
+JAVA_OPTS="${JAVA_OPTS:--Xms256m -Xmx1024m}"
 ALLOW_WEB_RESTART=1
 DB="mysql"             # mysql（默认）| pg。H2 已废弃（2026-10-27），驱动已从包里移除
 DB_HOST="127.0.0.1"
@@ -70,7 +74,7 @@ ok()   { printf '\033[1;32m  完成 %s\033[0m\n' "$*"; }
 warn() { printf '\033[1;33m  注意 %s\033[0m\n' "$*"; }
 die()  { printf '\033[1;31m  失败 %s\033[0m\n' "$*" >&2; exit 1; }
 
-[ "$(id -u)" -eq 0 ] || die "要用 root 运行：sudo ./install.sh"
+[ "$(id -u)" -eq 0 ] || die "要用 root 运行：sudo bash install.sh"
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
@@ -118,6 +122,32 @@ fi
 
 # ---------- 1. 运行时 ----------
 say "检查 Java 运行时"
+# ---------- MySQL / MariaDB 客户端（备份恢复要用） ----------
+# **服务端装了 MySQL 不代表命令行工具装了** —— 客户机上常见的是：
+# MySQL 在另一个机器/容器里，这台服务器只有 JDBC 驱动，没有 mysqldump。
+# 那样「备份」功能在客户机上就是空的（bin/backup.sh 直接 command not found）。
+# 所以这里主动把客户端装上。
+if [ "$DB" = "mysql" ]; then
+  if ! command -v mysqldump >/dev/null 2>&1 && ! command -v mariadb-dump >/dev/null 2>&1; then
+    warn "没找到 mysqldump / mariadb-dump（备份与恢复要用），尝试安装 MySQL 客户端"
+    if command -v apt-get >/dev/null 2>&1; then
+      DEBIAN_FRONTEND=noninteractive apt-get update -y >/dev/null 2>&1 || true
+      DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        default-mysql-client >/dev/null 2>&1 \
+        || warn "自动安装 MySQL 客户端失败，请手工装：sudo apt-get install -y default-mysql-client"
+    elif command -v dnf >/dev/null 2>&1; then
+      dnf install -y mysql >/dev/null 2>&1 || warn "自动安装 MySQL 客户端失败，请手工装：sudo dnf install -y mysql"
+    elif command -v yum >/dev/null 2>&1; then
+      yum install -y mysql >/dev/null 2>&1 || warn "自动安装 MySQL 客户端失败，请手工装：sudo yum install -y mysql"
+    else
+      warn "这台机器没有可用的包管理器，MySQL 客户端要手工装（备份功能需要它）"
+    fi
+  fi
+  command -v mysqldump >/dev/null 2>&1 && ok "MySQL 客户端就绪：$(command -v mysqldump)" \
+    || command -v mariadb-dump >/dev/null 2>&1 && ok "MariaDB 客户端就绪：$(command -v mariadb-dump)" \
+    || warn "仍然没有 mysqldump —— 备份功能在这台机器上不可用"
+fi
+
 if ! command -v java >/dev/null 2>&1; then
   warn "没找到 java，尝试用系统源安装 OpenJDK 17（国内源，不联网也需要本机有 apt 源）"
   if command -v apt-get >/dev/null 2>&1; then
@@ -174,7 +204,29 @@ if [ ! -f "$DIR/application.yml" ]; then
   if [ -f "$HERE/application.yml" ]; then
     warn "安装目录里有 application.yml，已忽略（配置由本脚本生成，避免两份模板不一致）"
   fi
-  ADMIN_PASS="$(head -c 32 /dev/urandom | base64 | tr -dc 'A-Za-z2-9' | head -c 12)"
+  # 库里有 admin 吗？
+  # 应用启动时如果发现 sys_user 里已有用户，**不会**改密码（那是保护用户已改的密码）。
+  # 所以此时再生成一份初始密码写进 INITIAL_ADMIN.txt，那份密码**永远登不进去**——
+  # 客户重装一次就再也进不去系统了（2026-11-04 真机实测踩到）。
+  # 这里先查库：已有 admin 就不生成密码文件，沿用原密码，并告诉用户怎么重置。
+  ADMIN_EXISTS=0
+  if command -v mysql >/dev/null 2>&1 && [ -n "$DB_PASS" ]; then
+    # 注意 `|| true`：命令替换失败会让整条赋值语句返回非 0，
+    # 在 `set -e` 下**脚本会当场退出**。空库时 sys_user 表还不存在，
+    # mysql 必然报错——不能因此把安装搞挂（`2>/dev/null` 只挡输出，不挡退出码）。
+    CNT=$(mysql -h"$DB_HOST" -P"${DB_PORT:-3306}" -u"$DB_USER" -p"$DB_PASS" -N -B \
+          -e "select count(*) from sys_user where username='admin'" "$DB_NAME" 2>/dev/null \
+          | tr -d '\r' || true)
+    [ "$CNT" = "1" ] && ADMIN_EXISTS=1
+  fi
+  if [ "$ADMIN_EXISTS" = "1" ]; then
+    # 已有 admin：application.yml 里仍要填一个值（应用启动会读它），
+    # 但填随机占位而不是标记串——万一用户日后删了 admin，这个值会变成真密码。
+    ADMIN_PASS="$(head -c 32 /dev/urandom | base64 | tr -dc 'A-Za-z2-9' | head -c 12)"
+    warn "数据库里已有管理员 admin —— 沿用原密码，不生成初始密码文件"
+  else
+    ADMIN_PASS="$(head -c 32 /dev/urandom | base64 | tr -dc 'A-Za-z2-9' | head -c 12)"
+  fi
   if [ "$DB" = "mysql" ]; then
     DB_URL="jdbc:mysql://$DB_HOST:$DB_PORT/$DB_NAME?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true&rewriteBatchedStatements=true"
     DB_DRV="com.mysql.cj.jdbc.Driver"
@@ -210,11 +262,20 @@ system:
     username: admin
     password: "$ADMIN_PASS"
 YML
-  printf '管理员账号：admin\n初始密码：%s\n\n登录后请立刻在「系统 → 用户管理」里改掉，并删除本文件。\n' \
-    "$ADMIN_PASS" > "$DIR/INITIAL_ADMIN.txt"
-  chmod 600 "$DIR/INITIAL_ADMIN.txt"
-  chown "$SVC_USER":"$SVC_USER" "$DIR/INITIAL_ADMIN.txt"
-  ok "已生成管理员初始密码（见 $DIR/INITIAL_ADMIN.txt）"
+  if [ "$ADMIN_EXISTS" = "1" ]; then
+    rm -f "$DIR/INITIAL_ADMIN.txt"
+    warn "数据库里已有管理员 admin —— 沿用原密码，不生成初始密码文件"
+    warn "  忘了密码就重置（不需要改代码）："
+    warn "    sudo systemctl edit device-hub   # 加一行 Environment=DEVICEHUB_RESET_ADMIN=1"
+    warn "    sudo systemctl restart device-hub"
+    warn "    # 起来后把上面那行删掉，否则每次重启都会重置"
+  else
+    printf '管理员账号：admin\n初始密码：%s\n\n登录后请立刻在「系统 → 用户管理」里改掉，并删除本文件。\n' \
+      "$ADMIN_PASS" > "$DIR/INITIAL_ADMIN.txt"
+    chmod 600 "$DIR/INITIAL_ADMIN.txt"
+    chown "$SVC_USER":"$SVC_USER" "$DIR/INITIAL_ADMIN.txt"
+    ok "已生成管理员初始密码（见 $DIR/INITIAL_ADMIN.txt）"
+  fi
   chown "$SVC_USER":"$SVC_USER" "$DIR/application.yml"
   ok "已生成配置 $DIR/application.yml"
 else
@@ -262,13 +323,18 @@ fi
 
 # ---------- 3. systemd ----------
 say "注册 systemd 服务"
-for f in apply-pending.sh upgrade.sh; do
+# 清单必须**齐全**：少一个，客户机上就少一个功能。
+# 这里漏过 backup.sh / restore.sh —— 包里有（sha256sum 校验都过），
+# 但没复制到 $DIR/bin，客户机上「备份」功能等于不存在。
+for f in apply-pending.sh upgrade.sh backup.sh restore.sh; do
   if [ -f "$HERE/bin/$f" ]; then
     cp "$HERE/bin/$f" "$DIR/bin/$f"
     chmod 755 "$DIR/bin/$f"
+  else
+    warn "包里缺 bin/$f —— 该功能在客户机上将不可用"
   fi
 done
-ok "升级脚本已安装到 $DIR/bin/"
+ok "运维脚本已安装到 $DIR/bin/"
 
 sudoers_file=/etc/sudoers.d/device-hub-restart
 if [ "$ALLOW_WEB_RESTART" -eq 1 ]; then
@@ -297,7 +363,7 @@ Environment=JAVA_TOOL_OPTIONS=-Dfile.encoding=UTF-8 -Duser.timezone=Asia/Shangha
 # 启动前先看有没有待应用的升级包：有就换 jar，换失败就保留旧版本继续起，
 # 绝不让"升级"这个动作把服务搞成起不来
 ExecStartPre=$DIR/bin/apply-pending.sh
-ExecStart=$JAVA_BIN -Xms256m -Xmx1024m -jar $DIR/$APP.jar --server.port=$PORT --spring.config.additional-location=file:$DIR/application.yml
+ExecStart=$JAVA_BIN $JAVA_OPTS -jar $DIR/$APP.jar --server.port=$PORT --spring.config.additional-location=file:$DIR/application.yml
 # JVM 收到 SIGTERM 会返回 143，属于正常停止，不要当成崩溃反复拉起
 SuccessExitStatus=143
 Restart=always
@@ -354,7 +420,7 @@ cat <<EOF
  配置文件   $DIR/application.yml
  日志       $DIR/logs/stdout.log   或   journalctl -u $APP -f
 
- 管理员账号 admin，初始密码见  $DIR/INITIAL_ADMIN.txt（登录后立刻改）
+$([ "$ADMIN_EXISTS" = "1" ] && echo " 数据库里已有管理员，沿用原密码（重装不会改密码）" || echo " 初始密码见  $DIR/INITIAL_ADMIN.txt（登录后立刻改）")
 
  常用命令
    启停      systemctl {start|stop|restart|status} $APP
