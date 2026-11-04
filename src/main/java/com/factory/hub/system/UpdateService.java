@@ -693,6 +693,11 @@ public class UpdateService {
         java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
                 .connectTimeout(java.time.Duration.ofMillis(8000))
                 .followRedirects(java.net.http.HttpClient.Redirect.NORMAL)
+                // **必须明确 HTTP/1.1**：Java 的 HttpClient 默认会协商 HTTP/2，
+                // 而 Gitee 的 h2 对大响应体（80MB）的流处理有问题 —— 读到一半就 EOF，
+                // 报 "EOF reached while reading"。同一个地址用 curl（h1）下载完全正常。
+                // 2026-11-04 真机实测：加上这行后 80MB 升级包一次下完。
+                .version(java.net.http.HttpClient.Version.HTTP_1_1)
                 .build();
         java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder(java.net.URI.create(url))
                 .timeout(java.time.Duration.ofMillis(300_000))
