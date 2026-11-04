@@ -105,6 +105,7 @@ declare module 'vue' {
     RuleList: typeof import('./src/components/alarm/RuleList.vue')['default']
     SalesOrderDialog: typeof import('./src/components/erp/SalesOrderDialog.vue')['default']
     SalesShipDialog: typeof import('./src/components/erp/SalesShipDialog.vue')['default']
+    SerialProbePanel: typeof import('./src/components/SerialProbePanel.vue')['default']
     SettingsPanel: typeof import('./src/components/system/SettingsPanel.vue')['default']
     ShiftsDialog: typeof import('./src/components/report/ShiftsDialog.vue')['default']
     StatusBadge: typeof import('./src/components/StatusBadge.vue')['default']

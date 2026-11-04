@@ -35,9 +35,33 @@ public class DiscoveryController {
             "^(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})$");
 
     private final DiscoveryService service;
+    private final SerialProber serialProber;
 
-    public DiscoveryController(DiscoveryService service) {
+    public DiscoveryController(DiscoveryService service, SerialProber serialProber) {
         this.service = service;
+        this.serialProber = serialProber;
+    }
+
+    /**
+     * 本机可用串口列表（COM 口）。
+     * <p>
+     * 串口不像 TCP 有 IP 可扫——服务器上就那么几个 COM 口，且一个 COM 口同一时刻
+     * 只能被一台设备占用。所以串口"发现"只有一个动作：对着已知从站逐个寄存器试读。
+     */
+    @GetMapping("/serial-ports")
+    public List<Map<String, Object>> serialPorts() {
+        return serialProber.listPorts();
+    }
+
+    /**
+     * 串口点表对拍：逐地址试读，把读得通的寄存器整理成点表。
+     * <p>
+     * <b>只对拍、不扫描</b>：串口没有"扫出设备"这回事，只能对着已知从站地址试。
+     * 产物是一份点表建议（数据类型默认 u16，要用户按现场实际改）。
+     */
+    @PostMapping("/serial-probe")
+    public Map<String, Object> serialProbe(@RequestBody SerialProber.Spec req) {
+        return serialProber.probe(req);
     }
 
     /**

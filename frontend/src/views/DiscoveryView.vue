@@ -94,6 +94,12 @@
       </div>
 
       <div class="panel wide">
+        <div class="p-head"><h3>{{ t('disc.serialTitle') }}</h3>
+          <span>{{ t('disc.serialLead') }}</span></div>
+        <SerialProbePanel />
+      </div>
+
+      <div class="panel wide">
         <div class="p-head"><h3>{{ t('disc.title3') }}</h3>
           <span>{{ embed ? t('disc.sub3Embed') : t('disc.sub3Copy') }}</span></div>
         <div class="tip">{{ t('disc.tip3') }}</div>
@@ -127,6 +133,7 @@
 
 import { onMounted, onScopeDispose, reactive, ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import SerialProbePanel from '@/components/SerialProbePanel.vue'
 import { ElMessage } from 'element-plus'
 import { discoveryApi, type ProbeArgs } from '@/api/discovery'
 
