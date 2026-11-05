@@ -699,6 +699,53 @@ def sec_write(skus, whs):
     check(s, "其他入库 → 作废（库存回滚）", ok, no or r)
 
 
+def sec_schedule():
+    """生产排程（DH-72）：登记计划时间 + 同产线冲突检测 + 甘特取数。
+
+    口径（详见 ErpScheduleService 类注释）：
+      NULL=未排程 / 半开区间[start,end) 相接不算冲突 / 只判非终态工单 /
+      粒度是产线不是设备 / 没指定产线不参与判定。
+    """
+    s = "生产排程"
+    st, rows = req("GET", "/api/erp/work-orders?page=1&size=5")
+    if st != 200 or not rows.get("rows"):
+        check(s, "取工单列表", False, st)
+        return
+    wo = rows["rows"][0]
+    no = wo.get("orderNo")
+    line = "SMOKE-LINE"
+    # 用一个固定的时间窗（2026-01-05 08:00~12:00 / 09:00~13:00 / 12:00~16:00）
+    t1, t2, t3 = 1767580800000, 1767595200000, 1767609600000
+
+    st, r = req("GET", "/api/erp/schedule")
+    check(s, "甘特接口可读", st == 200 and isinstance(r, dict), st)
+
+    st, r = req("POST", "/api/erp/schedule/%s" % no,
+                {"planStart": t1, "planEnd": t2, "lineCode": line})
+    check(s, "排程成功", st == 200 and r.get("ok") is True, st)
+
+    st, r = req("POST", "/api/erp/schedule/%s" % no,
+                {"planStart": t2, "planEnd": t3, "lineCode": line})
+    # 半开区间：结束 == 开始 → 相接 → **不算冲突**
+    check(s, "半开区间：首尾相接不算冲突", st == 200 and r.get("ok") is True, st)
+
+    st, r = req("GET", "/api/erp/schedule/conflicts")
+    check(s, "冲突清单可读", st == 200 and isinstance(r, dict) and "count" in r, st)
+
+    # 排一张真冲突的（同产线重叠）：用第二张工单
+    if len(rows["rows"]) > 1:
+        no2 = rows["rows"][1].get("orderNo")
+        st, r = req("POST", "/api/erp/schedule/%s" % no2,
+                    {"planStart": t1 + 1800000, "planEnd": t2 + 1800000, "lineCode": line})
+        check(s, "同产线时间重叠 → 拒绝排程",
+              st == 200 and r.get("ok") is False and "重叠" in (r.get("message") or ""), st)
+        # 清理（保持幂等）
+        req("DELETE", "/api/erp/schedule/%s" % no2)
+
+    # 清理：取消排程（幂等要求）
+    req("DELETE", "/api/erp/schedule/%s" % no)
+
+
 def sec_auth_negative():
     s = "权限"
     st, _ = req("GET", "/api/erp/stock/summary", anon=True)
@@ -760,6 +807,7 @@ def main():
     sec_sales_query()
     sec_ai_chat()
     sec_qc()
+    sec_schedule()
     sec_write(skus, whs)
     sec_auth_negative()
 

@@ -166,8 +166,19 @@ public class ErpWorkOrder {
     @Column(name = "auto_backflush", nullable = false)
     private boolean autoBackflush = true;
 
+    /**
+     * 计划开始时间（毫秒时间戳）。<b>NULL = 未排程</b>（不是 0）——
+     * 存 0 会让工单出现在甘特图的最左边，看着像"排了五十年"。
+     */
     @Column(name = "plan_start")
     private Long planStart;
+
+    /**
+     * 计划结束时间（毫秒时间戳）。与 {@link #planStart} 构成**半开区间**
+     * {@code [planStart, planEnd)}：前一张的结束 == 后一张的开始**不算冲突**
+     * （交接班/换型时刻是正常衔接）。
+     * <p>排程口径见 {@link com.factory.hub.erp.ErpScheduleService} 的类注释。
+     */
     @Column(name = "plan_end")
     private Long planEnd;
     @Column(name = "actual_start")

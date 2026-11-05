@@ -560,6 +560,7 @@ export default {
     },
   },
   nav: {
+    schedule: '生产排程',
     groupMonitor: '生产监控',
     groupAnalysis: '分析',
     groupErp: 'ERP',
@@ -2919,6 +2920,28 @@ erpRpt: {
     unsaved: '当前产品的改动还没保存，确定要切换吗？',
     invalid: '有材料没选、或者用量不是正数，先补全再保存',
     saved: 'BOM 已保存'
+  },
+  sch: {
+    title: '生产排程',
+    gantt: '产线排程甘特',
+    ganttHint: '横条是工单的计划时间；红色表示与同产线的另一张工单时间重叠。',
+    noScheduled: '这段时间还没有排程的工单',
+    unscheduled: '未排程的工单',
+    conflictTitle: '发现 {n} 处产线冲突：同一产线上有工单时间重叠',
+    noConflict: '当前没有产线冲突',
+    line: '产线',
+    linePlaceholder: '留空表示不占用产线',
+    lineHint: '不填产线的工单不参与冲突判定。',
+    start: '计划开始',
+    end: '计划结束',
+    schedule: '排程',
+    dlgTitle: '排程 {no}',
+    clear: '取消排程',
+    save: '保存',
+    forceSave: '仍然保存',
+    needTime: '要填计划开始和结束时间',
+    saved: '已保存',
+    failed: '保存失败'
   },
   wo: {
     kpiRunning: '生产中',

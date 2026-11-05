@@ -556,6 +556,7 @@ export default {
     },
   },
   nav: {
+    schedule: 'Production Schedule',
     groupMonitor: 'MONITORING',
     groupAnalysis: 'ANALYTICS',
     groupErp: 'ERP',
@@ -2915,6 +2916,28 @@ erpRpt: {
     unsaved: 'Unsaved changes on this product. Switch anyway?',
     invalid: 'Some rows have no material or a non-positive qty. Fix them before saving',
     saved: 'BOM saved'
+  },
+  sch: {
+    title: 'Production Schedule',
+    gantt: 'Line Schedule (Gantt)',
+    ganttHint: 'Bars are planned time windows; red means the order overlaps another order on the same line.',
+    noScheduled: 'No scheduled orders in this range',
+    unscheduled: 'Unscheduled orders',
+    conflictTitle: '{n} line conflict(s): orders overlap on the same line',
+    noConflict: 'No line conflicts right now',
+    line: 'Line',
+    linePlaceholder: 'Leave empty to not occupy a line',
+    lineHint: 'Orders without a line do not take part in conflict detection.',
+    start: 'Planned start',
+    end: 'Planned end',
+    schedule: 'Schedule',
+    dlgTitle: 'Schedule {no}',
+    clear: 'Unschedule',
+    save: 'Save',
+    forceSave: 'Save anyway',
+    needTime: 'Planned start and end are required',
+    saved: 'Saved',
+    failed: 'Save failed'
   },
   wo: {
     kpiRunning: 'Running',

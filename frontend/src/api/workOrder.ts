@@ -161,3 +161,48 @@ export const WORK_ORDER_STATUSES: { value: WorkOrderStatus; label: string; type:
 
 export const workOrderStatusType = (s: string) =>
   WORK_ORDER_STATUSES.find((x) => x.value === s)?.type || 'info'
+
+/* ---------- 生产工单排程（DH-72）：与后端 ErpScheduleController 对齐 ---------- */
+
+/** 甘特数据：按产线分组 + 未排程清单 + 全部冲突 */
+export interface ScheduleOrderRow {
+  orderNo: string
+  productCode?: string
+  productName?: string
+  planQty?: number
+  doneQty?: number
+  status?: string
+  lineCode?: string
+  deviceCode?: string
+  planStart?: number | null
+  planEnd?: number | null
+  conflict?: boolean
+}
+export interface ScheduleConflict {
+  lineCode: string
+  aOrderNo: string
+  bOrderNo: string
+  overlapStart: number
+  overlapEnd: number
+}
+export interface ScheduleGantt {
+  lines: { lineCode: string; orders: ScheduleOrderRow[] }[]
+  unscheduled: ScheduleOrderRow[]
+  conflicts: ScheduleConflict[]
+}
+
+export const scheduleApi = {
+  gantt: (from?: number | null, to?: number | null) =>
+    http.get<ScheduleGantt>(
+      `/api/erp/schedule${from || to ? `?from=${from ?? ''}&to=${to ?? ''}` : ''}`),
+  conflicts: () => http.get<{ ok: boolean; count: number; conflicts: ScheduleConflict[] }>(
+    '/api/erp/schedule/conflicts'),
+  /** 排程。force=true 时即使与同产线的工单时间重叠也排（只提示） */
+  schedule: (orderNo: string, planStart: number, planEnd: number, force = false, lineCode?: string) =>
+    http.post<{ ok: boolean; message?: string; conflicts?: ScheduleConflict[]; warnings?: string[] }>(
+      `/api/erp/schedule/${encodeURIComponent(orderNo)}`,
+      { planStart, planEnd, force, lineCode: lineCode ?? null }),
+  unschedule: (orderNo: string) =>
+    http.del<{ ok: boolean; message?: string }>(
+      `/api/erp/schedule/${encodeURIComponent(orderNo)}`)
+}
