@@ -101,10 +101,15 @@
 | 产线 | 产线 + 工位 + 设备归属 | `ErpLineService` |
 | 报表 | 经营报表 + **导出 Excel** | `ErpReportService`、`ErpReportExcel` |
 | **生产入库联动** | 设备产量 → 自动生成生产入库单 → 库存增加 | `ErpProdInboundService` |
+| **生产工单** | BOM → 工单 → 领料 → 产出 → 成本，五态状态机 | `ErpWorkOrder*`（7 个类） |
+| **成本核算** | 材料（实际领料）+ 人工（工时×工价）+ 制造费用（电费+工时×费率） | `ErpCostService`、`ErpCostController` |
 
-**可以说的**：采购、销售、库存、财务、产线、报表都有；产量能自动进库存和单据。
-**限制（重要）**：是**轻量 ERP**，没有成本核算、多组织合并报表、生产工单排程。
-被追问时要说清楚，别硬撑。
+**可以说的**：采购、销售、库存、财务、产线、报表、工单、成本核算都有；
+产量能自动进库存和单据；工单能把 BOM 展开成领料单并算出单件成本。
+**限制（重要）**：是**轻量 ERP**，**没有生产工单排程**（有工单，但没有排产/甘特图），
+没有多组织合并报表。被追问时要说清楚，别硬撑。
+> 2026-11-05 更正：这一段原来写着「没有成本核算」，**是错的** —— 成本核算早已在跑
+> （`/api/erp/cost/*`）。话本说错话比不说更糟。
 
 ---
 
@@ -112,8 +117,8 @@
 
 | 能力 | 细节 | 出处 |
 |------|------|------|
-| **对话式查询系统数据** | AI 可调用 7 个工具查真实数据 | `ai/AiChatService.tools()` |
-| 工具清单 | `query_stock`（库存）、`query_lines`（产线产量）、`query_devices`（设备状态）、`query_alarms`（未处理报警）、`query_purchase_orders`（采购）、`query_sales_orders`（销售）、`query_finance`（应收应付账龄） | 同上 |
+| **对话式查询系统数据** | AI 可调用 **12 个**工具查真实数据 | `ai/AiChatService.tools()` |
+| 工具清单 | `query_stock`（库存与可承诺量）、`query_lines`（产线产量）、`query_devices`（设备状态）、`query_alarms`（未处理报警）、`query_purchase_orders`（采购）、`query_sales_orders`（销售）、`query_finance`（应收应付账龄）、`query_work_orders`（生产工单）、`query_shortage`（缺料预警）、`query_energy`（能耗）、`query_oee`（OEE）、`query_cost`（成本） | 同上 |
 | **按角色授权** | 班组长只能查产量/设备/报警；经理以上才能查采购/销售/财务 | `Tool.roles` |
 | AI 早报 | 每天定时生成，含昨日产量、未处理报警等，可推微信 | `ai/DigestService`、`DigestController` |
 | 报警解读 | `/api/ai/interpret` | `AiChatController.interpret` |

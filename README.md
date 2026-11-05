@@ -99,6 +99,23 @@ Each release has three packages — they are **not** interchangeable:
 | `device-hub-<ver>-update.zip` | The **signed upgrade package** for the web UI (*System → Check for updates*). The client only accepts this one (signature is verified). |
 | `device-hub-<ver>-portable.zip` | Windows **portable** build (bundles its own database, no install needed). |
 
+### Offline / intranet upgrades (no internet)
+
+Factories on an intranet can't reach GitHub or Gitee, so **Check for updates** will
+always report "not published". Use the upload path instead:
+
+1. Copy `device-hub-<ver>-update.zip` onto the server (USB stick, shared folder — anything).
+2. Web UI → **System → update panel → Upload upgrade package**, pick that zip.
+   The server verifies the **signature** and the file hash before accepting it;
+   an unsigned or tampered package is rejected.
+3. Click **Apply upgrade**, then restart the service:
+   `sudo systemctl restart device-hub`
+   The panel prints the exact command. **Web restart is off by default on purpose** —
+   letting a web request restart the service is too much attack surface.
+
+Verified end-to-end on a real server: 1.0.25 → upload 1.0.27 → apply → restart → 1.0.27.
+The previous jar is kept in `backups/apply-<time>-<oldversion>/` so you can roll back.
+
 ## Install
 
 Three options — **① is the recommended one**: nothing to install on the target machine, a single
