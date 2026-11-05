@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "files": [
+    {
+      "file": "yaskawa-servo.json",
+      "brand": "yaskawa",
+      "source": "Yaskawa《Σ-7 Series Product Manual》§6.1.1 List of Alarms（p.6-1~6-6）+ Yaskawa 官网 PDF SIEPS80000226 §3.1.1 +《Sigma-5 User Manual》§9.1.1 + SGDH Sigma-II C.1。码字为三位十六进制",
+      "expectedCount": 117,
+      "numericIdentityCount": 117,
+      "displayFormKeyCount": 117,
+      "models": [
+        "sigma7",
+        "sigma5"
+      ],
+      "aliasCount": 158,
+      "meaningCount": 117
+    },
+    {
+      "file": "panasonic-servo.json",
+      "brand": "panasonic",
+      "source": "松下官方《MINAS A6 Multi Series Technical Reference》§7.1 List of protective function +《MINAS A6 Series Operating Instructions》§6.5 Error Factor + 官方《A6 家族关联报警&警告代码一览》Ver1.05（8 类 151 条）",
+      "expectedCount": 55,
+      "numericIdentityCount": 55,
+      "displayFormKeyCount": 145,
+      "models": [
+        "a6",
+        "a5"
+      ],
+      "aliasCount": 145,
+      "meaningCount": 55
+    },
+    {
+      "file": "panasonic-a4-servo.json",
+      "brand": "panasonic-a4",
+      "source": "松下官方《MINAS A4 Series》用户手册故障一览（两位码，Err11/Err12 形态）",
+      "expectedCount": 39,
+      "numericIdentityCount": 39,
+      "displayFormKeyCount": 39,
+      "models": [
+        "a4"
+      ],
+      "aliasCount": 39,
+      "meaningCount": 39
+    },
+    {
+      "file": "huichuan-servo.json",
+      "brand": "huichuan",
+      "source": "汇川官方《SV660N 系列伺服 排障手册》CN-A00（19011847）+《SV660N Series Servo Drive Communication Guide》（0x603F/0x203F 取值）+ 汇川官方告警库 + 官方排障手册第 6 章旧码→新码对照表",
+      "expectedCount": 95,
+      "numericIdentityCount": 95,
+      "displayFormKeyCount": 177,
+      "models": [
+        "sv660",
+        "sv660n",
+        "sv660p",
+        "is3",
+        "is5",
+        "is6",
+        "sv600"
+      ],
+      "aliasCount": 244,
+      "meaningCount": 95
+    },
+    {
+      "file": "mitsubishi-servo.json",
+      "brand": "mitsubishi",
+      "source": "三菱 MR-J4 用户手册（存量，未改动）",
+      "expectedCount": 20,
+      "numericIdentityCount": 19,
+      "displayFormKeyCount": 0,
+      "models": [
+        "mrj4",
+        "mrje"
+      ],
+      "aliasCount": 0,
+      "meaningCount": 20
+    },
+    {
+      "file": "delta-servo.json",
+      "brand": "delta",
+      "source": "台达 ASDA-A2/B2 报警表（存量，未改动）",
+      "expectedCount": 30,
+      "numericIdentityCount": 30,
+      "displayFormKeyCount": 0,
+      "models": [
+        "asda"
+      ],
+      "aliasCount": 0,
+      "meaningCount": 30
+    }
+  ]
+}

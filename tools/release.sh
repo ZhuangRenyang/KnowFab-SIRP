@@ -82,6 +82,30 @@ if [ "$DO_BUILD" -eq 1 ]; then
   bash tools/make-dist.sh --build
 else
   [ -f target/device-hub.jar ] || die "没有 target/device-hub.jar，去掉 --no-build 先构建"
+  # --no-build 也要过字典校验：这条路径虽然不重新构建，但会把现有 jar
+  # 打成包发出去 —— 如果字典是坏的（比如有人改了字典却没重新构建），
+  # 门禁在这里漏了就等于把坏字典发给了客户。
+  say "校验报警码字典（--no-build 路径同样要过）"
+  command -v node >/dev/null 2>&1 \
+    || die "找不到 node。字典校验需要 Node 20+"
+  # 同样要断言「脚本确实产出了输出」—— 脚本被改残时会永远退出 0（假绿）。
+  CHK_OUT="$(node scripts/check-alarmcodes.mjs 2>&1)" || {
+    printf '%s\n' "$CHK_OUT"
+    die "报警码字典校验未通过 —— 不允许发版（详见上面的阻断项）"
+  }
+  printf '%s\n' "$CHK_OUT"
+  [ -n "$CHK_OUT" ] \
+    || die "报警码字典校验脚本没有输出 —— 它可能已失效，门禁会变成假绿"
+
+  # 变异验证：证明校验器本身拦得住（只跑一次 exit 0 不能证明门禁有效）
+  MUT_OUT="$(node scripts/mutation-check-alarmcodes.mjs 2>&1)" || {
+    printf '%s\n' "$MUT_OUT"
+    die "校验器变异验证未通过 —— 门禁拦不住错误，不允许发版"
+  }
+  printf '%s\n' "$MUT_OUT"
+  [ -n "$MUT_OUT" ] \
+    || die "变异验证脚本没有输出 —— 它可能已失效，门禁会变成假绿"
+  ok "报警码字典校验通过"
 fi
 
 [ -f "dist/device-hub-$VERSION.zip" ] || die "安装包没生成：dist/device-hub-$VERSION.zip"

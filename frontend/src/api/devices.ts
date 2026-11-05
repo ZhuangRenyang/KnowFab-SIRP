@@ -63,7 +63,10 @@ export const BRANDS = [
   { value: 'mitsubishi', label: '三菱伺服', labelKey: 'brand.mitsubishi' },
   { value: 'delta', label: '台达伺服', labelKey: 'brand.delta' },
   { value: 'yaskawa', label: '安川伺服', labelKey: 'brand.yaskawa' },
-  { value: 'panasonic', label: '松下伺服', labelKey: 'brand.panasonic' },
+  { value: 'panasonic', label: '松下伺服（MINAS A6 / A5）', labelKey: 'brand.panasonic' },
+  // 松下 A4 用的是两位报警码，与 A6 的三位码不是同一套编号。
+  // 必须分开选，否则同一台机器会命中另一代的含义。
+  { value: 'panasonic-a4', label: '松下伺服（MINAS A4 老款）', labelKey: 'brand.panasonicA4' },
   { value: 'huichuan', label: '汇川伺服', labelKey: 'brand.huichuan' },
   { value: 'plc', label: 'PLC 自定义报警字', labelKey: 'brand.plc' }
 ]

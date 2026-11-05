@@ -64,6 +64,48 @@ say "jar 时效检查通过（比所有源文件新）"
 
 # ---------- 1. 构建 ----------
 if [ "$DO_BUILD" -eq 1 ]; then
+  # ---------- 报警码字典校验（必须在构建之前） ----------
+  # 为什么放在构建前而不是构建后：错的字典如果已经编进 jar，
+  # target/ 里就躺着一个坏 jar —— 而 tools/release.sh --no-build
+  # （快速重发）会直接把它打进去发出去，门禁反而漏了。
+  # 「坏字典根本产不出 jar」才是我们要的效果。
+  #
+  # 为什么是 node 而不是 python：本机没有可用的 python（WindowsApps 下只有
+  # Store 存根，真执行会跳商店），而 node 是前端工具链的既有依赖。
+  # 校验器是零依赖静态检查，不需要数据库、不需要 jar，任何环境都能跑。
+  say "校验报警码字典（scripts/check-alarmcodes.mjs）"
+  if command -v node >/dev/null 2>&1; then
+    # ⚠️ 必须断言「脚本确实产出了输出」：
+    # 本脚本曾被改到只剩注释头、没有 main() 调用 —— 于是它永远退出 0，
+    # 看起来门禁在守，实际什么都没查（**假绿比没有门禁更危险**）。
+    # 光看退出码抓不住这种失效，必须看它有没有说话。
+    CHK_OUT="$(node "$ROOT/scripts/check-alarmcodes.mjs" 2>&1)" || {
+      printf '%s\n' "$CHK_OUT"
+      die "报警码字典校验未通过 —— 字典没写对，不允许打包（详见上面的阻断项）"
+    }
+    printf '%s\n' "$CHK_OUT"
+    # 脚本没输出 = 它没在跑（被改残了 / main() 丢失 / 提前 return）
+    if [ -z "$CHK_OUT" ]; then
+      die "报警码字典校验脚本没有输出 —— 它可能已失效（例如 main() 调用丢失），门禁会变成假绿"
+    fi
+
+    # ---------- 变异验证：证明校验器本身有效 ----------
+    # 「跑一下 exit 0」不能证明门禁有效 —— 只有「故意注入错误后它必须 exit 1」才能。
+    # 本轮就栽过：暂存区里的校验器是个空壳，跑一下就 exit 0，什么都拦不住。
+    say "变异验证报警码校验器（scripts/mutation-check-alarmcodes.mjs）"
+    MUT_OUT="$(node "$ROOT/scripts/mutation-check-alarmcodes.mjs" 2>&1)" || {
+      printf '%s\n' "$MUT_OUT"
+      die "校验器变异验证未通过 —— 门禁拦不住错误，不允许打包"
+    }
+    printf '%s\n' "$MUT_OUT"
+    if [ -z "$MUT_OUT" ]; then
+      die "变异验证脚本没有输出 —— 它可能已失效，门禁会变成假绿"
+    fi
+  else
+    die "找不到 node。字典校验需要 Node 20+（校验器是零依赖脚本）"
+  fi
+  ok "报警码字典校验通过"
+
   MVN_BIN="${MVN:-}"
   if [ -z "$MVN_BIN" ]; then
     if command -v mvn >/dev/null 2>&1; then

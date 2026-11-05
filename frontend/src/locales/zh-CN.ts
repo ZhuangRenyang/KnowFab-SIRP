@@ -1322,7 +1322,8 @@ export default {
     mitsubishi: '三菱伺服',
     delta: '台达伺服',
     yaskawa: '安川伺服',
-    panasonic: '松下伺服',
+    panasonic: '松下伺服（MINAS A6 / A5）',
+    panasonicA4: '松下伺服（MINAS A4 老款）',
     huichuan: '汇川伺服',
     plc: 'PLC 自定义报警字'
   },

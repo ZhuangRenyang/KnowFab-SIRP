@@ -338,7 +338,7 @@ function cardHtml(f){
     codeHtml = '<span class="ok">报警字全部为 0 —— 伺服侧无原始码，按通信/上位报警处理</span>';
   } else {
     codeHtml = plc.map(w =>
-      `<span class="cw">${esc(w.key)} = ${w.code}</span>` +
+      `<span class="cw">${esc(w.key)} = ${esc(w.displayCode || w.code)}</span>` +
       (w.known ? `（${esc(w.name)}）` : '（未收录，查' + esc((plc[0] && plc[0].brandText) || '品牌') + '手册）') +
       (w.known ? `<span class="cd">原因：${esc(w.cause || '-')}｜处理：${esc(w.remedy || '-')}</span>` : '')
     ).join('');

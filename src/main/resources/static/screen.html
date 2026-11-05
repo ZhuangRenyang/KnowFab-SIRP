@@ -896,7 +896,7 @@ function renderFaultBody(){
     plcText = T('plcNormal');
   } else {
     plcText = plc.map(w =>
-      `${esc(w.key)} = ${w.code}` +
+      `${esc(w.key)} = ${esc(w.displayCode || w.code)}` +
       (w.known ? `（${esc(w.name)}）` : T('plcUnknown'))
     ).join('，');
   }
