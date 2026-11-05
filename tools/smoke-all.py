@@ -377,7 +377,8 @@ def sec_lines():
     ok = st == 200 and isinstance(rows, list) and has(r.get("summary") or {}, "lines", "devices", "today")
     check(s, "产线列表", ok, "%d 条产线 / %d 台设备" % (len(rows), (r.get("summary") or {}).get("devices", 0)))
     if not rows:
-        check(s, "产线详情", False, "没有产线，先跑 seed-demo.py")
+        # 同 DH-82：数据前置不满足 ≠ 功能坏了。判 FAIL 会制造一条永远存在的假红。
+        check(s, "产线详情", False, "没有产线，跳过（先跑 seed-demo.py）", skip=True)
         return
 
     code = rows[0]["code"]
@@ -708,8 +709,13 @@ def sec_schedule():
     """
     s = "生产排程"
     st, rows = req("GET", "/api/erp/work-orders?page=1&size=5")
-    if st != 200 or not rows.get("rows"):
+    if st != 200:
         check(s, "取工单列表", False, st)
+        return
+    if not rows.get("rows"):
+        # 「没有工单」是数据前置不满足，不是功能坏了 —— 判 SKIP。
+        # 判 FAIL 会让全绿检查长期带着一条假红，久了就没人看红了（DH-82）。
+        check(s, "取工单列表", False, "没有工单，跳过排程校验（seed-demo.py 不造工单）", skip=True)
         return
     wo = rows["rows"][0]
     no = wo.get("orderNo")
