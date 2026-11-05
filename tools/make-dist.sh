@@ -140,6 +140,24 @@ fi
 
 [ -f "$JAR" ] || die "没有 $JAR，先跑 tools/make-dist.sh --build"
 
+# ---------- 打包前断言：jar 内资源必须与源码目录一致（DH-83） ----------
+# 2026-11-05 踩到：`db/migrations/1.9.0.sql`（DH-72 排程的迁移脚本）**从未提交过 git**，
+# 只活在本地 target/classes 里。后果极有欺骗性：
+#   · mvn clean package（正常发版）→ clean 删掉 target → jar 里没有 → 客户建不出 idx_wo_line_plan
+#   · make-dist.sh（不构建，用现成 jar）→ jar 里可能有残留的它 → 客户有
+# ⇒ 同一份代码，发版路径不同，客户拿到的能力不同，而单测全绿、审计全过。
+# 上面那道「jar 比源文件新」比的是**时间戳**：文件根本不在 src 里时，没有源文件可比。
+# ⚠️ 位置必须在构建之后：--build 时 jar 是刚产出的，检查它才有意义。
+say "校验 jar 内资源与源码一致（tools/check-jar-resources.py）"
+CHK_RES_OUT="$(python "$ROOT/tools/check-jar-resources.py" 2>&1)" || {
+  printf '%s\n' "$CHK_RES_OUT"
+  die "jar 内资源与源码不一致 —— 交付包会缺东西，不允许打包（详见上面的差异）"
+}
+printf '%s\n' "$CHK_RES_OUT"
+[ -n "$CHK_RES_OUT" ] \
+  || die "jar 资源校验脚本没有输出 —— 它可能已失效，门禁会变成假绿"
+ok "jar 内资源与源码一致"
+
 # ---------- 2. 版本号 ----------
 # 从 jar 里的 pom.properties 读，和运行时显示的版本是同一个来源。
 # 从 pom.xml 里 sed 会先抓到 <parent> 的版本，闹过笑话。

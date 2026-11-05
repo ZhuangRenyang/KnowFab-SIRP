@@ -106,6 +106,18 @@ else
   [ -n "$MUT_OUT" ] \
     || die "变异验证脚本没有输出 —— 它可能已失效，门禁会变成假绿"
   ok "报警码字典校验通过"
+
+  # jar 内资源与源码一致：--no-build 用的是**现成 jar**，
+  # 它可能是上一次编译的产物，而 src 后来又加/改了迁移脚本或字典（DH-83）。
+  # 这条路径下「jar 比源文件新」那道检查不一定跑得到，所以这里单独核一遍内容。
+  say "校验 jar 内资源与源码一致（--no-build 路径同样要过）"
+  RES_OUT="$(python tools/check-jar-resources.py 2>&1)" || {
+    printf '%s\n' "$RES_OUT"
+    die "jar 内资源与源码不一致 —— 不允许发版（详见上面的差异）"
+  }
+  printf '%s\n' "$RES_OUT"
+  [ -n "$RES_OUT" ] \
+    || die "jar 资源校验脚本没有输出 —— 它可能已失效，门禁会变成假绿"
 fi
 
 [ -f "dist/device-hub-$VERSION.zip" ] || die "安装包没生成：dist/device-hub-$VERSION.zip"
