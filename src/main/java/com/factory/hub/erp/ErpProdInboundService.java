@@ -40,13 +40,20 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li><b>产量被静默丢弃</b>：原来 flush 先把缓冲清空，遇到「没仓库」的设备直接
  *       {@code continue}，那批产量既没成单也没留在缓冲里——凭空消失（实测 3 件）。
  *       现在处理不了的不清空，留在缓冲里下一轮继续。</li>
- *   <li><b>库存与单据可能记到两个仓</b>：原来「未成单余额」用配置缓存里的默认仓，
- *       落单时却用实时查到的默认仓，两边不一致时余额会永远挂在旧仓上。
+ *   <li><b>库存与单据可能记到两个仓</b>：原来「未成单增量」用配置缓存里的默认仓，
+ *       落单时却用实时查到的默认仓，两边不一致时那截增量会永远挂在旧仓上。
  *       现在两边都用<b>同一份、按下单事件拍下来的</b>仓库快照，一批量对应一个仓。</li>
  * </ol>
  * 工单路径<b>不记「未成单余额」</b>：工单驱动的产出一律 10 秒内落单，余额由单据汇总接管，
  * 比"秒级可见"更重要的是"余额和单据永远对得上"——上一轮把这两者分开记，
  * 结果同屏出现 101 和 100 两个库存数，那种不一致比晚 10 秒难解释得多。
+ * <p>
+ * <b>两条路径都不把「未过账增量」计入余额（DH-80）</b>：上面这条 2026-11-03 的决策，
+ * 现在推广到了<b>设备固定产品</b>路径——那条路径虽然仍记「已产出、还没成单」的量，
+ * 但它<b>只作提示</b>，由 {@code ErpStockService.balances} 以 {@code pendingQty} 单独返回，
+ * <b>不进任何余额口径</b>（库存余额 = 单据汇总，唯一真相）。
+ * 理由：pending 记的是含不良的原始总产出、单据写的是良品量，混进余额会在成单瞬间掉一批不良数；
+ * 且 pending 在 JVM 内存里 {@code FOR UPDATE} 锁不住它，混进可用量会超卖。
  * <p>
  * <b>不良品不进良品仓（QC-SPEC §7 F1）</b>：{@code role=reject} 计数器的小时增量也进这个缓冲
  * （{@link #onRejected}），落单时按 {@code device.counter_mode} 把「计数增量」换成「良品入库量」：
@@ -275,8 +282,8 @@ public class ErpProdInboundService {
                     warnNoWarehouse(b.deviceCode);
                     continue;
                 }
-                // 归位到有仓的批次：这一批当初没进过「未成单余额」，所以 onStock 不用补，
-                // 落单后也不用去减余额（否则会把别人的余额减掉）。
+                // 归位到有仓的批次：这一批当初没进过「未过账账本」，所以 onStock 不用补，
+                // 落单后也不用去减未过账量（否则会把别人的量减掉）。
                 buffer.remove(key);
                 String newKey = b.deviceCode + "@" + whId;
                 Buf moved = buffer.computeIfAbsent(newKey, k -> new Buf());
@@ -303,8 +310,9 @@ public class ErpProdInboundService {
                 }
                 // 走统一单据服务：生成单头 + 明细行，单据列表里与手工单同一套结构
                 stockService.createProdInbound(b.deviceCode, b.skuId, b.whId, q.good(), b.backfill);
-                // 已经写进单据了：从「未成单增量」里扣掉，余额由单据汇总接管。
-                // 扣的量必须和当初加上去的量一模一样（逐笔 round4 后累加），否则余额会漂。
+                // 已经写进单据了：从「未过账账本」里扣掉，让 pendingQty 归零。
+                // 它从来就没进过余额，所以这里**不减余额**——余额自始至终只跟着单据走（DH-80）。
+                // 扣的量必须和当初加上去的量一模一样（逐笔 round4 后累加），否则 pendingQty 会漂。
                 if (b.onStock.signum() != 0) {
                     stockService.clearPendingStock(b.skuId, b.whId, b.onStock);
                 }
@@ -368,8 +376,9 @@ public class ErpProdInboundService {
             moved.defect = moved.defect.add(b.defect);
             if (whId != null) {
                 moved.whId = whId;
-                // 转成「设备固定产品」路径后，这批量要补进未成单余额，
-                // 否则余额里永远少这一截（落单后会再扣掉，闭合）
+                // 转成「设备固定产品」路径后，这批量要补记进「未过账账本」，
+                // 否则 pendingQty 永远少这一截（落单后会再扣掉，归零）。
+                // 注意它依然**不进余额**：余额只认单据汇总（DH-80）。
                 moved.onStock = moved.onStock.add(b.qty);
                 stockService.addPendingStock(c.skuId(), whId, b.qty);
             }

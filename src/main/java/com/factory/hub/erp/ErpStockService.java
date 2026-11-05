@@ -485,6 +485,22 @@ public class ErpStockService {
         return v == null ? BigDecimal.ZERO : v;
     }
 
+    /**
+     * 库存余额：<b>余额 = 单据汇总（唯一真相）</b>。
+     * <p>
+     * {@code qty} / {@code amount} 直接来自 {@link ErpStockBillRepository#aggregateStock()}
+     * （{@code voidedAt is null} 的明细行累计），<b>不叠加任何未过账增量</b>。
+     * 「已产出、还没成单」的量单独以 {@code pendingQty} 返回——它<b>只作提示</b>，
+     * 界面据此显示「在产未过账 N 件」，<b>不得混进 {@code qty}</b>（DH-80）。
+     * <p>
+     * <b>为什么必须这样</b>：{@code pendingQty} 记的是含不良的原始总产出，单据写的是良品量，
+     * 混进余额会让账面数在成单瞬间"掉一批不良数"；而它又在 JVM 内存里，
+     * {@code FOR UPDATE} 的行锁锁不住，混进可用量就是超卖。
+     *
+     * @param whId 只看某个仓；null = 全部仓
+     * @param q    按商品编码 / 名称 / 规格过滤；null = 不过滤
+     * @return 每行 {@code qty} = 账面数（纯单据），{@code pendingQty} = 未过账量（仅提示）
+     */
     public List<Map<String, Object>> balances(Long whId, String q) {
         Map<Long, ErpSku> skus = new HashMap<>();
         for (ErpSku s : skuRepo.findAll()) {
@@ -497,8 +513,10 @@ public class ErpStockService {
         String kw = q == null ? "" : q.trim().toLowerCase();
         List<Map<String, Object>> out = new ArrayList<>();
         List<Object[]> rows = new ArrayList<>(billRepo.aggregateStock());
-        // 只有未成单增量、还没有任何单据的 SKU+仓：补一条 0 基础行，
-        // 否则新 SKU 刚投产时库存页看不到这一行
+        // 只有未过账增量、还没有任何单据的 SKU+仓：补一条 **qty = 0 的基础行**。
+        // 补它的唯一理由是可看见性：新 SKU 刚投产的 10 秒窗口里一件都还没成单，
+        // 没有这一行，现场会以为「根本没投产」（DH-80 AC-10）。
+        // 该行 qty = 0、amount = 0，不污染任何账面数，也不改变 summary 的行数 KPI。
         for (String k : pendingStock.keySet()) {
             boolean has = false;
             for (Object[] a : rows) {
