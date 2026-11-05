@@ -1,6 +1,6 @@
 {
-  "version": "1.0.25",
-  "notes": "修复「检查到新版本却升不了」——三个叠在一起的 bug：①Gitee 的附件没有 sha256 字段，后端解析不到，下载时哈希校验必失败（默认更新源正是 Gitee，等于升级功能在默认配置下完全不可用），改为优先取 assets[].digest、没有则拉 raw 的 version.json；②下载升级包用 ofByteArray 把 80MB 整个读进堆，2G 内存的服务器直接 OutOfMemoryError（页面表现为下载失败、按钮永远灰着），改为流式落盘 + 64KB 缓冲边读边算哈希；③Java 的 HttpClient 默认协商 HTTP/2，Gitee 的大响应体流会中途 EOF（同一地址 curl 完全正常），改为显式 HTTP/1.1。另修 bin 脚本硬编码安装目录的问题（非标准目录安装时每次启动都报 Permission denied）。",
-  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.25/device-hub-1.0.25-update.zip",
-  "sha256": "e842014dc5740c4809813ef565942c6488ac08a727b3da7f3947a438a2aba500"
+  "version": "1.0.26",
+  "notes": "交付流水线第一步：新增交付冒烟脚本 tools/delivery-smoke.py（装→跑→备→恢→卸 全流程，把「装到客户机器上能不能用」变成可自动跑的检查）；install.sh 的服务名 APP 改为可覆盖（此前硬编码 device-hub，导致在同一台机器上跑隔离实例时会覆盖正式实例的 systemd 单元）；顺带修：健康检查通过不等于能登录（管理员 seed 有初始化窗口期）。",
+  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.26/device-hub-1.0.26-update.zip",
+  "sha256": "ad40b7b412b2525bbed7d1ca14a4405c70ea6d9a0b7ad5a6ed70f8a6715044a7"
 }
