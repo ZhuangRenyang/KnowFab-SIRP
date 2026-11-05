@@ -123,6 +123,8 @@ export interface StockBalance {
   warehouseId: number
   warehouseName: string
   qty: number
+  /** 已产出、还没过账的件数（DH-80）。不是库存，只是「机器在产出」的提示，不并入 qty */
+  pendingQty?: number
   unitCost: number
   amount: number
   minStock?: number | null
@@ -193,6 +195,10 @@ export interface StockSummary {
   whCount: number
   totalQty: number
   totalValue: number
+  /** 全厂「已产出、还没过账」的合计件数（DH-80）；与 totalQty 相加才是「账面 + 在产」 */
+  pendingTotal?: number
+  /** 余额口径标记（先例 meterMode）：'BILL' = 余额只算已过账单据 */
+  stockMode?: string
   alertCount: number
   todayIn: number
   todayOut: number

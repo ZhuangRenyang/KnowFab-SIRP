@@ -2039,6 +2039,7 @@ erpStock: {
     tabBalance: '库存余额',
     tabBills: '出入库单据',
     tabAlert: '库存预警',
+    pendingTotalTip: '有 {v} 件已产出、还没过账（每 10 秒成一批自动入账）。上面的库存数字只算已过账单据。',
     loadSummaryFailed: '库存汇总加载失败'
   },
   erpBal: {
@@ -2054,6 +2055,7 @@ erpStock: {
     colWarehouse: '仓库',
     colUnit: '单位',
     colQty: '库存数量',
+    pendingQty: '在产未过账 {v}',
     colCost: '成本价',
     colAmount: '库存金额',
     colAction: '操作',

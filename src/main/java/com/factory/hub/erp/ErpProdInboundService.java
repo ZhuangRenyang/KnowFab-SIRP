@@ -65,9 +65,14 @@ public class ErpProdInboundService {
     /**
      * 缓冲里的一批待落库量。
      * <p>
-     * {@code qty} 是要落单的量；{@code onStock} 是当初已经加到「未成单余额」上的量，
-     * 两者必须分开记：没有仓库时只涨 qty（进不了余额），落单后也就不用去减余额。
-     * 这样「余额 = 单据汇总 + 未成单增量」在任何时刻都闭合。
+     * {@code qty} 是要落单的量；{@code onStock} 是当初登记到「未过账账本」
+     * （{@code ErpStockService.pendingStock}）上的量，
+     * 两者必须分开记：没有仓库时只涨 qty（进不了未过账账本），落单后也就不用去减它。
+     * <p>
+     * <b>注意（DH-80）</b>：{@code onStock} <b>不进库存余额</b>，它只用于在落单后
+     * 把「未过账」那笔减掉，让 {@code pendingQty} 归零。
+     * 库存余额的唯一真相是单据汇总，未过账量只作提示单独返回——理由见
+     * {@code ErpStockService#pendingStock} 的注释。
      * <p>
      * {@code defect} 是这一批里的不良件数（来自 role=reject 计数器）。
      * <b>它与 {@code qty} 分别累加</b>，落单时才按设备口径换算成良品量——
@@ -157,7 +162,8 @@ public class ErpProdInboundService {
         if (whId != null) {
             b.whId = whId;
             b.onStock = b.onStock.add(q);
-            // 数量先上账（还没成单）：库存余额秒级可见，单据仍按批次成
+            // 数量先登记进「未过账账本」：让「机器在产出」这件事立刻看得见，
+            // 但**不进库存余额**（余额只认单据汇总，见 DH-80）；单据仍按批次成
             stockService.addPendingStock(c.skuId(), whId, q);
         }
     }

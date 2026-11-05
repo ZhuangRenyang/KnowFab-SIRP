@@ -96,6 +96,18 @@
   用户会发现两个数对不上。
 - 口径缺失要能被看见：返回里带 `meterMode` 之类的标记，界面据此提示。
 
+### R2b 库存口径只定义一处：单据汇总（2026-11-05 定，DH-80）
+
+- 库存余额 = `erp_stock_bill` 明细累计（`voided_at is null`）。
+  定义处：`ErpStockBillRepository.aggregateStock()`。
+- **「未过账增量（pending）」不是库存**：它记的是原始总产出（含不良），
+  而单据写的是良品量——混进余额会让客户看着库存「掉一批不良数」；
+  且它在 JVM 内存，`FOR UPDATE` 锁不住，混进可用量会超卖。
+  ⇒ 只作提示，由 `balances[].pendingQty` / `summary.pendingTotal` 单独返回。
+- **校验层与承诺层绝不看 pending**：出库校验、盘点差异基准、销售可承诺量
+  必须只认单据汇总（与落库同源 + 行锁），否则超卖。
+- `summary.stockMode = "BILL"` 正向声明口径（同 `meterMode` 的范式）。
+
 ---
 
 ## R3 交付前必须过真机（2026-11-04 定）

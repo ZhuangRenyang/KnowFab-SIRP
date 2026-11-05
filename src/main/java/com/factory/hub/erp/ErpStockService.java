@@ -25,7 +25,10 @@ import java.util.concurrent.ConcurrentHashMap;
  * <b>三条不会破的规矩：</b>
  * <ol>
  *   <li>库存只有一个算法：{@code sum(明细行 qty) where 未作废}。没有"库存表"，也就没有
- *       "库存表和流水对不上"这种 ERP 头号事故。</li>
+ *       "库存表和流水对不上"这种 ERP 头号事故。
+ *       <b>「未过账增量（pending）」不是库存，不进任何余额口径</b>，
+ *       只作提示单列（{@code balances} 的 {@code pendingQty} /
+ *       {@code summary} 的 {@code pendingTotal}）——见 {@link ErpStockBillRepository#aggregateStock()}。</li>
  *   <li>出库先查可用量，不允许把库存做成负数（负库存在车间里等于账已经废了）。
  *       调拨查源仓；销售出库/其他出库查当前仓。</li>
  *   <li>单据只作废不删除，作废前再校验一次"作废后库存不能为负"。</li>
@@ -424,14 +427,24 @@ public class ErpStockService {
 
     /* ==================== 查询 ==================== */
 
-    /** 库存余额：只列有流水的 SKU×仓库 组合，按数量归零的行不显示 */
     /**
-     * 尚未成单的生产增量（件）。
+     * 尚未成单的生产增量（件）——<b>不是库存</b>。
      * <p>
-     * 库存余额 = 单据汇总。生产入库单按批次成（10 秒一批，单据整洁），
-     * 但产量是每按一下就 +1 的——若只等单据，库存数字要等 10 秒才动。
-     * 这里把「已产生、还没成单」的增量先叠加到余额上，单据落库后再扣掉，
-     * 库存数字就能秒级跳，而单据仍然保持批量。
+     * 生产入库单按批次成（10 秒一批，单据整洁），但产量是每按一下就 +1 的。
+     * 这里记的是「已经产出、还没过账」的量：它<b>只作提示</b>，
+     * 由 {@link #balances} 以 {@code pendingQty} 单独返回，<b>不进任何余额口径</b>。
+     * <p>
+     * <b>为什么不能把它算进库存（DH-80）</b>：
+     * <ul>
+     *   <li>它记的是<b>原始总产出（含不良）</b>，而单据写的是<b>良品量</b>——
+     *       两者不是同一个数。混进余额，成单瞬间余额会"掉一批不良数"，
+     *       客户看到库存数字从 10 掉到 8（而库存页每 2 秒刷一次，掉数是稳定可见的）。</li>
+     *   <li>它在 JVM 内存里，{@code FOR UPDATE} 的行锁锁不住它——
+     *       混进"可用量"就等于在"读 → 扣减"之间开了窗口，会超卖；
+     *       多实例部署时每个 JVM 一份，不同实例返回不同余额。</li>
+     * </ul>
+     * ⇒ 库存的唯一真相是<b>单据汇总</b>（{@link ErpStockBillRepository#aggregateStock()}），
+     * 本 map 只负责让"机器在产出"这件事可见。
      */
     private final Map<String, BigDecimal> pendingStock = new ConcurrentHashMap<>();
 
@@ -439,7 +452,7 @@ public class ErpStockService {
         return skuId + "@" + whId;
     }
 
-    /** 产量发生但还没成单：先加到余额上 */
+    /** 产量发生但还没成单：记进「未过账」账本 */
     public void addPendingStock(Long skuId, Long whId, BigDecimal qty) {
         if (skuId == null || whId == null || qty == null) {
             return;
@@ -456,6 +469,20 @@ public class ErpStockService {
             BigDecimal nv = v.subtract(qty);
             return nv.abs().compareTo(EPS) <= 0 ? null : nv;
         });
+    }
+
+    /**
+     * 该 SKU+仓「已产出、未过账」的件数——<b>只作提示，不是库存</b>。
+     * <p>
+     * 抽成一个方法是因为 {@link #balances}（每行 pendingQty）与
+     * {@link #summary}（全厂 pendingTotal）都要读同一张 map：
+     * 两处各写一份读法，将来一处改了另一处不会报错，只会静静地对不上。
+     *
+     * @return 无未过账量时返回 0（不返回 null，调用方不必判空）
+     */
+    private BigDecimal pendingOf(Long skuId, Long whId) {
+        BigDecimal v = pendingStock.get(stockKey(skuId, whId));
+        return v == null ? BigDecimal.ZERO : v;
     }
 
     public List<Map<String, Object>> balances(Long whId, String q) {
@@ -488,13 +515,15 @@ public class ErpStockService {
         for (Object[] a : rows) {
             Long skuId = ((Number) a[0]).longValue();
             Long wId = ((Number) a[1]).longValue();
+            // qty 直接来自单据汇总（aggregateStock）：这是库存的唯一真相。
+            // 未过账增量**不叠加**——它记的是原始总产出（含不良），单据写的是良品量，
+            // 混进来会让余额在成单瞬间掉一批不良数（DH-80）。
             BigDecimal qty = dec(a[2]);
-            // 叠加未成单的生产增量：库存数字秒级可见
-            BigDecimal pend = pendingStock.get(stockKey(skuId, wId));
-            if (pend != null) {
-                qty = qty.add(pend);
-            }
-            if (qty.abs().compareTo(EPS) <= 0) {
+            BigDecimal pend = pendingOf(skuId, wId);
+            // 账面为 0 但还有未过账量的行**不能跳过**：新 SKU 刚投产时还没成单，
+            // 这一行是现场唯一能看见「它已经开始产出」的地方（DH-80 AC-10）。
+            // 只跳过「账面和未过账都为 0」的纯空行。
+            if (qty.abs().compareTo(EPS) <= 0 && pend.abs().compareTo(EPS) <= 0) {
                 continue;
             }
             if (whId != null && !whId.equals(wId)) {
@@ -523,6 +552,8 @@ public class ErpStockService {
             m.put("warehouseId", wId);
             m.put("warehouseName", whs.containsKey(wId) ? whs.get(wId).getName() : "仓库#" + wId);
             m.put("qty", scale(qty));
+            // 未过账的在产量：单独返回，**不并入 qty / amount**（DH-80）
+            m.put("pendingQty", scale(pend));
             m.put("unitCost", scale(cost));
             m.put("amount", scale(amount));
             m.put("minStock", s.getMinStock());
@@ -602,7 +633,13 @@ public class ErpStockService {
         return out;
     }
 
-    /** KPI 汇总：库存总量/成本、今日本月出入库、预警数、单据数 */
+    /**
+     * KPI 汇总：库存总量/成本、今日本月出入库、预警数、单据数。
+     * <p>
+     * <b>口径（DH-80）</b>：{@code totalQty} / {@code totalValue} 与 {@code alertCount}
+     * 现在同为<b>单据汇总</b>口径——改之前 totalQty 含未过账增量、alertCount 不含，
+     * 同一行 KPI 里两个数各说各话。
+     */
     public Map<String, Object> summary() {
         long now = System.currentTimeMillis();
         long todayStart = LocalDate.now(ZONE).atStartOfDay(ZONE).toInstant().toEpochMilli();
@@ -611,12 +648,17 @@ public class ErpStockService {
 
         BigDecimal totalQty = BigDecimal.ZERO;
         BigDecimal totalValue = BigDecimal.ZERO;
+        BigDecimal pendingTotal = BigDecimal.ZERO;
         int skuCount = 0;
         java.util.Set<Long> skuSet = new java.util.HashSet<>();
         for (Map<String, Object> b : balances(null, null)) {
             BigDecimal qty = (BigDecimal) b.get("qty");
             totalQty = totalQty.add(qty);
             totalValue = totalValue.add((BigDecimal) b.get("amount"));
+            Object p = b.get("pendingQty");
+            if (p instanceof BigDecimal pd) {
+                pendingTotal = pendingTotal.add(pd);
+            }
             skuSet.add((Long) b.get("skuId"));
             skuCount++;
         }
@@ -633,6 +675,10 @@ public class ErpStockService {
         out.put("whCount", whRepo.count());
         out.put("totalQty", scale(totalQty));
         out.put("totalValue", scale(totalValue));
+        // 全厂「已产出未过账」合计：与 totalQty 相加才是「看得见的账 + 在产」（DH-80）
+        out.put("pendingTotal", scale(pendingTotal));
+        // 口径标记（先例 meterMode）：正向声明「余额 = 单据汇总」，让界面能据此提示
+        out.put("stockMode", "BILL");
         out.put("alertCount", alerts().size());
         out.put("todayIn", scale(todayIn));
         out.put("todayOut", scale(todayOut));

@@ -2035,6 +2035,7 @@ erpStock: {
     tabBalance: 'Stock balance',
     tabBills: 'Stock documents',
     tabAlert: 'Stock alerts',
+    pendingTotalTip: '{v} pcs produced but not yet posted (posted automatically every 10 s). The stock figures above count posted documents only.',
     loadSummaryFailed: 'Failed to load stock summary'
   },
   erpBal: {
@@ -2050,6 +2051,7 @@ erpStock: {
     colWarehouse: 'Warehouse',
     colUnit: 'Unit',
     colQty: 'On hand',
+    pendingQty: 'In production {v}',
     colCost: 'Unit cost',
     colAmount: 'Amount',
     colAction: 'Action',

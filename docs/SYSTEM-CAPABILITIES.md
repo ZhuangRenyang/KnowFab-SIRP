@@ -96,7 +96,7 @@
 | 基础资料 | 商品/SKU、仓库、往来单位 | `ErpBaseController`、`ErpPartner` |
 | 采购 | 采购订单 + 明细 + 收货 | `ErpPurchase*` |
 | 销售 | 销售订单 + 明细 + 发货 | `ErpSales*` |
-| 库存 | 库存余额（按 SKU+仓）、出入库单据 | `ErpStockService`、`ErpStockBill` |
+| 库存 | 库存余额（按 SKU+仓）、出入库单据。**余额 = 单据汇总（唯一真相，DH-80）**；生产入库 10 秒成单期间的量单列 `pendingQty` 作提示，不并入余额 | `ErpStockService`、`ErpStockBill` |
 | 财务 | 应收应付、收付款、账龄 | `ErpFinanceService`、`ErpPayment` |
 | 产线 | 产线 + 工位 + 设备归属 | `ErpLineService` |
 | 报表 | 经营报表 + **导出 Excel** | `ErpReportService`、`ErpReportExcel` |

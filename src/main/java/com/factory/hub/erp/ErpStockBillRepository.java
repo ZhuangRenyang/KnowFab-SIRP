@@ -14,10 +14,28 @@ import org.springframework.data.repository.query.Param;
  * <p>
  * 聚合类查询用原生 SQL：H2 已经彻底移除（2026-10-27），MySQL 是唯一目标库，
  * 按天分桶用 {@code date(from_unixtime(...))} 比把几十万行拉回 JVM 再分桶省得多。
+ * <p>
+ * <b>这三个查询（{@link #aggregateStock()} / {@link #stockOf} / {@link #stockOfForUpdate}）
+ * 是库存的唯一真相入口</b>（DH-80）：全系统的库存数字都必须由它们现算，
+ * 不允许任何第二套算法、冗余库存表或缓存表。
+ * <b>「未过账增量（pending）」不是库存</b>，它们也不包含它——pending 只作提示，
+ * 由服务层以 {@code pendingQty} 单独返回，不进任何余额口径。
  */
 public interface ErpStockBillRepository extends JpaRepository<ErpStockBill, Long> {
 
-    /** 库存 = 流水聚合：按 SKU+仓库 汇总数量（正入负出），绝不存冗余库存数 */
+    /**
+     * <b>这里是库存口径的定义处（DH-80）。</b>
+     * <p>
+     * 库存 = 未作废明细行的 qty 累计（正入负出），按 SKU+仓库分组；
+     * <b>绝不存冗余库存数，也绝不包含未过账增量（pending）</b>。
+     * <p>
+     * <b>「未过账增量」不是库存</b>：它是"产量已发生、还没过账"的临时量，
+     * 记的是<b>原始总产出（含不良）</b>，而本查询统计的是单据上的<b>良品量</b>——
+     * 两者不是同一个数。把它混进余额，成单瞬间余额会掉一批不良数（客户看到 10 掉到 8），
+     * 而且它在 JVM 内存里、{@code FOR UPDATE} 的行锁锁不住它，
+     * 混进"可用量"会超卖、多实例部署还会各算各的。
+     * ⇒ pending 只能作提示，由服务层以 {@code pendingQty} 单独返回。
+     */
     @Query("select b.skuId, b.warehouseId, sum(b.qty) from ErpStockBill b " +
            "where b.voidedAt is null group by b.skuId, b.warehouseId")
     List<Object[]> aggregateStock();

@@ -43,9 +43,10 @@
       <el-table-column :label="t('erpBal.colUnit')" width="70">
         <template #default="{ row }">{{ row.unit || '--' }}</template>
       </el-table-column>
-      <el-table-column prop="qty" :label="t('erpBal.colQty')" width="130" align="right">
+      <el-table-column prop="qty" :label="t('erpBal.colQty')" width="160" align="right">
         <template #default="{ row }">
           <b class="num">{{ qty(row.qty) }}</b>
+          <em v-if="row.pendingQty > 0" class="pending">{{ t('erpBal.pendingQty', { v: qty(row.pendingQty) }) }}</em>
         </template>
       </el-table-column>
       <el-table-column prop="unitCost" :label="t('erpBal.colCost')" width="110" align="right">
@@ -217,6 +218,10 @@ defineExpose({ load })
 .auto-wrap { display: inline-flex; align-items: center; gap: 6px; }
 .auto-label { font-size: var(--text-xs); color: var(--muted); }
 .spec { color: var(--meta); font-size: var(--text-2xs); margin-left: 6px; }
+.pending {
+  display: block; font-style: normal; font-size: var(--text-2xs);
+  color: var(--warn); line-height: 1.3; margin-top: 2px;
+}
 .dim { color: var(--muted); }
 .plus { color: var(--run); }
 .minus { color: var(--alarm); }

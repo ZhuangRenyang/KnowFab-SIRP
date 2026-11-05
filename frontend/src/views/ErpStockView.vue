@@ -1,5 +1,12 @@
 <template>
   <div class="stock">
+    <el-alert
+      v-if="(summary?.pendingTotal || 0) > 0"
+      :title="t('erpStock.pendingTotalTip', { v: qty(summary?.pendingTotal) })"
+      type="warning"
+      show-icon
+      :closable="false"
+    />
     <div class="kpis">
       <div class="kpi">
         <span>{{ t('erpStock.skuCount') }}</span>
