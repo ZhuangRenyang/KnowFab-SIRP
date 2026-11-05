@@ -185,31 +185,27 @@ def http_cookie_login(url, user, pwd):
 
 # ==================== 各阶段 ====================
 
-def stage_package(ctx):
-    """阶段 0：包体检"""
-    ctx.head("阶段 0 · 包体检")
-    pkg = ctx.a.package
-    if not os.path.exists(pkg):
-        ctx.bad("交付包存在", pkg)
-        return False
-    ctx.ok("交付包存在", "%s (%.1f MB)" % (os.path.basename(pkg), os.path.getsize(pkg) / 1048576))
+# 三个包结构完全不同，不能用一套清单查（否则必然假 FAIL，而假红多了真红就没人看）：
+#   -installer.zip   顶层目录 + install.sh + bin/*.sh + jar   （客户装服务器用这个）
+#   -portable.zip    顶层目录 + start/stop + jar，**没有 bin/ 和 install.sh**
+#   -update.zip      扁平三件套 jar + manifest.json + manifest.sig，**没有顶层目录**
+# 2026-11-06 实测：拿 installer 清单去查 portable/update，两边都报「必需文件不全」，
+# 而包本身是好的 —— 这正是 DH-82 那条教训（假 FAIL 会让全绿检查失去意义）。
+PORTABLE_REQUIRED = ["device-hub.jar", "VERSION.txt", "start.sh", "stop.sh"]
+UPDATE_REQUIRED = ["device-hub.jar", "manifest.json", "manifest.sig"]
 
-    ctx.tmp = tempfile.mkdtemp(prefix="dh-smoke-")
-    rc, out, err = ctx.run("cd %s && unzip -qo %s" % (ctx.tmp, os.path.abspath(pkg)))
-    if rc != 0:
-        ctx.bad("解压", err.strip()[:120])
-        return False
-    root = os.path.join(ctx.tmp, os.path.basename(pkg)[:-4])
-    if not os.path.isdir(root):
-        cands = [d for d in os.listdir(ctx.tmp) if os.path.isdir(os.path.join(ctx.tmp, d))]
-        root = os.path.join(ctx.tmp, cands[0]) if cands else root
-    ctx.root = root
 
-    # SHA256SUMS 校验
-    sums = os.path.join(root, "SHA256SUMS")
-    if not os.path.exists(sums):
-        ctx.bad("SHA256SUMS 存在")
-        return False
+def _pkg_kind(pkg):
+    n = os.path.basename(pkg).lower()
+    if n.endswith("-update.zip"):
+        return "update"
+    if n.endswith("-portable.zip"):
+        return "portable"
+    return "install"
+
+
+def _verify_sums(root, sums):
+    """按 SHA256SUMS 逐文件核对；返回不符项。两个包都用它，不各写一份。"""
     bad = []
     with open(sums, encoding="utf-8", errors="replace") as f:
         for line in f:
@@ -222,6 +218,135 @@ def stage_package(ctx):
                 bad.append(name + "(缺文件)")
             elif sha256_file(p).lower() != want:
                 bad.append(name + "(哈希不符)")
+    return bad
+
+
+def _check_update(ctx):
+    """升级包：三件套 + manifest 自校验 + 签名非空。
+
+    升级包坏了的代价是客户点「升级」直接失败，而历史上这条链路踩过三次
+    （Gitee 无 sha256 / 大文件读进堆 OOM / h2 流中途 EOF），所以这里
+    **自己算一遍 jar 的 sha256 去跟 manifest 声明值对**，不信任何声明。
+    """
+    miss = [f for f in UPDATE_REQUIRED if not os.path.exists(os.path.join(ctx.tmp, f))]
+    if miss:
+        ctx.bad("升级包三件套", "缺 " + "、".join(miss))
+        return False
+    ctx.ok("升级包三件套", "、".join(UPDATE_REQUIRED))
+
+    try:
+        with open(os.path.join(ctx.tmp, "manifest.json"), encoding="utf-8") as f:
+            man = json.load(f)
+    except Exception as e:
+        ctx.bad("manifest.json 可解析", str(e)[:100])
+        return False
+
+    files = man.get("files") or []
+    if not files:
+        ctx.bad("manifest.json 有文件清单", "files 为空 —— 客户端会认为没有要更新的文件")
+        return False
+    bad = []
+    for it in files:
+        rel = it.get("path", "")
+        p = os.path.join(ctx.tmp, rel)
+        if not os.path.exists(p):
+            bad.append(rel + "(缺)")
+        elif it.get("sha256") and sha256_file(p).lower() != str(it["sha256"]).lower():
+            bad.append(rel + "(哈希不符)")
+    if bad:
+        ctx.bad("manifest 逐文件哈希", "、".join(bad[:4]))
+        return False
+    ctx.ok("manifest 逐文件哈希", "%d 个文件与声明值一致（v%s）"
+           % (len(files), man.get("version", "?")))
+
+    if os.path.getsize(os.path.join(ctx.tmp, "manifest.sig")) == 0:
+        ctx.bad("manifest.sig 非空", "空签名 = 客户端验签必失败")
+        return False
+    ctx.ok("manifest.sig 非空", "升级包已签名")
+    return True
+
+
+def _check_portable(ctx):
+    """便携版：Windows 双击即用，校验集与服务器安装包不同。"""
+    sums = os.path.join(ctx.root, "SHA256SUMS")
+    if not os.path.exists(sums):
+        ctx.bad("SHA256SUMS 存在")
+        return False
+    bad = _verify_sums(ctx.root, sums)
+    if bad:
+        ctx.bad("SHA256SUMS 逐文件校验", "、".join(bad[:4]))
+        return False
+    ctx.ok("SHA256SUMS 逐文件校验", "全部一致")
+
+    miss = [f for f in PORTABLE_REQUIRED if not os.path.exists(os.path.join(ctx.root, f))]
+    if miss:
+        ctx.bad("便携版文件齐全", "缺 " + "、".join(miss[:5]))
+        return False
+    ctx.ok("便携版文件齐全", "%d 个（jar + start/stop + VERSION）" % len(PORTABLE_REQUIRED))
+    return True
+
+
+def stage_package(ctx):
+    """阶段 0：包体检"""
+    ctx.head("阶段 0 · 包体检")
+    pkg = ctx.a.package
+    if not os.path.exists(pkg):
+        ctx.bad("交付包存在", pkg)
+        return False
+    ctx.ok("交付包存在", "%s (%.1f MB)" % (os.path.basename(pkg), os.path.getsize(pkg) / 1048576))
+
+    kind = _pkg_kind(pkg)
+    ctx.info("包类型: %s（%s）" % (kind, {
+        "install": "服务器安装包，查 install.sh + bin/*.sh + jar",
+        "portable": "Windows 便携版，查 start/stop + jar",
+        "update": "网页升级包，查 manifest.json + manifest.sig + jar 哈希",
+    }[kind]))
+
+    ctx.tmp = tempfile.mkdtemp(prefix="dh-smoke-")
+    # 用 zipfile 解压，不用 `cd X && unzip`：2026-11-06 在 Windows 上实测，
+    # 根因是 **cmd.exe 的 `cd` 跨盘不切换目录**（必须 `cd /d`）。CWD 在 D: 盘、
+    # 临时目录在 C: 盘时，`cd C:\...` 返回成功但目录没变，`unzip` 就在**仓库根目录**
+    # 解压了 —— 留下 89MB 的 device-hub-1.0.27/（jar 在里面，差点被误提交），
+    # 而脚本看到 tmp 是空的，报出来的却是「包里缺 SHA256SUMS」，让人去查包。
+    # 这就是「返回 0 但什么也没做」的静默假绿，也是「有门禁≠门禁在跑」的变种。
+    # zipfile 的行为跨平台恒定，也不受盘符、Git Bash 路径转换、MSYS 反斜杠转义影响。
+    # 权限位不指望 extractall 还原（它本来就不还原），后面用 external_attr 单独查。
+    try:
+        import zipfile as _zf
+        with _zf.ZipFile(os.path.abspath(pkg)) as z:
+            z.extractall(ctx.tmp)
+    except Exception as e:
+        ctx.bad("解压", str(e)[:120])
+        return False
+
+    if kind == "update":
+        # 扁平结构，没有顶层目录
+        ctx.root = ctx.tmp
+        ctx.ok("解压", "扁平三件套（升级包无顶层目录）")
+        return _check_update(ctx)
+
+    root = os.path.join(ctx.tmp, os.path.basename(pkg)[:-4])
+    if not os.path.isdir(root):
+        cands = [d for d in os.listdir(ctx.tmp) if os.path.isdir(os.path.join(ctx.tmp, d))]
+        root = os.path.join(ctx.tmp, cands[0]) if cands else root
+    if not os.path.isdir(root):
+        # 解压"成功"但没有顶层目录 → 判工具问题，不要让它继续报"包里缺文件"
+        ctx.bad("解压", "解压后找不到顶层目录 %s（包内顶层：%s）"
+                % (os.path.basename(pkg)[:-4], ", ".join(os.listdir(ctx.tmp)[:5]) or "空"))
+        return False
+    ctx.ok("解压", os.path.basename(root))
+    ctx.root = root
+
+    if kind == "portable":
+        return _check_portable(ctx)
+
+    # ---- 以下是服务器安装包 ----
+    # SHA256SUMS 校验
+    sums = os.path.join(root, "SHA256SUMS")
+    if not os.path.exists(sums):
+        ctx.bad("SHA256SUMS 存在")
+        return False
+    bad = _verify_sums(root, sums)
     if bad:
         ctx.bad("SHA256SUMS 逐文件校验", "、".join(bad[:4]))
         return False
@@ -529,6 +654,9 @@ def main():
                     help="sudo 口令（也可用环境变量 DEHUB_PASS）；不要写进命令行历史")
     ap.add_argument("--keep", action="store_true", help="失败时保留现场")
     ap.add_argument("--skip-uninstall", action="store_true")
+    ap.add_argument("--stage0-only", action="store_true",
+                    help="只跑阶段 0（包体检）。不需要 Linux / systemd / sudo，"
+                         "打包机或 Windows 上也能验「包本身对不对」")
     a = ap.parse_args()
 
     ctx = Ctx(a)
@@ -546,6 +674,9 @@ def main():
         ("备份", stage_backup),
         ("恢复", stage_restore),
     ]
+    if a.stage0_only:
+        # 只验包：解压 → 校验 → 查必需文件，不碰数据库/服务/systemd
+        stages = stages[:1]
     failed = None
     for name, fn in stages:
         try:
@@ -557,7 +688,7 @@ def main():
             failed = name
             break
 
-    if failed is None and not a.skip_uninstall:
+    if failed is None and not a.skip_uninstall and not a.stage0_only:
         try:
             if not stage_uninstall(ctx):
                 failed = "卸载"
@@ -574,10 +705,12 @@ def main():
     ctx.say("   通过 %d / 失败 %d" % (npass, nfail))
     if failed:
         ctx.say("   卡在阶段：%s" % failed)
-        if ctx.a.keep or True:
-            ctx.say("   现场保留在：%s（脚本日志在 %s/logs/）" % (ctx.a.dir, ctx.a.dir))
+        if a.stage0_only:
+            ctx.say("   阶段 0 不落地任何文件（只在临时目录解压，已清理）")
+        else:
+            ctx.say("   现场保留在：%s（脚本日志在 %s/logs/）" % (a.dir, a.dir))
     else:
-        ctx.say("   全流程通过 ✅")
+        ctx.say("   全流程通过" if not a.stage0_only else "   包体检通过")
 
     # 收尾：默认卸载（除非失败且要求保留）
     if ctx.a.keep and failed:

@@ -21,6 +21,12 @@ tools/license-demo.key
 # 交付包产物：zip 不进库；version.json 是在线安装的更新源清单，要进库
 dist/*
 !dist/version.json
+
+# 交付包被解压到仓库根时的残留（包内顶层目录就叫 device-hub-<版本>/）。
+# 2026-11-06 踩到：delivery-smoke 阶段 0 用 `cd X && unzip`，在 Windows 上
+# cd 跨盘不切换（需 cd /d），结果把 89MB 的包（含 jar）解压到了仓库根。
+# 那东西一旦 `git add .` 就会进历史，捞都捞不干净。
+device-hub-*/
 application-db.yml
 
 # 前端：依赖与构建产物不进库（package-lock.json 必须进库，npm ci 依赖它）
