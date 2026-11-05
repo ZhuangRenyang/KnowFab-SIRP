@@ -1,0 +1,26 @@
+# 发行包必须包含的文件（单一真相来源）
+#
+# 这份清单有三个消费者，改一处就够：
+#   ① tools/make-dist.sh     —— 按它检查并复制进包
+#   ② tools/qc-gate.py       —— 门禁阶段⑥：核对包内容与源码
+#   ③ tools/delivery-smoke.py —— 包体检阶段：核对包里该有的都在
+#
+# 为什么要有它：2026-11-04 真机实测发现 **install.sh 的复制清单漏了
+# bin/backup.sh 和 bin/restore.sh** —— 客户机上备份功能根本不存在，
+# 而 247 单测全绿、打包审计 0 阻断，一个都没拦住。
+# 根因就是「包该有什么」散落在三个地方各写一遍。
+#
+# 规则：
+#   - 一行一个路径，相对包根目录
+#   - 以 # 开头是注释
+#   - 清单里的文件必须存在于项目源码根目录
+#   - *.sh 一律打成 755（可执行），其余 644
+#   - 构建时生成的（VERSION.txt / SHA256SUMS）不在清单里
+
+device-hub.jar
+install.sh
+README.md
+bin/apply-pending.sh
+bin/upgrade.sh
+bin/backup.sh
+bin/restore.sh

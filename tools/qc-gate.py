@@ -13,6 +13,7 @@ import argparse
 import json
 import os
 import subprocess
+import glob
 import sys
 import time
 import urllib.error
@@ -145,11 +146,74 @@ def main():
                 print("   " + l.strip()[:120])
         smoke_rc = rc2
 
+        # ---------- ⑥ 发行包内容自检（单一真相来源：tools/dist-manifest.txt）----------
+        # 为什么必须有这一段：2026-11-04 真机实测发现 **install.sh 的复制清单漏了
+        # bin/backup.sh 与 bin/restore.sh** → 客户机上备份功能根本不存在，
+        # 而 247 单测全绿、打包审计 0 阻断，一个都没拦住。
+        # 根因：「包里该有什么」散落在 make-dist / install.sh / 冒烟脚本三处各写一遍。
+        # 现在统一到 tools/dist-manifest.txt，这里核对它与源码、与刚构建出的包一致。
+        print("=== ⑥ 发行包内容自检 ===")
+        manifest_path = os.path.join(ROOT, "tools", "dist-manifest.txt")
+        req_files = []
+        with open(manifest_path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip().replace("\r", "")
+                if line and not line.startswith("#"):
+                    req_files.append(line)
+        def src_of(rel):
+            # device-hub.jar 是构建产物（在 target/），其余是源码文件（项目根目录）
+            return os.path.join(ROOT, "target", rel) if rel == "device-hub.jar" \
+                else os.path.join(ROOT, rel)
+        missing_src = [r for r in req_files if not os.path.exists(src_of(r))]
+        if missing_src:
+            print("   ✗ 发行清单要求的文件在源码里不存在：%s" % "、".join(missing_src))
+        else:
+            print("   · 发行清单 %d 个文件，源码齐全" % len(req_files))
+
+        # 核对 dist 里最新的包（如果刚构建过）
+        zips = sorted(glob.glob(os.path.join(ROOT, "dist", "device-hub-*.zip")))
+        zips = [z for z in zips if "update" not in z and "portable" not in z]
+        if not zips:
+            print("   · dist/ 里没有安装包（还没构建）→ 跳过包内容核对")
+        else:
+            zp = zips[-1]
+            import zipfile
+            with zipfile.ZipFile(zp) as z:
+                names = set(z.namelist())
+                rootdir = os.path.basename(zp)[:-4]   # device-hub-1.0.27.zip → device-hub-1.0.27
+                miss = [r for r in req_files
+                        if ("%s/%s" % (rootdir, r)) not in names]
+                if miss:
+                    print("   ✗ %s 里缺：%s" % (os.path.basename(zp), "、".join(miss)))
+                else:
+                    print("   ✓ %s 内容与发行清单一致（%d 个文件）"
+                          % (os.path.basename(zp), len(req_files)))
+                    # 权限位（zip 的 external_attr）——客户 unzip 常常不还原，
+                    # 所以 install.sh 自己 chmod bin/；这里只保证包里写对了。
+                    badmode = []
+                    for r in req_files:
+                        if not r.endswith(".sh"):
+                            continue
+                        info = next((i for i in z.infolist()
+                                     if i.filename == "%s/%s" % (rootdir, r)), None)
+                        if info is None:
+                            continue
+                        mode = (info.external_attr >> 16) & 0o777
+                        if mode and not (mode & 0o111):
+                            badmode.append(r)
+                    if badmode:
+                        print("   ✗ 包内权限位不是 755：%s" % "、".join(badmode))
+                    else:
+                        print("   ✓ 包内脚本权限位都是 755")
+            dist_rc = 0 if not missing_src else 1
+        dist_rc = 0 if not missing_src else 1
+
         print()
         print("======== 门禁结果 ========")
         print("  selftest rc=%d（0=全过）" % selftest_rc)
         print("  smoke-all rc=%d（0=全过）" % smoke_rc)
-        return 0 if (selftest_rc == 0 and smoke_rc == 0) else 1
+        print("  发行包内容 rc=%d（0=全过）" % dist_rc)
+        return 0 if (selftest_rc == 0 and smoke_rc == 0 and dist_rc == 0) else 1
     finally:
         try:
             proc.terminate()

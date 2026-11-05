@@ -51,26 +51,28 @@ import urllib.request
 
 IS_WIN = os.name == "nt"
 
-# 阶段 0 要求的文件：一个都不能少（少一个 = 客户机上少一个功能）
-REQUIRED = [
-    "device-hub.jar",
-    "install.sh",
-    "README.md",
-    "SHA256SUMS",
-    "VERSION.txt",
-    "bin/apply-pending.sh",
-    "bin/upgrade.sh",
-    "bin/backup.sh",
-    "bin/restore.sh",
-]
-# 必须可执行的（少了客户直接跑会 Permission denied）
-EXECUTABLE = [
-    "install.sh",
-    "bin/apply-pending.sh",
-    "bin/upgrade.sh",
-    "bin/backup.sh",
-    "bin/restore.sh",
-]
+# 阶段 0 要求的文件：**读发行清单**（tools/dist-manifest.txt）
+# 清单是「包里该有什么」的单一真相来源 —— make-dist 按它复制、
+# qc-gate 按它核对、这里按它体检。三处不再各写一遍（2026-11-04 的教训：
+# install.sh 漏复制 backup/restore，客户机上备份功能根本不存在）。
+MANIFEST = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dist-manifest.txt")
+
+
+def load_manifest():
+    req, exe = [], []
+    with open(MANIFEST, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip().replace("\r", "")
+            if not line or line.startswith("#"):
+                continue
+            req.append(line)
+            if line.endswith(".sh"):
+                exe.append(line)
+    return req, exe
+
+
+REQUIRED, EXECUTABLE = load_manifest()
+
 # 阶段 3 抽查的业务接口
 BUSINESS_APIS = [
     "/api/system/version",

@@ -126,27 +126,31 @@ say "打包 device-hub $VERSION"
 rm -rf "$STAGE"
 mkdir -p "$STAGE/bin"
 
-[ -f "$ROOT/install.sh" ] || die "缺 install.sh"
-[ -f "$ROOT/bin/apply-pending.sh" ] || die "缺 bin/apply-pending.sh"
-[ -f "$ROOT/bin/upgrade.sh" ] || die "缺 bin/upgrade.sh"
-# 备份与恢复必须进包：客户机上没有这两个脚本，等于「备份功能不存在」。
-# 这不是假设——2026-11-04 查出来 bin/backup.sh 从来没被打进过包，
-# 而 install.sh 只 mkdir 了一个空的 backups/ 目录。
-[ -f "$ROOT/bin/backup.sh" ] || die "缺 bin/backup.sh"
-[ -f "$ROOT/bin/restore.sh" ] || die "缺 bin/restore.sh"
-[ -f "$ROOT/README.md" ] || die "缺 README.md"
-
-cp "$JAR" "$STAGE/device-hub.jar"
-cp "$ROOT/install.sh" "$STAGE/install.sh"
-cp "$ROOT/bin/apply-pending.sh" "$STAGE/bin/apply-pending.sh"
-cp "$ROOT/bin/upgrade.sh" "$STAGE/bin/upgrade.sh"
-cp "$ROOT/bin/backup.sh" "$STAGE/bin/backup.sh"
-cp "$ROOT/bin/restore.sh" "$STAGE/bin/restore.sh"
-cp "$ROOT/README.md" "$STAGE/README.md"
-
-chmod 755 "$STAGE/install.sh" "$STAGE/bin/apply-pending.sh" "$STAGE/bin/upgrade.sh" \
-  "$STAGE/bin/backup.sh" "$STAGE/bin/restore.sh"
-chmod 644 "$STAGE/device-hub.jar" "$STAGE/README.md"
+# ---------- 按发行清单复制（单一真相来源：tools/dist-manifest.txt）----------
+# 以前这里硬编码了一份复制清单，而 install.sh 与交付冒烟脚本各写了一份
+# 「包里该有什么」—— 三处各写一遍，迟早会对不上。
+# 2026-11-04 真机实测就栽在这：install.sh 的复制清单漏了 bin/backup.sh 与
+# bin/restore.sh → 客户机上备份功能根本不存在，而 247 单测全绿、审计 0 阻断。
+# 现在只有一个清单，make-dist / qc-gate / delivery-smoke 都读它。
+MANIFEST="$HERE/dist-manifest.txt"
+[ -f "$MANIFEST" ] || die "缺发行清单 $MANIFEST"
+_manifest_n=0
+while IFS= read -r rel; do
+  rel="$(printf '%s' "$rel" | tr -d '\r')"
+  case "$rel" in ""|\#*) continue ;; esac
+  # device-hub.jar 是**构建产物**（在 target/），其余是源码文件（项目根目录）
+  src="$ROOT/$rel"
+  [ "$rel" = "device-hub.jar" ] && src="$JAR"
+  [ -f "$src" ] || die "缺 $rel（发行清单 tools/dist-manifest.txt 要求，源 $src）"
+  mkdir -p "$STAGE/$(dirname "$rel")"
+  cp "$src" "$STAGE/$rel"
+  case "$rel" in
+    *.sh) chmod 755 "$STAGE/$rel" ;;
+    *)    chmod 644 "$STAGE/$rel" ;;
+  esac
+  _manifest_n=$((_manifest_n + 1))
+done < "$MANIFEST"
+ok "已按发行清单复制 $_manifest_n 个文件"
 
 JAR_SHA="$(sha256sum "$STAGE/device-hub.jar" | awk '{print $1}')"
 cat > "$STAGE/VERSION.txt" <<EOF
