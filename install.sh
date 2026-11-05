@@ -23,10 +23,14 @@
 # 全程可重复执行（幂等），装坏了重跑一遍就行，不会把已有数据覆盖掉。
 set -euo pipefail
 
-# systemd 服务名（= 单元名 = 升级包/日志/备份里用的名字）。
-# **可覆盖**：交付冒烟要在同一台机器上跑一个隔离实例，
+# systemd 服务名（= 单元名）。**可覆盖**：交付冒烟要在同一台机器上跑一个隔离实例，
 # service 名不同才能与正式实例并存（否则 systemctl 会互相顶掉）。
 APP="${APP:-device-hub}"
+# 制品名（jar）：**固定**，不跟 APP 变。
+# 包里就叫 device-hub.jar —— 服务名是部署时决定的，制品名是发布时就定死的。
+# 之前用 $APP.jar 是个隐蔽的坑：APP 一改，install.sh 就去找 device-hub-smoke.jar，
+# 而包里根本没有那个文件（2026-11-05 交付冒烟实测踩到）。
+JAR="device-hub.jar"
 DIR="${DIR:-/opt/device-hub}"
 SVC_USER="${SVC_USER:-devicehub}"
 PORT="${PORT:-8080}"
@@ -189,17 +193,17 @@ mkdir -p "$DIR"/{data,logs,updates/inbox,updates/staged,backups,bin,migrations}
 chown -R "$SVC_USER":"$SVC_USER" "$DIR"
 
 # 程序文件：同目录下的 jar；重复安装时先备份正在用的那个
-if [ -f "$HERE/$APP.jar" ]; then
-  if [ -f "$DIR/$APP.jar" ]; then
+if [ -f "$HERE/$JAR" ]; then
+  if [ -f "$DIR/$JAR" ]; then
     TS="$(date +%Y%m%d-%H%M%S)"
     mkdir -p "$DIR/backups/install-$TS"
-    cp "$DIR/$APP.jar" "$DIR/backups/install-$TS/$APP.jar"
+    cp "$DIR/$JAR" "$DIR/backups/install-$TS/$JAR"
     ok "旧程序已备份到 $DIR/backups/install-$TS"
   fi
-  cp "$HERE/$APP.jar" "$DIR/$APP.jar"
-  ok "程序已复制到 $DIR/$APP.jar"
+  cp "$HERE/$JAR" "$DIR/$JAR"
+  ok "程序已复制到 $DIR/$JAR"
 fi
-[ -f "$DIR/$APP.jar" ] || die "$DIR/$APP.jar 不存在，请把 device-hub.jar 和本脚本放同一目录"
+[ -f "$DIR/$JAR" ] || die "$DIR/$JAR 不存在，请把 device-hub.jar 和本脚本放同一目录"
 
 # 首次安装写入默认配置；已存在则保留客户改过的配置
 if [ ! -f "$DIR/application.yml" ]; then
@@ -359,7 +363,7 @@ Environment=JAVA_TOOL_OPTIONS=-Dfile.encoding=UTF-8 -Duser.timezone=Asia/Shangha
 # 启动前先看有没有待应用的升级包：有就换 jar，换失败就保留旧版本继续起，
 # 绝不让"升级"这个动作把服务搞成起不来
 ExecStartPre=$DIR/bin/apply-pending.sh
-ExecStart=$JAVA_BIN $JAVA_OPTS -jar $DIR/$APP.jar --server.port=$PORT --spring.config.additional-location=file:$DIR/application.yml
+ExecStart=$JAVA_BIN $JAVA_OPTS -jar $DIR/$JAR --server.port=$PORT --spring.config.additional-location=file:$DIR/application.yml
 # JVM 收到 SIGTERM 会返回 143，属于正常停止，不要当成崩溃反复拉起
 SuccessExitStatus=143
 Restart=always

@@ -1,6 +1,6 @@
 {
-  "version": "1.0.26",
-  "notes": "交付流水线第一步：新增交付冒烟脚本 tools/delivery-smoke.py（装→跑→备→恢→卸 全流程，把「装到客户机器上能不能用」变成可自动跑的检查）；install.sh 的服务名 APP 改为可覆盖（此前硬编码 device-hub，导致在同一台机器上跑隔离实例时会覆盖正式实例的 systemd 单元）；顺带修：健康检查通过不等于能登录（管理员 seed 有初始化窗口期）。",
-  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.26/device-hub-1.0.26-update.zip",
-  "sha256": "ad40b7b412b2525bbed7d1ca14a4405c70ea6d9a0b7ad5a6ed70f8a6715044a7"
+  "version": "1.0.27",
+  "notes": "修复：install.sh 的服务名（APP）与制品名（jar 文件名）解耦。此前用 $APP.jar 查找程序，服务名一改就去找 device-hub-smoke.jar，而包里只有 device-hub.jar —— 交付冒烟在隔离实例下装不上（正式安装不受影响）。另新增交付冒烟脚本 tools/delivery-smoke.py。",
+  "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.27/device-hub-1.0.27-update.zip",
+  "sha256": "77c9be0a15abb94fcf27fd423509a60e1a568a0bd98e1af9aef64c597d01b52c"
 }
