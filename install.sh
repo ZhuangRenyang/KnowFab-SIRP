@@ -23,7 +23,10 @@
 # 全程可重复执行（幂等），装坏了重跑一遍就行，不会把已有数据覆盖掉。
 set -euo pipefail
 
-APP="device-hub"
+# systemd 服务名（= 单元名 = 升级包/日志/备份里用的名字）。
+# **可覆盖**：交付冒烟要在同一台机器上跑一个隔离实例，
+# service 名不同才能与正式实例并存（否则 systemctl 会互相顶掉）。
+APP="${APP:-device-hub}"
 DIR="${DIR:-/opt/device-hub}"
 SVC_USER="${SVC_USER:-devicehub}"
 PORT="${PORT:-8080}"
