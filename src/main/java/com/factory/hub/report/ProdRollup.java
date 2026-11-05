@@ -9,6 +9,8 @@ import com.factory.hub.service.DeviceService;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -22,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * 生产汇总引擎：把「每台设备当前是运行还是停机」「累计产量读数」变成
@@ -42,7 +45,31 @@ import java.util.concurrent.ConcurrentHashMap;
  *       整班产量抹掉。跟能耗一样处理：读数变小就记 0，只统计 resets 次数。</li>
  *   <li><b>产量算到错误的小时</b>——断线重连时一次性补记的产量，归到重连那一小时，
  *       并标记 backfill，让客户知道这小时的数字为什么突然高一截。</li>
+ *   <li><b>重启把「上次读数」一起清掉，白丢一段产量（DH-81）</b>——计数器增量靠
+ *       「本次读数 - 上次读数」算，而"上次读数"原先只在内存里（初值 -1）。
+ *       重启后第一次采样判据不成立，只把当前读数记成基线：那一段产量不回补、
+ *       也不报错，而且产量报表和 ERP 入库单据<b>同时少记</b>。
+ *       现在水位落 {@code dev_counter_state}（见 {@link DevCounterState}），
+ *       启动时 {@link #restore()} 灌回来，重启后第一拍就能算出正确增量。</li>
  * </ol>
+ *
+ * <b>本模块的两处「重启后必须继承的基线」，继承对象不一样，别搞混：</b>
+ * <ol>
+ *   <li>{@link #bucket} 继承的是<b>已落库的小时行</b>（{@code prod_hourly}）——
+ *       因为 flush 是覆盖写，不继承就会被内存里的零值冲掉。</li>
+ *   <li>{@link #restore()} 继承的是<b>已落库的计数器水位</b>（{@code dev_counter_state}）——
+ *       因为增量 = 本次读数 - 上次读数，上次读数没了就只能重新起算。</li>
+ * </ol>
+ *
+ * <b>DH-81 修不到、也不该由它修的窗口（写清边界，免得有人以为重启已经"零丢失"）：</b>
+ * <ul>
+ *   <li><b>硬崩（断电/OOM）仍会丢最后一个 checkpoint 窗口（≤60 秒）</b>——
+ *       水位记的是"计数器处理到哪儿"，而 {@code prod_hourly} 是 60 秒一落库。
+ *       崩在两次 checkpoint 之间时，那段产量在内存里，跟着进程一起没了。
+ *       正常停服务（{@code @PreDestroy} 会 flush）不受影响。</li>
+ *   <li><b>计数器清零/换表的同时重启</b>：持久化的是旧读数、新读数是 0，
+ *       会按既有规则记 0 + resets++，那一段产量补不回来 —— 读数本身丢了，是物理限制。</li>
+ * </ul>
  */
 @Component
 public class ProdRollup {
@@ -61,6 +88,8 @@ public class ProdRollup {
     private final DeviceService deviceService;
     private final ProdHourlyRepository repo;
     private final ErpProdInboundService inbound;
+    /** 计数器处理水位（DH-81）：重启后靠它接着上次读数算增量 */
+    private final DevCounterStateRepository counterRepo;
 
     /** key = deviceCode|hourStart，值是该小时该设备的累计 */
     private final Map<String, ProdHourly> buckets = new ConcurrentHashMap<>();
@@ -68,13 +97,38 @@ public class ProdRollup {
     /** 每台设备的上一笔采样，用来算时间差和产量增量 */
     private final Map<String, DevState> states = new ConcurrentHashMap<>();
 
+    /**
+     * 水位是否已经尝试加载过（成功或失败都算）。
+     * <p>
+     * 用 CAS 而不是「只在 {@link #restore()} 里加载」：定时任务在容器 refresh 阶段就排上了，
+     * 有可能比 {@code ApplicationReadyEvent} 先跑一拍。要是第一拍在加载之前处理了计数器，
+     * 就会用「当前读数」当基线把水位覆盖掉 —— 那一段增量照样丢，而且这次丢得悄无声息。
+     * 所以 {@link #scan()} 开头也会调一次 {@link #ensureRestored()}，谁先谁加载，只加载一次。
+     */
+    private final AtomicBoolean restored = new AtomicBoolean(false);
+
     private long lastCleanupDay = -1L;
 
     private static final class DevState {
         long statusTs = 0;
         int status = -1;
         long countTs = 0;
+        /**
+         * 上次已处理到的产量计数器读数。-1 = 还没有基线（首次采样只当基准，不推增量）。
+         * <p>
+         * DH-81：这个基线会同步落 {@code dev_counter_state}，重启后由 {@link #restore()} 灌回，
+         * 所以「-1」只在「这台设备从来没采过」时出现，不再是「每次重启都出现」。
+         */
         double count = -1;
+        /**
+         * 已经<b>写成功</b>的读数时间戳；0 = 还没写成功过（下一拍必写）。
+         * <p>
+         * 只在「读数变了」或「水位的 ts 已经陈旧超过 {@link #MAX_GAP_MS}」时才写库：
+         * 计数器不变说明没有产量，写进去也是同一个数 —— 500 台设备每秒各写一次是白烧 IO。
+         * 但也不能一直不写：ts 陈旧太久，重启后第一笔增量会被判成 backfill，
+         * 报表上会多出一截"补记"（数字对，标注不准）。
+         */
+        long persistedTs = 0;
         long resets = 0;
         /** DH-15：不良品计数器的上一笔读数 */
         long rejectTs = 0;
@@ -83,19 +137,30 @@ public class ProdRollup {
     }
 
     public ProdRollup(SnapshotStore store, DeviceService deviceService, ProdHourlyRepository repo,
-                      ErpProdInboundService inbound) {
+                      ErpProdInboundService inbound, DevCounterStateRepository counterRepo) {
         this.store = store;
         this.deviceService = deviceService;
         this.repo = repo;
         this.inbound = inbound;
+        this.counterRepo = counterRepo;
     }
 
     /**
      * 每秒扫一次。fixedDelay 而不是 fixedRate：某次卡了不堆积。
+     * <p>
+     * 方法级 synchronized + 水位同步落库：产量统计这一条链路上，
+     * 「内存状态」和「库里的水位」必须是同一拍的东西，不能一边走一边算。
      */
     @Scheduled(fixedDelay = 1000L)
     public synchronized void scan() {
         long now = System.currentTimeMillis();
+        // 兜底：万一这一拍比 ApplicationReadyEvent 还早，就地加载水位（只加载一次）
+        ensureRestored();
+
+        // 本拍需要写回的水位（一台设备一行）。收集完一次性提交：
+        // 逐台各开一个事务在车间机器上就是每秒几十次 fsync，
+        // 而攒到本拍结束一次性写，语义上仍然是同步的（scan 返回时库里已是最新）。
+        List<DevCounterState> dirty = new ArrayList<>();
 
         for (Map.Entry<String, Map<String, PointValue>> e : store.entries()) {
             String code = e.getKey();
@@ -132,6 +197,9 @@ public class ProdRollup {
                     boolean backfill = (ts - st.countTs) > MAX_GAP_MS;
                     if (delta < 0) {
                         // 换班清零 / 换表。记 0，不能记负数
+                        // （重启 + 清零同时发生时，库里是旧读数、新读数是 0，差值只能记 0，
+                        //   那段产量补不回来 —— 读数本身丢了，是计数器的物理限制，
+                        //   不是水位没持久化好，见 DevCounterState 的说明）
                         st.resets++;
                         delta = 0;
                     }
@@ -146,8 +214,19 @@ public class ProdRollup {
                         inbound.onProduced(code, delta, ts, backfill);
                     }
                 }
-                st.count = cur;
-                st.countTs = ts;
+                // 只有「这一笔采样比上次新」才推进水位：
+                // 乱序/重复的采样（设备时钟回跳、上游重发同一笔）把水位往回拨，
+                // 下一拍就会把已经算过的增量再算一遍 —— 那是重复计数，比丢数更难查。
+                if (ts > st.countTs) {
+                    boolean moved = cur != st.count;        // 用更新前的旧值比，判断"读数变了"
+                    st.count = cur;
+                    st.countTs = ts;
+                    // DH-81 水位同步落库：重启后从这里接着算，不会再把当前读数当基线。
+                    // 只收集、本拍结束统一提交（见 persistCounters），失败也绝不中断采集。
+                    if (moved || st.persistedTs == 0 || ts - st.persistedTs > MAX_GAP_MS) {
+                        dirty.add(new DevCounterState(code, cur, ts, now));
+                    }
+                }
             }
 
             // DH-15 不良品计数（role=reject）。机床的不良计数器，很多设备有独立的一个。
@@ -179,8 +258,116 @@ public class ProdRollup {
             }
         }
 
+        // 水位在本拍结束前同步写回。滞后写（攒够再批量刷）会把已经处理过的增量
+        // 在重启后重算一遍 —— 那变成重复计数，比丢数更难发现。
+        persistCounters(dirty);
+
         cleanupStates();
         maybeCleanupOldData(now);
+    }
+
+    /* ==================== DH-81 计数器水位：启动恢复 + 同步落库 ==================== */
+
+    /**
+     * 启动时把库里的计数器水位灌回内存，让重启后第一拍就能算出正确增量。
+     * <p>
+     * 用 {@code ApplicationReadyEvent}（和 {@code AlarmEngine.restore()} 一个路子）：
+     * 这时数据源和 JPA 都就绪，但采集线程还没跑出第一轮真实数据。
+     * <p>
+     * <b>加载失败绝不阻断启动</b>（项目铁律：迁移/恢复失败不阻断启动）——
+     * 车间服务器起不来等于彻底没有监控，比"水位没恢复、可能重复记一小段"严重得多。
+     * 失败只记 WARN，并把后果写清楚，让人能从日志判断"那一段产量要不要去对账"。
+     */
+    @EventListener(ApplicationReadyEvent.class)
+    public void restore() {
+        ensureRestored();
+    }
+
+    /**
+     * 只加载一次。{@link #scan()} 开头也会调它——定时任务可能在
+     * {@code ApplicationReadyEvent} 之前就先跑了一拍，谁先到谁加载，
+     * 否则第一拍会拿「当前读数」当基线，把还没算的增量永久盖掉。
+     */
+    private synchronized void ensureRestored() {
+        if (!restored.compareAndSet(false, true)) {
+            return;
+        }
+        try {
+            List<DevCounterState> rows = counterRepo.findAll();
+            int n = 0;
+            for (DevCounterState r : rows) {
+                // 没有时间戳的水位用不了：增量是靠 ts 严格递增来判定的
+                if (r.getDeviceCode() == null || r.getCountTs() <= 0) {
+                    continue;
+                }
+                DevState st = states.computeIfAbsent(r.getDeviceCode(), k -> new DevState());
+                st.count = r.getCountValue();
+                st.countTs = r.getCountTs();
+                st.persistedTs = r.getCountTs();
+                n++;
+            }
+            if (n > 0) {
+                log.info("产量计数器水位恢复：{} 台设备接着上次读数算增量（重启不再丢那一段产量）", n);
+            }
+        } catch (Exception e) {
+            log.warn("加载计数器水位失败，不影响采集：本次启动按「首次读数」重新起算，"
+                    + "重启那一小段产量会丢（可事后按 prod_hourly 与入库单据人工核对）: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 把本拍的水位写回 {@code dev_counter_state}。
+     * <p>
+     * <b>失败只记 WARN，绝不抛出</b>：产出采集是主链路（报表、ERP 入库、看板全靠它），
+     * 不能被数据库抖动挡住。代价是"写失败后若立刻重启会重复计这一小段"——
+     * 下一拍写成功即自愈，且日志里有设备号和读数，事后能核对。
+     * <p>
+     * 先整批一次提交（一个事务，一次 fsync）；整批失败再逐台重试，
+     * 免得一台设备的坏行把其他设备的水位一起卡住 —— 那时重启就是全厂一起丢数。
+     */
+    private void persistCounters(List<DevCounterState> dirty) {
+        if (dirty == null || dirty.isEmpty()) {
+            return;
+        }
+        try {
+            counterRepo.saveAll(dirty);
+            markPersisted(dirty);
+            return;
+        } catch (Exception e) {
+            log.warn("计数器水位整批写库失败（{} 台），改为逐台重试: {}", dirty.size(), e.getMessage());
+        }
+        for (DevCounterState s : dirty) {
+            try {
+                counterRepo.save(s);
+                markPersisted(List.of(s));
+            } catch (Exception e) {
+                // 失败就把 persistedTs 打回 0：下一拍无论读数有没有变都会再写一次，
+                // 不让一次抖动把"水位陈旧"拖成 15 秒（那 15 秒里重启就会重复计数）
+                DevState st = states.get(s.getDeviceCode());
+                if (st != null) {
+                    st.persistedTs = 0;
+                }
+                log.warn("计数器水位写库失败：设备 {} 读数 {}（ts={}）。"
+                                + "若此刻重启，这一小段产量会被重复计一次，下次采样写成功即自愈: {}",
+                        s.getDeviceCode(), s.getCountValue(), s.getCountTs(), e.getMessage());
+            }
+        }
+    }
+
+    /** 只有真写成功了才认这个 ts，否则「陈旧判定」会把没写进去的当成写进去了 */
+    private void markPersisted(List<DevCounterState> rows) {
+        for (DevCounterState s : rows) {
+            DevState st = states.get(s.getDeviceCode());
+            if (st != null) {
+                st.persistedTs = s.getCountTs();
+            }
+        }
+    }
+
+    /** 该设备的计数器清零/换表次数（resets）。排障与重启验收用，不对外提供接口 */
+    long resetsOf(String deviceCode) {
+        DevState st = states.get(deviceCode);
+        return st == null ? 0 : st.resets;
     }
 
     /**
@@ -239,7 +426,7 @@ public class ProdRollup {
 
     /**
      * 删除设备后清掉它的全部产量痕迹：
-     * DB 的小时行（今日/本月/今年综合表都从这里聚合）+ 内存桶 + 统计基准。
+     * DB 的小时行（今日/本月/今年综合表都从这里聚合）+ 内存桶 + 统计基准 + 计数器水位。
      * 重建设备后产量从零开始；寄存器首读只当基准，不会把 PLC 现值算进产量。
      */
     public synchronized void purgeByCode(String code) {
@@ -247,6 +434,13 @@ public class ProdRollup {
         buckets.keySet().removeIf(k -> k.startsWith(code + "|"));
         states.remove(code);
         repo.deleteByDeviceCode(code);
+        // DH-81 水位也要删：留着的话，同编码设备重建后新表读数若比旧水位大，
+        // 差值会被当成"这一拍生产的"计进产量和入库单据（凭空多出一批货）。
+        try {
+            counterRepo.deleteById(code);
+        } catch (Exception e) {
+            log.warn("清理设备 {} 的计数器水位失败（不影响删设备）: {}", code, e.getMessage());
+        }
     }
 
     private void flush(boolean dropClosedHours) {
