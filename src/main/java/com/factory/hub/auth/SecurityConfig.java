@@ -141,6 +141,12 @@ public class SecurityConfig {
                         .hasAnyRole("ADMIN", "MANAGER", "LEADER")
                         // 设备维修：班组长在车间现场修机器，让他找管理员点一下不现实。
                         // 与「班组长本来就能确认告警」同一条逻辑。必须排在下面的 erp 通配之前。
+                        //
+                        // 派工（DH-85）：改「责任人」是写操作，**显式写一条**而不是靠下面的 /** 兜。
+                        // 理由：/** 哪天被收紧（比如要求维修单只能经理改），这条会安静地跟着失效，
+                        // 而派工是车间天天用的动作 —— 显式写出来，改的时候必须看见它。
+                        .requestMatchers(HttpMethod.POST, "/api/erp/maint/*/assign")
+                        .hasAnyRole("ADMIN", "MANAGER", "LEADER")
                         .requestMatchers(HttpMethod.POST, "/api/erp/maint/**")
                         .hasAnyRole("ADMIN", "MANAGER", "LEADER")
                         .requestMatchers(HttpMethod.POST, "/api/erp/**").hasAnyRole("ADMIN", "MANAGER")

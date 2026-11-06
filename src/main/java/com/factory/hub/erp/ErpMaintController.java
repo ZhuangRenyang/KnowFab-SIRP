@@ -1,6 +1,7 @@
 package com.factory.hub.erp;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.springframework.security.core.Authentication;
@@ -134,6 +135,37 @@ public class ErpMaintController {
                 Map.of("value", ErpMaintOrder.ST_CANCELLED,
                         "text", ErpMaintService.statusText(ErpMaintOrder.ST_CANCELLED))));
         return m;
+    }
+
+    /**
+     * 指派负责人（DH-85）。
+     * <p>
+     * 权限在 SecurityConfig 里显式写成 ADMIN|MANAGER|LEADER，且**必须排在 `/api/erp/**` 通配之前**
+     * —— 前端藏按钮不算权限控制（项目铁律）。
+     * <p>
+     * body.assignee 传空字符串 = 取消指派。
+     */
+    @PostMapping("/{orderNo}/assign")
+    public Map<String, Object> assign(@PathVariable String orderNo,
+                                      @RequestBody(required = false) Map<String, Object> body) {
+        String assignee = body == null || body.get("assignee") == null
+                ? "" : String.valueOf(body.get("assignee")).trim();
+        Map<String, Object> out = service.assign(orderNo, assignee, operator());
+        auditIfOk(out, AuditLog.ACT_UPDATE, "指派维修工单",
+                orderNo + " → " + (assignee.isEmpty() ? "(取消指派)" : assignee));
+        return out;
+    }
+
+    /** 我的待办：每个人看自己的（登录即可，没有跨用户查看的口子） */
+    @GetMapping("/my")
+    public List<Map<String, Object>> my() {
+        return service.my(operator());
+    }
+
+    /** 可选人员（派单下拉框用）：只列能接单的角色，不下发密码等敏感字段 */
+    @GetMapping("/assignable")
+    public List<Map<String, Object>> assignable() {
+        return service.assignable();
     }
 
     private void auditIfOk(Map<String, Object> out, String action, String title, String detail) {

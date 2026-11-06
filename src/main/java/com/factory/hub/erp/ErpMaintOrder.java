@@ -61,8 +61,12 @@ public class ErpMaintOrder {
     /** 原因分类：其他 */
     public static final String CAUSE_OTHER = "OTHER";
 
-    /** 诊断来源：AI */
+    /** 诊断来源：AI（点按钮触发的模型分析） */
     public static final String SRC_AI = "AI";
+
+    /** 诊断来源：AI Agent（对话里由模型判断并建单，DH-85。与 AI 分开记，事后能查清这单怎么来的） */
+    public static final String SRC_AGENT = "AGENT";
+
     /** 诊断来源：本地规则（AI 未启用或失败） */
     public static final String SRC_LOCAL = "LOCAL";
 
@@ -146,6 +150,19 @@ public class ErpMaintOrder {
 
     @Column(name = "resolved_by", length = 64)
     private String resolvedBy;
+
+    // ---------- 派工（DH-85）：事前责任人，不是事后的 resolvedBy ----------
+    // 注意：指派**不是状态机的一部分**（见 SPEC-DH85 §2.6）。
+    // ANALYZED + 指派 仍是 ANALYZED，只是有了负责人；状态流转只由 start/resolve/cancel 控制。
+    // 否则工单状态会出现两套口径。
+    @Column(name = "assignee", length = 64)
+    private String assignee;
+
+    @Column(name = "assigned_at")
+    private Long assignedAt;
+
+    @Column(name = "assigned_by", length = 64)
+    private String assignedBy;
 
     public Long getId() {
         return id;
@@ -321,5 +338,29 @@ public class ErpMaintOrder {
 
     public void setResolvedBy(String resolvedBy) {
         this.resolvedBy = resolvedBy;
+    }
+
+    public String getAssignee() {
+        return assignee;
+    }
+
+    public void setAssignee(String assignee) {
+        this.assignee = assignee;
+    }
+
+    public Long getAssignedAt() {
+        return assignedAt;
+    }
+
+    public void setAssignedAt(Long assignedAt) {
+        this.assignedAt = assignedAt;
+    }
+
+    public String getAssignedBy() {
+        return assignedBy;
+    }
+
+    public void setAssignedBy(String assignedBy) {
+        this.assignedBy = assignedBy;
     }
 }

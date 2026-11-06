@@ -17,8 +17,8 @@ export interface MaintOrder {
   alarmText?: string
   /** 建议原文（AI 或本地规则） */
   aiAdvice?: string
-  /** AI = 模型给的；LOCAL = 本地规则（未配 AI 或调用失败） */
-  aiSource?: 'AI' | 'LOCAL'
+  /** AI = 模型给的；AGENT = 对话里由 AI 助手判断并建单；LOCAL = 本地规则 */
+  aiSource?: 'AI' | 'AGENT' | 'LOCAL'
   aiAt?: number
   aiElapsedMs?: number
   causeCategory?: string
@@ -34,6 +34,17 @@ export interface MaintOrder {
   startedAt?: number
   resolvedAt?: number
   resolvedBy?: string
+  /** 负责人（DH-85）。空 = 未指派。与 resolvedBy（事后谁修的）不是一回事 */
+  assignee?: string | null
+  assignedAt?: number | null
+  assignedBy?: string | null
+}
+
+/** 可被派单的人（DH-85） */
+export interface MaintAssignee {
+  username: string
+  displayName?: string
+  role: string
 }
 
 /** 历史同类维修记录的摘要 */
@@ -57,6 +68,17 @@ export interface MaintAnalyzeResult {
 }
 
 export const maintApi = {
+  /**
+   * 指派负责人（DH-85）。
+   * 传空字符串 = 取消指派。只有 ADMIN/MANAGER/LEADER 能调（后端 403 兜底）。
+   */
+  assign: (orderNo: string, assignee: string) =>
+    http.post<{ ok: boolean; message?: string; assignee?: string | null; order?: MaintOrder }>(
+      `/api/erp/maint/${encodeURIComponent(orderNo)}/assign`, { assignee }),
+
+  /** 可选人员：只含能接单的角色（ADMIN/MANAGER/LEADER），不下发密码等字段 */
+  assignable: () => http.get<MaintAssignee[]>('/api/erp/maint/assignable'),
+
   /** 对一条报警做诊断。同步接口——可能要等几秒（AI 通常 3~8 秒） */
   analyze: (alarmEventId: number) =>
     http.post<MaintAnalyzeResult>('/api/erp/maint/analyze', { alarmEventId }),

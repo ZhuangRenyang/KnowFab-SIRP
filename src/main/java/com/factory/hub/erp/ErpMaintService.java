@@ -20,6 +20,9 @@ import com.factory.hub.ai.AiConfig;
 import com.factory.hub.ai.AiConfigStore;
 import com.factory.hub.alarm.AlarmEvent;
 import com.factory.hub.alarm.AlarmEventRepository;
+import com.factory.hub.alarm.AlarmNotifier;
+import com.factory.hub.auth.UserAccount;
+import com.factory.hub.auth.UserRepository;
 import com.factory.hub.model.DeviceEntity;
 import com.factory.hub.screen.AlarmCodeDict;
 import com.factory.hub.service.DeviceService;
@@ -74,6 +77,17 @@ public class ErpMaintService {
     private final AiClient aiClient;
     private final AiConfigStore aiConfigStore;
     private final ObjectMapper mapper;
+    private final UserRepository userRepo;
+    private final AlarmNotifier notifier;
+
+    /**
+     * 能承接维修工单的角色（DH-85）。
+     * <p>
+     * 只派给**人**，不派给角色——三个 LEADER 会互相以为对方在做（SPEC-DH85 §2.1）。
+     * SALES 只读销售查询，不承接维修。
+     */
+    private static final List<String> ASSIGNABLE_ROLES =
+            List.of(UserAccount.ROLE_ADMIN, UserAccount.ROLE_MANAGER, UserAccount.ROLE_LEADER);
 
     public ErpMaintService(ErpMaintOrderRepository repo,
                            AlarmEventRepository alarmRepo,
@@ -81,7 +95,9 @@ public class ErpMaintService {
                            AlarmCodeDict alarmDict,
                            AiClient aiClient,
                            AiConfigStore aiConfigStore,
-                           ObjectMapper mapper) {
+                           ObjectMapper mapper,
+                           UserRepository userRepo,
+                           AlarmNotifier notifier) {
         this.repo = repo;
         this.alarmRepo = alarmRepo;
         this.deviceService = deviceService;
@@ -89,6 +105,8 @@ public class ErpMaintService {
         this.aiClient = aiClient;
         this.aiConfigStore = aiConfigStore;
         this.mapper = mapper;
+        this.userRepo = userRepo;
+        this.notifier = notifier;
     }
 
     /* ==================== 诊断（核心） ==================== */
@@ -377,6 +395,210 @@ public class ErpMaintService {
         out.put("ok", true);
         out.put("message", "已取消");
         out.put("order", row(o));
+        return out;
+    }
+
+    /* ==================== 派工（DH-85） ==================== */
+
+    /**
+     * 指派负责人。
+     * <p>
+     * 设计要点（详见 {@code docs/SPEC-DH85-WORKFLOW.md}）：
+     * <ul>
+     *   <li>派给<b>人</b>不派给角色 —— 派给 LEADER 等于三个 LEADER 互相以为对方在做</li>
+     *   <li>指派<b>不是状态机的一部分</b>：ANALYZED + 指派仍是 ANALYZED，只多了责任人</li>
+     *   <li>传空 assignee = 取消指派</li>
+     *   <li>通知失败<b>不能让指派回滚</b> —— 小厂没配 webhook 就派不了工，等于功能不可用</li>
+     * </ul>
+     */
+    @Transactional
+    public Map<String, Object> assign(String orderNo, String assignee, String operator) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        ErpMaintOrder o = repo.findByOrderNo(orderNo).orElse(null);
+        if (o == null) {
+            return fail(out, "维修单不存在：" + orderNo);
+        }
+        if (ErpMaintOrder.ST_RESOLVED.equals(o.getStatus())
+                || ErpMaintOrder.ST_CANCELLED.equals(o.getStatus())) {
+            return fail(out, "工单已" + statusText(o.getStatus()) + "，不能再指派");
+        }
+        String who = assignee == null ? "" : assignee.trim();
+        if (who.isEmpty()) {
+            o.setAssignee(null);
+            o.setAssignedAt(null);
+            o.setAssignedBy(null);
+            repo.save(o);
+            out.put("ok", true);
+            out.put("assignee", null);
+            out.put("message", "已取消指派");
+            out.put("order", row(o));
+            return out;
+        }
+        UserAccount u = userRepo.findByUsername(who).orElse(null);
+        if (u == null) {
+            return fail(out, "找不到用户：" + who);
+        }
+        if (!u.isEnabledNow()) {
+            return fail(out, "用户已停用：" + who);
+        }
+        if (!ASSIGNABLE_ROLES.contains(String.valueOf(u.getRole()))) {
+            return fail(out, "该用户角色是 " + u.getRole()
+                    + "，不承接维修工单（只能派给 ADMIN / MANAGER / LEADER）");
+        }
+        o.setAssignee(who);
+        o.setAssignedAt(System.currentTimeMillis());
+        o.setAssignedBy(operator);
+        repo.save(o);
+        notifyAssign(o, who);
+        out.put("ok", true);
+        out.put("assignee", who);
+        out.put("assignedAt", o.getAssignedAt());
+        out.put("message", "已指派给 " + (u.getDisplayName() == null ? who : u.getDisplayName()));
+        out.put("order", row(o));
+        return out;
+    }
+
+    /** 指派通知：失败只记日志，**绝不回滚指派**（SPEC-DH85 §2.5、AC-08）。 */
+    private void notifyAssign(ErpMaintOrder o, String who) {
+        try {
+            String dev = o.getDeviceName() == null ? o.getDeviceCode() : o.getDeviceName();
+            notifier.sendBulletin("维修工单指派",
+                    "工单 " + o.getOrderNo() + "（" + dev + "）已派给 " + who + "，请及时处理");
+        } catch (Exception e) {
+            log.warn("指派通知发送失败（不影响指派）：{}", e.getMessage());
+        }
+    }
+
+    /**
+     * 我的待办：直接查工单表，<b>不建待办表</b>。
+     * 同一个事实存两份迟早不同步 —— DH-80（库存两个来源同屏两个数）就是这么来的。
+     */
+    public List<Map<String, Object>> my(String username) {
+        if (username == null || username.isBlank()) {
+            return List.of();
+        }
+        List<ErpMaintOrder> rows = repo.findByAssigneeAndStatusInOrderByAssignedAtDesc(
+                username, List.of(ErpMaintOrder.ST_ANALYZED, ErpMaintOrder.ST_IN_PROGRESS));
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (ErpMaintOrder o : rows) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("orderNo", o.getOrderNo());
+            m.put("deviceCode", o.getDeviceCode());
+            m.put("deviceName", o.getDeviceName());
+            m.put("alarmCode", o.getAlarmCode());
+            m.put("alarmText", o.getAlarmText());
+            m.put("status", o.getStatus());
+            m.put("statusText", statusText(o.getStatus()));
+            m.put("assignedAt", o.getAssignedAt());
+            m.put("assignedBy", o.getAssignedBy());
+            m.put("aiAdvice", o.getAiAdvice());
+            m.put("createdAt", o.getCreatedAt());
+            list.add(m);
+        }
+        return list;
+    }
+
+    /** 可选人员：只列能接单的角色，且只下发前端必要字段（不碰密码、盐等）。 */
+    public List<Map<String, Object>> assignable() {
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (UserAccount u : userRepo.findAllByOrderByIdAsc()) {
+            if (!u.isEnabledNow() || !ASSIGNABLE_ROLES.contains(String.valueOf(u.getRole()))) {
+                continue;
+            }
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("username", u.getUsername());
+            m.put("displayName", u.getDisplayName());
+            m.put("role", u.getRole());
+            list.add(m);
+        }
+        return list;
+    }
+
+    /* ==================== AI 工具入口（DH-85） ==================== */
+
+    /**
+     * 直接从报警建工单，<b>不调模型</b>——给 AI 工具 {@code create_maint_order} 用。
+     * <p>
+     * 为什么不复用 {@link #analyze}：analyze 会<b>再调一次大模型</b>做诊断，
+     * 而这个方法的调用场景恰恰是「模型已经在对话里判断过了」——
+     * 再调一次既慢又花钱，还会产出两份互相不一致的建议。
+     * 模型自己的判断通过 {@code advice} 带进来，落进 aiAdvice，aiSource = AGENT
+     * （与「点按钮触发的 AI 分析」= AI 分开记，事后能查清这单到底是怎么来的）。
+     * <p>
+     * 同一条报警已有未结案单时不重复建；若这次带了 assignee 而原单没指派，顺手派掉。
+     */
+    @Transactional
+    public Map<String, Object> createFromAlarm(Long alarmEventId, String assignee,
+                                               String advice, String operator) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        if (alarmEventId == null) {
+            return fail(out, "没给报警事件 id");
+        }
+        Optional<AlarmEvent> aOpt = alarmRepo.findById(alarmEventId);
+        if (aOpt.isEmpty()) {
+            return fail(out, "报警事件不存在（可能已被保留期清理）：" + alarmEventId);
+        }
+        AlarmEvent ev = aOpt.get();
+
+        List<ErpMaintOrder> opened = repo.findByAlarmEventIdAndStatusInOrderByCreatedAtDesc(
+                alarmEventId, List.of(ErpMaintOrder.ST_ANALYZED, ErpMaintOrder.ST_IN_PROGRESS));
+        if (!opened.isEmpty()) {
+            ErpMaintOrder exist = opened.get(0);
+            String extra = "";
+            if (assignee != null && !assignee.isBlank() && exist.getAssignee() == null) {
+                Map<String, Object> as = assign(exist.getOrderNo(), assignee, operator);
+                extra = Boolean.TRUE.equals(as.get("ok"))
+                        ? "，并已指派给 " + assignee
+                        : "；指派失败：" + as.get("message");
+            }
+            out.put("ok", true);
+            out.put("reused", true);
+            out.put("message", "这条报警已经有维修单了：" + exist.getOrderNo() + extra);
+            out.put("order", row(exist));
+            return out;
+        }
+
+        DeviceEntity dev = null;
+        try {
+            dev = deviceService.byCode(ev.getDeviceCode());
+        } catch (Exception e) {
+            log.debug("取设备失败（不影响建单）：{}", e.getMessage());
+        }
+        String rawCode = ev.getValue() == null ? null : trimNum(ev.getValue());
+        AlarmCodeDict.Resolved dict = null;
+        if (rawCode != null) {
+            dict = alarmDict.lookup(dev == null ? null : dev.getServoBrand(), "alarm", rawCode);
+        }
+
+        ErpMaintOrder o = new ErpMaintOrder();
+        o.setOrderNo(nextOrderNo());
+        o.setAlarmEventId(alarmEventId);
+        o.setDeviceCode(ev.getDeviceCode());
+        o.setDeviceName(ev.getDeviceName() == null ? ev.getDeviceCode() : ev.getDeviceName());
+        o.setAlarmCode(dict == null ? rawCode : dict.code());
+        o.setAlarmText(ev.getMessage() == null ? ev.getRuleName() : ev.getMessage());
+        if (advice != null && !advice.isBlank()) {
+            o.setAiAdvice(advice.trim());
+            o.setAiSource(ErpMaintOrder.SRC_AGENT);
+            o.setAiAt(System.currentTimeMillis());
+        } else {
+            o.setAiSource(ErpMaintOrder.SRC_LOCAL);
+        }
+        o.setStatus(ErpMaintOrder.ST_ANALYZED);
+        o.setCreatedBy(operator);
+        o.setCreatedAt(System.currentTimeMillis());
+        repo.save(o);
+
+        String extra = "";
+        if (assignee != null && !assignee.isBlank()) {
+            Map<String, Object> as = assign(o.getOrderNo(), assignee, operator);
+            extra = Boolean.TRUE.equals(as.get("ok"))
+                    ? "，已指派给 " + assignee
+                    : "；但指派失败：" + as.get("message");
+        }
+        out.put("ok", true);
+        out.put("message", "已建维修单 " + o.getOrderNo() + extra);
+        out.put("order", row(repo.findByOrderNo(o.getOrderNo()).orElse(o)));
         return out;
     }
 

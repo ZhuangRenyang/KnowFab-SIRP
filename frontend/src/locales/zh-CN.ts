@@ -753,6 +753,11 @@ export default {
     needCategory: '请选择原因分类：没有分类就统计不出「这台机主要坏在哪一类」',
     needCause: '请写清实际原因，这是下次同类报警能参考的全部依据',
     resolvedOk: '已结案，这条经验会用于下次同类报警的诊断',
+    assignee: '负责人',
+    unassigned: '未指派',
+    pickWho: '选人',
+    unassign: '取消指派',
+    assignOk: '已指派',
   },
   alarm: {
     open: '待处理',

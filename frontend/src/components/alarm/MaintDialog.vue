@@ -27,6 +27,25 @@
         <pre class="text">{{ order.aiAdvice }}</pre>
       </div>
 
+      <!-- 负责人（DH-85）：事前责任人。没派 = 这活没人认领，全靠口头喊 -->
+      <div class="assign-row">
+        <span class="assign-k">{{ t('maint.assignee') }}</span>
+        <el-tag v-if="order.assignee" size="small" type="success" effect="light">
+          {{ nameOf(order.assignee) }}
+        </el-tag>
+        <span v-else class="assign-none">{{ t('maint.unassigned') }}</span>
+        <template v-if="canAssign && !isDone">
+          <el-select v-model="pick" size="small" :placeholder="t('maint.pickWho')"
+                     style="width: 176px" @change="assignTo">
+            <el-option v-for="p in people" :key="p.username" :value="p.username"
+                       :label="(p.displayName || p.username) + ' · ' + p.role" />
+          </el-select>
+          <el-button v-if="order.assignee" link type="info" size="small" @click="assignTo('')">
+            {{ t('maint.unassign') }}
+          </el-button>
+        </template>
+      </div>
+
       <!-- 历史样本：闭环有没有用的最直观证据 -->
       <div v-if="history.length" class="hist">
         <div class="h-head">{{ t('maint.historyTitle', { n: history.length }) }}</div>
@@ -99,11 +118,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, watch } from 'vue'
+import { computed, ref, reactive, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Loading } from '@element-plus/icons-vue'
-import { maintApi, type MaintOrder, type MaintSample } from '@/api/maint'
+import { maintApi, type MaintAssignee, type MaintOrder, type MaintSample } from '@/api/maint'
+import { useAuthStore } from '@/stores/auth'
 
 const { t } = useI18n()
 
@@ -121,6 +141,16 @@ const order = ref<MaintOrder | null>(null)
 const history = ref<MaintSample[]>([])
 const categories = ref<{ value: string; text: string }[]>([])
 
+// ---- 派工（DH-85）----
+// 前端藏按钮 ≠ 权限：这里只是「不给不能派的人显示下拉」，真正的门在 SecurityConfig（403 兜底）
+const auth = useAuthStore()
+const people = ref<MaintAssignee[]>([])
+const pick = ref('')
+const canAssign = computed(() =>
+  ['ADMIN', 'MANAGER', 'LEADER'].includes(auth.user?.role || ''))
+const isDone = computed(() =>
+  order.value?.status === 'RESOLVED' || order.value?.status === 'CANCELLED')
+
 const fm = reactive({
   causeCategory: '',
   rootCause: '',
@@ -130,6 +160,7 @@ const fm = reactive({
 })
 
 function reset() {
+  pick.value = ''
   order.value = null
   history.value = []
   err.value = ''
@@ -138,6 +169,39 @@ function reset() {
   fm.solution = ''
   fm.partsReplaced = ''
   fm.downtimeMin = null
+}
+
+/** 可选人员：拉一次就够（同一个会话里人员不变） */
+async function loadPeople() {
+  if (people.value.length) return
+  try {
+    people.value = await maintApi.assignable()
+  } catch { /* 拉不到就不显示下拉，不影响看诊断 */ }
+}
+
+/** 指派；传空 = 取消指派 */
+async function assignTo(who: string) {
+  if (!order.value || isDone.value) return
+  try {
+    const r = await maintApi.assign(order.value.orderNo, who)
+    if (!r.ok) {
+      ElMessage.error(r.message || t('common.reqFail'))
+      pick.value = ''
+      return
+    }
+    order.value = r.order || order.value
+    ElMessage.success(r.message || t('maint.assignOk'))
+    emit('changed')
+  } catch (e) {
+    ElMessage.error((e as Error)?.message || t('common.reqFail'))
+  }
+  pick.value = ''
+}
+
+/** 显示姓名，查不到就退回用户名 */
+function nameOf(username: string) {
+  const p = people.value.find(x => x.username === username)
+  return p?.displayName || username
 }
 
 async function loadCategories() {
@@ -152,7 +216,7 @@ async function loadCategories() {
 watch(() => props.modelValue, async (open) => {
   if (!open || !props.alarm) return
   reset()
-  await loadCategories()
+  await Promise.all([loadCategories(), loadPeople()])
   loading.value = true
   try {
     const r = await maintApi.analyze(props.alarm.id)
@@ -212,6 +276,10 @@ function close() {
 </script>
 
 <style scoped>
+.assign-row { display: flex; align-items: center; gap: 8px; margin: 4px 0 12px; flex-wrap: wrap; }
+.assign-k { font-size: 13px; color: var(--el-text-color-secondary); }
+.assign-none { font-size: 13px; color: var(--el-text-color-placeholder); }
+
 .who { display: flex; align-items: center; gap: 8px; font-size: var(--text-sm); margin-bottom: var(--space-3); flex-wrap: wrap; }
 .who em { font-style: normal; color: var(--muted); }
 .who .msg { color: var(--muted); }

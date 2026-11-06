@@ -14,6 +14,15 @@ public interface ErpMaintOrderRepository extends JpaRepository<ErpMaintOrder, Lo
     Optional<ErpMaintOrder> findByOrderNo(String orderNo);
 
     /**
+     * 我的待办（DH-85）：派给某人的、未结案的工单。
+     * <p>
+     * 未结案 = ANALYZED（已分析待处理）+ IN_PROGRESS（处理中）。
+     * 走 idx_mo_assignee(assignee, status) 索引。
+     */
+    List<ErpMaintOrder> findByAssigneeAndStatusInOrderByAssignedAtDesc(
+            String assignee, List<String> statuses);
+
+    /**
      * 历史样本：同一台设备 + 同一个报警码，已经结案的维修记录。
      * <p>
      * 这是「AI 会越用越准」的数据来源——下次同类报警时把这些当参考喂给模型，

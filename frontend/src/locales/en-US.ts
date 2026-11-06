@@ -749,6 +749,11 @@ export default {
     needCategory: 'Pick a cause category: without it we cannot tell what mostly breaks on this machine',
     needCause: 'Write the actual cause — it is the only reference for the next similar alarm',
     resolvedOk: 'Closed. This experience will be used for the next similar alarm.',
+    assignee: 'Assignee',
+    unassigned: 'Unassigned',
+    pickWho: 'Pick a person',
+    unassign: 'Unassign',
+    assignOk: 'Assigned',
   },
   alarm: {
     open: 'Open',

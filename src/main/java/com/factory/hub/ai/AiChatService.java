@@ -77,6 +77,12 @@ public class AiChatService {
     private final ErpWorkOrderService workOrderService;
     private final ErpCostService costService;
     private final EnergyService energyService;
+
+    // ---- DH-85：AI 的「动作层」 ----
+    // 之前 12 个工具全是 query_*，AI 只能给建议。有了这两个，AI 才「会办事」。
+    // 安全底线见 SPEC-DH85 §2.2/§2.3：权限不放大（用当前用户角色校验）、写操作必落审计。
+    private final com.factory.hub.erp.ErpMaintService maintService;
+    private final com.factory.hub.audit.AuditService audit;
     /**
      * 设备侧日报（OEE 在这里）。注意别和 {@link ErpReportService} 混了：
      * 那个是 ERP 经营报表（进销存/销售额），这个是设备产量与 OEE。
@@ -94,7 +100,9 @@ public class AiChatService {
                          AiChatLogRepository chatRepo, ErpReportService reportService,
                          ErpWorkOrderService workOrderService, ErpCostService costService,
                          EnergyService energyService,
-                         com.factory.hub.report.ReportService deviceReportService) {
+                         com.factory.hub.report.ReportService deviceReportService,
+                         com.factory.hub.erp.ErpMaintService maintService,
+                         com.factory.hub.audit.AuditService audit) {
         this.configStore = configStore;
         this.client = client;
         this.mapper = mapper;
@@ -112,6 +120,8 @@ public class AiChatService {
         this.costService = costService;
         this.energyService = energyService;
         this.deviceReportService = deviceReportService;
+        this.maintService = maintService;
+        this.audit = audit;
     }
 
     /* ==================== 工具定义 ==================== */
@@ -188,6 +198,40 @@ public class AiChatService {
                                 "orderNo", Map.of("type", "string", "description", "工单号，mode=order 时必填")),
                         "required", List.of()),
                 MANAGER_UP));
+        // ---------- DH-85：从「只会查」到「会办事」 ----------
+        // 先要有能列出**具体对象**的读工具：query_alarms 只给汇总数字，
+        // 模型拿不到报警事件 id，就没法说「给这一条建单」——
+        // 没有这一条，下面两个写工具等于废的。
+        list.add(new Tool("query_alarm_events",
+                "列出未处理的报警事件（含 alarmEventId，建维修单要用它）。参数：limit 条数（默认 10，最多 20）",
+                Map.of("type", "object",
+                        "properties", Map.of(
+                                "limit", Map.of("type", "integer", "description", "返回条数，默认 10")),
+                        "required", List.of()),
+                SHOP_FLOOR));
+        list.add(new Tool("create_maint_order",
+                "从一条报警事件创建维修工单（会落库并写审计）。参数：alarm_event_id 报警事件 id（必填，"
+                        + "从 query_alarm_events 取）；assignee 指派给谁的用户名（可选，只能是 ADMIN/MANAGER/LEADER）；"
+                        + "advice 你的判断与建议（可选，会存进工单的 AI 建议里）",
+                Map.of("type", "object",
+                        "properties", Map.of(
+                                "alarm_event_id", Map.of("type", "integer",
+                                        "description", "报警事件 id，从 query_alarm_events 的结果里取"),
+                                "assignee", Map.of("type", "string",
+                                        "description", "指派给谁（用户名），可空"),
+                                "advice", Map.of("type", "string",
+                                        "description", "你的判断与建议，会存进工单")),
+                        "required", List.of("alarm_event_id")),
+                SHOP_FLOOR));
+        list.add(new Tool("assign_maint_order",
+                "把一张维修工单指派给某个人（会落库并写审计）。参数：order_no 工单号（必填，形如 MO20261106001）；"
+                        + "assignee 指派给谁的用户名（必填，只能是 ADMIN/MANAGER/LEADER）",
+                Map.of("type", "object",
+                        "properties", Map.of(
+                                "order_no", Map.of("type", "string", "description", "维修工单号"),
+                                "assignee", Map.of("type", "string", "description", "指派给谁（用户名）")),
+                        "required", List.of("order_no", "assignee")),
+                SHOP_FLOOR));
         return list;
     }
 
@@ -288,7 +332,7 @@ public class AiChatService {
 
                 for (AiClient.ToolCall c : r.toolCalls()) {
                     long t0 = System.currentTimeMillis();
-                    String result = runTool(role, defs, c);
+                    String result = runTool(role, userKey, defs, c);
                     trace.add(Map.of("name", c.name(),
                             "args", safeJson(c.arguments()),
                             "ms", System.currentTimeMillis() - t0));
@@ -317,7 +361,7 @@ public class AiChatService {
     /* ==================== 工具执行 ==================== */
 
     /** 每个工具的查询都写死在这里；AI 只能传关键词/条数这种粒度 */
-    private String runTool(String role, List<Tool> defs, AiClient.ToolCall call) {
+    private String runTool(String role, String operator, List<Tool> defs, AiClient.ToolCall call) {
         Tool def = null;
         for (Tool t : defs) {
             if (t.name().equals(call.name())) {
@@ -354,6 +398,12 @@ public class AiChatService {
                 case "query_energy" -> energy(num(args.get("days"), 30));
                 case "query_oee" -> oee();
                 case "query_cost" -> cost(str(args.get("mode")), str(args.get("orderNo")), num(args.get("days"), 30));
+                // ---- DH-85：写操作（AI 从「会说」到「会办」）----
+                // 权限已经在上面 def.roles() 里校验过一次；这两个方法内部再做一次真实角色校验，
+                // 因为工具角色集合是静态的，而 AI 是替**当前登录用户**办事（SPEC-DH85 §2.2）。
+                case "query_alarm_events" -> alarmEvents(num(args.get("limit"), 10));
+                case "create_maint_order" -> createMaintOrder(args, role, operator);
+                case "assign_maint_order" -> assignMaintOrder(args, role, operator);
                 default -> err("未实现的工具");
             };
             String json = mapper.writeValueAsString(data);
@@ -362,8 +412,102 @@ public class AiChatService {
             }
             return json;
         } catch (Exception e) {
-            return err("查询失败：" + e.getMessage());
+            return err("执行失败：" + e.getMessage());
         }
+    }
+
+    // ==================== DH-85：AI 的动作层 ====================
+
+    /**
+     * 列出未处理的报警事件（含 id）。
+     * <p>
+     * 为什么要这个工具：`query_alarms` 只给汇总数字（几条未处理），模型拿不到事件 id，
+     * 就说不出「给这一条建单」—— 写工具会因为没有入参而形同虚设。
+     * **AI 要能办事，首先得看得见具体的对象。**
+     */
+    private List<Map<String, Object>> alarmEvents(int limit) {
+        int n = Math.max(1, Math.min(20, limit));
+        Map<String, Object> r = alarmService.list("OPEN", null, null, null, 0, n);
+        List<Map<String, Object>> out = new ArrayList<>();
+        Object items = r.get("items");
+        if (items instanceof List<?> rows) {
+            for (Object o : rows) {
+                if (!(o instanceof com.factory.hub.alarm.AlarmEvent e)) {
+                    continue;
+                }
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("alarmEventId", e.getId());
+                m.put("deviceCode", e.getDeviceCode());
+                m.put("deviceName", e.getDeviceName());
+                m.put("level", e.getLevel());
+                m.put("text", e.getMessage() == null ? e.getRuleName() : e.getMessage());
+                m.put("alarmValue", e.getValue());
+                m.put("startedAt", e.getStartedAt());
+                out.add(m);
+            }
+        }
+        return out;
+    }
+
+    /**
+     * AI 建维修工单（写操作）。
+     * <p>
+     * 三道底线（SPEC-DH85 §2.2/§2.3）：
+     * ① <b>权限不放大</b>：工具角色集合已校验一次，这里再按当前用户角色校验一次
+     * ② <b>必写审计</b>，action 带 {@code ai.} 前缀 —— 出事要能分清是人点的还是模型干的
+     * ③ 业务失败要把原因原话返回给模型（它会转述给用户），不要把异常堆栈丢出去
+     */
+    private Object createMaintOrder(Map<String, Object> args, String role, String operator) {
+        if (!SHOP_FLOOR.contains(role)) {
+            return toolFail("当前角色（" + roleLabel(role) + "）没有创建维修工单的权限");
+        }
+        int alarmId = num(args.get("alarm_event_id"), -1);
+        if (alarmId < 0) {
+            return toolFail("缺少 alarm_event_id，请先用 query_alarm_events 查出报警事件 id");
+        }
+        String assignee = str(args.get("assignee"));
+        String advice = str(args.get("advice"));
+        Map<String, Object> r = maintService.createFromAlarm((long) alarmId, assignee, advice, operator);
+        if (!Boolean.TRUE.equals(r.get("ok"))) {
+            audit.fail(com.factory.hub.audit.AuditLog.CAT_SYSTEM, "ai.create_maint_order",
+                    "maint", "AI 建维修单",
+                    "报警#" + alarmId + (assignee == null ? "" : " 指派=" + assignee),
+                    String.valueOf(r.get("message")));
+            return toolFail(String.valueOf(r.get("message")));
+        }
+        Object order = r.get("order");
+        String no = order instanceof Map<?, ?> m ? String.valueOf(m.get("orderNo")) : "?";
+        audit.ok(com.factory.hub.audit.AuditLog.CAT_SYSTEM, "ai.create_maint_order",
+                "maint", "AI 建维修单 " + no,
+                "由 " + operator + " 通过 AI 助手发起；报警#" + alarmId
+                        + (assignee == null ? "" : "，指派给 " + assignee));
+        return r;
+    }
+
+    /** AI 指派维修工单（写操作）。底线同上。 */
+    private Object assignMaintOrder(Map<String, Object> args, String role, String operator) {
+        if (!SHOP_FLOOR.contains(role)) {
+            return toolFail("当前角色（" + roleLabel(role) + "）没有派工的权限");
+        }
+        String orderNo = str(args.get("order_no"));
+        String assignee = str(args.get("assignee"));
+        if (orderNo == null || orderNo.isBlank()) {
+            return toolFail("缺少 order_no（维修工单号，形如 MO20261106001）");
+        }
+        if (assignee == null || assignee.isBlank()) {
+            return toolFail("缺少 assignee（要指派给谁）");
+        }
+        Map<String, Object> r = maintService.assign(orderNo, assignee, operator);
+        if (!Boolean.TRUE.equals(r.get("ok"))) {
+            audit.fail(com.factory.hub.audit.AuditLog.CAT_SYSTEM, "ai.assign_maint_order",
+                    "maint", "AI 派工 " + orderNo, "指派给 " + assignee,
+                    String.valueOf(r.get("message")));
+            return toolFail(String.valueOf(r.get("message")));
+        }
+        audit.ok(com.factory.hub.audit.AuditLog.CAT_SYSTEM, "ai.assign_maint_order",
+                "maint", "AI 派工 " + orderNo,
+                "由 " + operator + " 通过 AI 助手发起；指派给 " + assignee);
+        return r;
     }
 
     private Map<String, Object> stock(int limit, String kw, String category) {
@@ -819,6 +963,16 @@ public class AiChatService {
         } catch (Exception e) {
             return String.valueOf(raw);
         }
+    }
+
+    /** 写工具失败：返回结构化的 {ok:false,error}，不要用 err() ——
+     * err() 返回的是已经序列化过的 JSON 字符串，再被外层 writeValueAsString 序列化一次
+     * 会变成 "{\"error\":...}" 这种转义字符串，模型要多解析一层。 */
+    private static Map<String, Object> toolFail(String msg) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("ok", false);
+        m.put("error", msg);
+        return m;
     }
 
     private String err(String msg) {
