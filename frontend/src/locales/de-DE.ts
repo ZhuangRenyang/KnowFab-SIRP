@@ -111,5 +111,15 @@ export default {
     networkError: 'Server nicht erreichbar. Prüfen Sie, ob der Dienst läuft.',
     failed: 'Anmeldung fehlgeschlagen',
     expired: 'Sitzung abgelaufen, bitte erneut anmelden'
+  },
+  /**
+   * Nur die OPC-UA-Hinweise dieses Blocks sind übersetzt.
+   * Alle übrigen devForm.*-Schlüssel fehlen hier bewusst und fallen
+   * über fallbackLocale (zh-CN) auf das Quelltext-Chinesisch zurück —
+   * es wird nie der Schlüsselname selbst angezeigt.
+   */
+  devForm: {
+    opcuaHint: 'OPC-UA-Punkte adressieren Knoten über die nodeId (Schreibweise wie in UaExpert); beide Schreibweisen werden unterstützt: ein String-Knoten wie ns=2;s=Machine1.Output und ein binärer ByteString-Knoten wie ns=2;b=QUJDRA==. Der ns-Index ist herstellerspezifisch (S7-1500 meist ns=3, Inovance meist ns=4) — richten Sie sich nach dem, was vor Ort zu sehen ist.',
+    opcuaHostHint: 'Geben Sie im Feld „IP-Adresse“ nur die reine IP-Adresse bzw. den Hostnamen ein (z. B. 192.168.1.10) — ohne opc.tcp://-Präfix, ohne Portnummer und ohne Pfad. Die Portnummer tragen Sie im Feld „Port“ ein.'
   }
 }

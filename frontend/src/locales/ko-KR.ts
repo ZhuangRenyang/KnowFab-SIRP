@@ -111,5 +111,14 @@ export default {
     networkError: '서버에 연결할 수 없습니다. 서비스가 실행 중인지 확인하세요.',
     failed: '로그인에 실패했습니다',
     expired: '세션이 만료되었습니다. 다시 로그인하세요'
+  },
+  /**
+   * 이 블록에서 번역한 것은 OPC UA 안내 문구뿐입니다.
+   * 나머지 devForm.* 키는 의도적으로 비워 두고 fallbackLocale(zh-CN)로
+   * 원문 중국어로 대체됩니다. 키 이름 자체가 화면에 나오지는 않습니다.
+   */
+  devForm: {
+    opcuaHint: 'OPC UA 포인트는 nodeId로 노드를 지정합니다(표기법은 UaExpert와 동일). 문자열 노드(ns=2;s=Machine1.Output)뿐 아니라 이진 ByteString 노드(ns=2;b=QUJDRA==)도 사용할 수 있습니다. ns 인덱스는 제조사에 따라 다릅니다(S7-1500은 대체로 ns=3, Inovance는 대체로 ns=4) — 현장에서 확인한 값을 기준으로 하세요.',
+    opcuaHostHint: '「IP 주소」에는 IP 주소 또는 호스트명만 입력하세요(예: 192.168.1.10). opc.tcp:// 접두어나 포트 번호, 경로는 붙이지 마세요. 포트는 「포트」 항목에 입력합니다.'
   }
 }

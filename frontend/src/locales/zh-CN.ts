@@ -1309,7 +1309,8 @@ export default {
     writableHintB: '，只支持线圈（functionCode 1）与保持寄存器（functionCode 3）。',
     writableHintC: '不勾就是只读',
     writableHintD: '——系统默认永远不会写设备。',
-    opcuaHint: 'OPC UA 点表用 nodeId 定位节点（写法同 UaExpert），如 ns=2;s=Machine1.Output；ns 索引各品牌不同（S7-1500 常见 ns=3，汇川常见 ns=4），请以现场看到的为准。',
+    opcuaHint: 'OPC UA 点表用 nodeId 定位节点（写法同 UaExpert），两种写法都支持：字符串节点如 ns=2;s=Machine1.Output，二进制 ByteString 节点如 ns=2;b=QUJDRA==；ns 索引各品牌不同（S7-1500 常见 ns=3，汇川常见 ns=4），请以现场看到的为准。',
+    opcuaHostHint: 'IP 地址栏只填纯 IP 或主机名（如 192.168.1.10），不要带 opc.tcp:// 前缀、端口号或路径；端口号在「端口」栏单独填。',
     pointsPh: '点表 JSON 数组',
     cancel: '取消',
     save: '保存'

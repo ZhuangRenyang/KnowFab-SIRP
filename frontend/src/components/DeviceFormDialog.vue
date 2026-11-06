@@ -46,6 +46,11 @@
         <el-form-item :label="t('devForm.host')"><el-input v-model="f.host" :placeholder="t('devForm.hostPh')" /></el-form-item>
         <el-form-item :label="t('devForm.port')"><el-input-number v-model="f.port" :min="1" :max="65535" /></el-form-item>
       </div>
+      <!-- OPC UA 的 host 语义与 Modbus 不同：只填 IP/主机名，协议前缀与端口由系统拼。
+           单独占一行（不塞进 el-form-item），否则提示会把 host/port 两个输入框顶得高低不齐。 -->
+      <div v-if="isOpcUa" class="hint" style="margin:-6px 0 8px 130px">
+        {{ t('devForm.opcuaHostHint') }}
+      </div>
       <div v-if="isRtuTcp" class="frow">
         <el-form-item :label="t('devForm.unitId')">
           <el-input-number v-model="f.unitId2" :min="1" :max="247" />
