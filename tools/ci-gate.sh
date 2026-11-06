@@ -36,47 +36,62 @@ MVN="${MVN:-mvn}"
 SKIP_BE=0
 SKIP_FE=0
 ONLY_OPCUA=0
+LIST_ONLY=0
 
 for a in "$@"; do
   case "$a" in
     --skip-be) SKIP_BE=1 ;;
     --skip-fe) SKIP_FE=1 ;;
     --only-opcua) ONLY_OPCUA=1 ;;
+    --list-checks) LIST_ONLY=1 ;;
     -h|--help) sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-    *) echo "未知参数：$a（--skip-be / --skip-fe / --only-opcua / -h）" >&2; exit 2 ;;
+    *) echo "未知参数：$a（--skip-be / --skip-fe / --only-opcua / --list-checks / -h）" >&2; exit 2 ;;
   esac
 done
 
 OK=0; FAIL=0
 FAILED=()
 
-say()  { printf '\n\033[1m== %s\033[0m\n' "$*"; }
+say()  { [ "$LIST_ONLY" = "1" ] && return 0; printf '\n\033[1m== %s\033[0m\n' "$*"; }
 line() { printf '  %s %-24s %s\n' "$1" "$2" "$3"; }
 
 # 前置：工具在不在。
 # 为什么单独查：「命令不存在」也会产生输出（"mvn: command not found"），
 # 所以下面 check 函数的「断言有输出」抓不住它 —— 必须在这里先卡住。
 # （2026-11-06 在 Linux 服务器上真跑时撞到：没装 mvn，测试没跑但门禁只报了别的错。）
-for tool in node npm; do
-  if ! command -v "$tool" >/dev/null 2>&1; then
-    echo "缺少 $tool —— 门禁跑不了" >&2
+if [ "$LIST_ONLY" -eq 0 ]; then
+  for tool in node npm; do
+    if ! command -v "$tool" >/dev/null 2>&1; then
+      echo "缺少 $tool —— 门禁跑不了" >&2
+      exit 2
+    fi
+  done
+  if { [ "$SKIP_BE" -eq 0 ] || [ "$ONLY_OPCUA" -eq 1 ]; } \
+     && ! command -v "$MVN" >/dev/null 2>&1 && [ ! -x "$MVN" ]; then
+    echo "缺少 Maven（$MVN）—— 用 MVN=/path/to/mvn 指定" >&2
     exit 2
   fi
-done
-if { [ "$SKIP_BE" -eq 0 ] || [ "$ONLY_OPCUA" -eq 1 ]; } \
-   && ! command -v "$MVN" >/dev/null 2>&1 && [ ! -x "$MVN" ]; then
-  echo "缺少 Maven（$MVN）—— 用 MVN=/path/to/mvn 指定" >&2
-  exit 2
 fi
 
 # check <名称> <日志文件> <命令...>
 # 关键：**必须断言脚本确有输出**。
 #   光看退出码抓不住「校验器被改残、永远 exit 0」这种假绿
 #   —— 这是本项目真实栽过的坑（见文件头注释）。
+# 正常跑一遍时门禁会做哪些检查（--list-checks 打印它）。
+# ⚠️ **清单必须与实际执行同源** ⇒ 名字在 check() 里登记，
+#   而不是另写一份硬编码的清单 —— 另写一份就会出现「清单说有、实际没跑」，
+#   那又是一个假绿（运维专家 2026-11-06 实测过：把整块检查删掉，自检照样全绿）。
+CHECK_NAMES=()
+
 check() {
   local name="$1"; shift
   local log="$1"; shift
   local t0=$SECONDS
+  CHECK_NAMES+=("$name")
+  # 干跑模式：只登记检查项，不执行任何一项（秒级、不需要 maven/node）
+  if [ "$LIST_ONLY" = "1" ]; then
+    return 0
+  fi
   mkdir -p "$(dirname "$log")"
   if "$@" >"$log" 2>&1; then
     if [ ! -s "$log" ]; then
@@ -109,15 +124,33 @@ line "·" "npm"   "$(npm -v 2>/dev/null || echo '缺失')"
 #   ② **开发时也用得上**：只想确认「生产类路径这条路还通不通」时，
 #      不用等整个门禁跑完。
 # ⚠️ 它仍然要 maven（verify 脚本要算类路径），但**不需要 mvn test**。
-if [ "$ONLY_OPCUA" -eq 1 ]; then
-  say "OPC UA 生产运行时类路径"
+# ---------- OPC UA 生产运行时类路径（主干与旁路共用这一个函数）----------
+# ⚠️ **为什么要合并成一处**：之前 `--only-opcua` 旁路与 SKIP_BE=0 主干各写了一遍，
+#   两处逻辑重复但互不相干 ⇒ 改一处忘一处，本轮就栽过：
+#   旁路有、主干没有 ⇒ 「自检里出现一条绿色的『✓ 摘除检测』，但它红的是旁路，
+#   跟主干被删毫无关系」—— **一个证明不了它想证明那件事的变异，不只是无效，是误导**
+#   （运维专家 2026-11-06 两次实验坐实：主干被删 ⇒ 自检 12/0 全绿还自夸「门禁确实会红」）。
+#   ⇒ 现在两处都调它，--list-checks 的清单也从它这里生成 ⇒ 清单与执行不会漂。
+#
+# ⚠️ 端口用 0（让 OS 分配空闲端口）：固定端口在 Windows 上第二次跑会
+#   BindException: Address already in use（TIME_WAIT）⇒ **flaky 的门禁比没有门禁更糟**
+#   （跑十次红一次，大家就会开始忽略它 ⇒ 门禁废了）。
+run_opcua_check() {
   if [ ! -f tools/verify-opcua-boot4.sh ]; then
+    # 脚本不在 ⇒ 这一项必须红（门禁里少了一项 = 没人守着了）
+    CHECK_NAMES+=("OPC UA 生产类路径")
+    [ "$LIST_ONLY" = "1" ] && return 0
     line "✗" "OPC UA 生产类路径" "找不到 tools/verify-opcua-boot4.sh"
     FAIL=$((FAIL + 1)); FAILED+=("OPC UA 生产类路径")
-  else
-    check "OPC UA 生产类路径" "target/_ci-opcua.log" \
-      bash tools/verify-opcua-boot4.sh "${OPCUA_PORT:-14840}"
+    return 1
   fi
+  check "OPC UA 生产类路径" "target/_ci-opcua.log" \
+    bash tools/verify-opcua-boot4.sh "${OPCUA_PORT:-0}"
+}
+
+if [ "$ONLY_OPCUA" -eq 1 ]; then
+  say "OPC UA 生产运行时类路径"
+  run_opcua_check
   say "汇总"
   echo "  通过 $OK / 失败 $FAIL / 总耗时 $((SECONDS - START)) 秒"
   if [ "$FAIL" -gt 0 ]; then
@@ -141,6 +174,7 @@ if [ "$SKIP_BE" -eq 0 ]; then
   REPORT_N=$(ls target/surefire-reports/*.txt 2>/dev/null | wc -l | tr -d ' ')
   CASE_N=$(grep -h "Tests run:" target/surefire-reports/*.txt 2>/dev/null \
            | sed -n 's/.*Tests run: \([0-9]\+\).*/\1/p' | awk '{s+=$1} END {print s+0}')
+  CHECK_NAMES+=("surefire 报告")
   if [ "$REPORT_N" -gt 0 ] && [ "$CASE_N" -gt 0 ]; then
     line "✓" "surefire 报告" "$REPORT_N 个文件 / $CASE_N 个用例"
   else
@@ -166,14 +200,11 @@ fi
 #   写死 `;` 在 Linux 上会把整条类路径拼成一段 → Java 找不到类。
 #   ⇒ **「本地全绿 ≠ CI 能跑」**（1.0.28 就是这么漏掉的）。
 #   本地跑请用：`bash tools/verify-opcua-boot4.sh`
-if [ "$SKIP_BE" -eq 0 ] && [ -f tools/verify-opcua-boot4.sh ]; then
+if [ "$SKIP_BE" -eq 0 ]; then
   say "OPC UA 生产运行时类路径"
-  # 端口用 14840（脚本默认值）。CI 上并发只有一个 job，不会撞。
-  check "OPC UA 生产类路径" "target/_ci-opcua.log" \
-    bash tools/verify-opcua-boot4.sh "${OPCUA_PORT:-14840}"
-elif [ "$SKIP_BE" -eq 0 ]; then
-  line "✗" "OPC UA 生产类路径" "找不到 tools/verify-opcua-boot4.sh"
-  FAIL=$((FAIL + 1)); FAILED+=("OPC UA 生产类路径")
+  # ⚠️ 这一行是**主干挂载点**（CI 里真正跑的就是它）。
+  #   删掉它 = 这项检查从门禁上消失 ⇒ 自检的「常态断言」必须能发现（见 ci-gate-selftest.sh）。
+  run_opcua_check
 else
   line "—" "OPC UA 生产类路径" "跳过（--skip-be）"
 fi
@@ -222,6 +253,7 @@ if [ "$SKIP_FE" -eq 0 ]; then
     # node_modules 已存在就跳过安装（CI 里不存在，所以 CI 一定会真跑 npm ci）。
     # 这样 tools/ci-gate-selftest.sh 连跑 8 次门禁时不会每次都花 77 秒重装。
     if [ -d node_modules ] && [ -z "${CI_FORCE_INSTALL:-}" ]; then
+      CHECK_NAMES+=("npm ci")
       line "—" "npm ci" "跳过（node_modules 已存在；要强制重装用 CI_FORCE_INSTALL=1）"
     elif [ -f package-lock.json ]; then
       check "npm ci" "../target/_ci-npm.log" npm ci --no-fund --no-audit
@@ -235,6 +267,12 @@ if [ "$SKIP_FE" -eq 0 ]; then
     # 端口语义门禁：防「表单把未填端口兜成 502」这个坑被改回来。
     # 源码断言 + element-plus 真实行为断言（哨兵 null 不被夹、0 会被夹成 1）。
     check "端口语义门禁" "../target/_ci-port.log" npm run check:port
+    # ⭐ 端口门禁**自己的变异验证**（绿灯不等于没问题）：
+    #   上一行只证明「当前代码没漂移」，不证明「**门禁真的能拦住漂移**」。
+    #   这一行注入 14 个已知漂移（含 1 个反向对照），要求每个都红、诊断分类正确、
+    #   失败条数正好 —— ⇒ 证明上面那道门禁有鉴别力，而不是「恰好现在是绿的」。
+    #   约 15 秒；在隔离副本里做，不碰工作树。
+    check "端口门禁变异验证" "../target/_ci-port-mutation.log" npm run check:port-mutation
     cd "$ROOT" || exit 1
   fi
 
@@ -246,6 +284,20 @@ if [ "$SKIP_FE" -eq 0 ]; then
   fi
 else
   line "—" "前端" "跳过（--skip-fe）"
+fi
+
+# ---------- 干跑模式：打印「正常跑一遍时门禁会有哪些检查项」 ----------
+# ⚠️ 这份清单**不是另写一份硬编码的**，而是从上面真正执行检查的同一条路径收集来的
+#   （名字在 check() 里登记）⇒ 清单与执行**不可能漂**。
+#   漂了就会出现「清单说有、实际没跑」⇒ 那又是一个假绿。
+#   ⇒ 自检用它做「常态断言」：清单里必须含某些项，否则就是「这项检查从门禁上消失了」。
+if [ "$LIST_ONLY" = "1" ]; then
+  echo "门禁检查项清单（--list-checks 干跑，未执行任何检查）："
+  for n in "${CHECK_NAMES[@]}"; do
+    echo "  · $n"
+  done
+  echo "共 ${#CHECK_NAMES[@]} 项"
+  exit 0
 fi
 
 say "汇总"
