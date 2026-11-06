@@ -75,6 +75,30 @@
             <version>0.6.11</version>
         </dependency>
 
+        <!-- OPC UA 本地测试服务器（Eclipse Milo sdk-server，与 sdk-client 同版本 0.6.11）。
+             只在 test 作用域：现场真机是 S7-200，不支持 OPC UA，要证明驱动代码本身
+             在 Boot 4.1.2 下能建会话、读到点位值，只能本地起一个真 OPC UA Server 连。
+             生产代码不依赖它，交付包里也不会有它。 -->
+        <dependency>
+            <groupId>org.eclipse.milo</groupId>
+            <artifactId>sdk-server</artifactId>
+            <version>0.6.11</version>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- milo 0.6.11 的 stack-core 用的是 JAXB 2 的 javax.xml.bind.DatatypeConverter，
+             但 Spring Boot 4 把 jaxb-runtime 统一管理成 4.0.9（jakarta 命名空间），
+             javax.xml.bind 在 Boot 4 的类路径上整个消失。
+             这里只在 test 作用域补回 jaxb-api 2.3.1，让本地 OPC UA Server 能起来；
+             客户端二进制通道不碰它（见 OpcUaDriverBoot4ClasspathTest 的断言）。
+             ⚠️ 若现场点位用 ByteString 节点号（ns=2;b=...），生产运行时需要把它提到 runtime 作用域。 -->
+        <dependency>
+            <groupId>javax.xml.bind</groupId>
+            <artifactId>jaxb-api</artifactId>
+            <version>2.3.1</version>
+            <scope>test</scope>
+        </dependency>
+
         <!-- 报表导出 xlsx。选 POI 而不是手搓 XML：厂里要打印、要贴进月报，
              格式错了客户第一眼就否掉。 -->
         <dependency>
