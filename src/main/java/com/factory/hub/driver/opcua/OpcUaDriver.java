@@ -34,24 +34,21 @@ import java.util.concurrent.TimeUnit;
  * OPC UA 客户端驱动（Eclipse Milo）。
  * <p>
  * <b>为什么做这个协议</b>：西门子 S7-1500、汇川、欧姆龙 NX 等新 PLC 默认开 OPC UA Server，
- * 是比 Modbus 更现代的统一入口；比 EtherCAT 现实得多——EtherCAT 要专用网卡 + 实时内核，
- * 我们做的是数据系统，不跟运动控制抢实时性。
+ * 是比 Modbus 更现代的统一入口；比 EtherCAT 现实得多——EtherCAT 要专用网卡 + 实时内核。
  * <p>
- * <b>连接方式</b>：匿名 + SecurityPolicy.None（厂内网最常见配置，零门槛）。
- * 端口默认 4840（OPC UA 标准端口）。需要用户名认证的现场暂不支持——先用 Modbus 或让 PLC 开匿名。
+ * <b>连接方式</b>：匿名 + SecurityPolicy.None（厂内网最常见配置，零门槛）；需要用户名认证的现场暂不支持。
+ * 端口没填时用本协议的标准端口 4840 —— 默认端口是协议知识，由各协议自己的驱动兜底（Modbus 是 502）。
  * <p>
- * <b>端点 URL 形态</b>：拼出来的是 {@code opc.tcp://<host>:<port>}，<b>不带路径</b>。
- * milo 0.6.x 客户端只尝试「我们给它的 URL」与「那个 URL + /discovery」两个入口，
- * 而服务端只认自己 advertise 出来的 endpointUrl（尾斜杠会归一化）⇒ 两者必须对得上。
- * 服务端若把 endpoint 挂在子路径下（如 {@code opc.tcp://host:4840/milo}），这个驱动连不上，
- * 报错 {@code Bad_TcpEndpointUrlInvalid} —— <b>长得像「网络不通」，实际是「端点形态对不上」</b>。
- * 现场主流 PLC（Kepware / 西门子 S7-1500 / Ignition）都是不带路径的，所以默认没问题。
+ * <b>端点 URL 形态</b>：{@code opc.tcp://<host>:<port>}，<b>不带路径</b>。
+ * <b>端点匹配规则</b>（哪部分归一、哪部分不归一）见 {@link OpcUaEndpointUrl} 的类注释：
+ * <b>路径部分必须和服务端 advertise 的一致</b>，主机部分与尾斜杠会被归一。
+ * 现场遇到「连不上但设备明明开着」时先怀疑这条 —— 报错 {@code Bad_TcpEndpointUrlInvalid}
+ * <b>长得像「网络不通」，实际是「端点形态对不上」</b>。
  * <p>
  * <b>点表</b>：每个点位用 {@code nodeId} 指定节点，写法同 UaExpert：
- * {@code ns=2;s=Machine1.Output}、{@code ns=4;i=1234}。ns 索引各品牌不同，配错读不到值。
+ * {@code ns=2;s=Machine1.Output}、{@code ns=4;i=1234}（ns 索引各品牌不同，配错读不到值）。
  * <p>
- * <b>读取策略</b>：批量 Read（一次请求读全部点），和 Modbus 采集调度完全一致；
- * 后续如需降延迟可改订阅（Subscription），接口不用变。
+ * <b>读取策略</b>：批量 Read（一次请求读全部点），和 Modbus 采集调度完全一致；后续如需降延迟可改订阅，接口不用变。
  */
 public class OpcUaDriver implements ProtocolDriver {
 
@@ -96,16 +93,19 @@ public class OpcUaDriver implements ProtocolDriver {
                                 .build();
                         return cfg;
                     });
+            if (newClient == null) {
+                throw new IllegalStateException("OPC UA 端点无可用匿名通道（服务端禁用了 None 安全策略）: " + url);
+            }
+            // connect() 也放进 try：端点不匹配发生在 create() 阶段（所以现在翻译得到），
+            // 但将来任何 connect 阶段的失败都会漏翻译 —— 裸着抛 ExecutionException，
+            // 现场又只能看到「像网络不通」的堆栈。翻译器对非端点问题原样返回，不会误伤。
+            newClient.connect().get(reqTimeout, TimeUnit.MILLISECONDS);
         } catch (Exception e) {
             // 端点对不上时 milo 抛的是 Bad_TcpEndpointUrlInvalid / "unrecognized endpoint url"，
             // 最外层还包着 Netty 的 DecoderException —— 长得像网络不通。
             // 这里翻译成人话，否则现场会去查网线、查防火墙，而根因是端点形态不对。
             throw OpcUaEndpointErrors.translateEndpointFailure(e, url);
         }
-        if (newClient == null) {
-            throw new IllegalStateException("OPC UA 端点无可用匿名通道（服务端禁用了 None 安全策略）: " + url);
-        }
-        newClient.connect().get(reqTimeout, TimeUnit.MILLISECONDS);
         this.client = newClient;
         this.endpoint = url;
         log.info("OPC UA 已连接 {}", url);

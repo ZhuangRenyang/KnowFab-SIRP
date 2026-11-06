@@ -96,6 +96,19 @@ final class OpcUaTestServer implements AutoCloseable {
      * @return 已启动的 server（调用方负责 close）
      */
     static OpcUaTestServer start(int port) throws Exception {
+        return start(port, "");
+    }
+
+    /**
+     * 起一个本地 OPC UA Server，并挂好测试节点。
+     *
+     * @param port 监听端口；传 0 表示由系统分配一个空闲端口
+     * @param path endpoint 的路径部分；传 "" 是主流 PLC 形态（不带子路径），
+     *              传 "/subpath" 可以造出「服务端挂在子路径下」的形态 ——
+     *              那是端点错位唯一的现实来源（主机名与尾斜杠都会被归一，路径不会）
+     * @return 已启动的 server（调用方负责 close）
+     */
+    static OpcUaTestServer start(int port, String path) throws Exception {
         if (port <= 0) {
             port = findFreePort();
         }
@@ -107,13 +120,13 @@ final class OpcUaTestServer implements AutoCloseable {
                 .addIpAddress("127.0.0.1")
                 .build();
 
-        // 路径留空：驱动的 URL 是 opc.tcp://host:port，服务端必须正好是同一个 URL
+        // 默认路径留空：驱动的 URL 是 opc.tcp://host:port，服务端必须正好是同一个 URL
         EndpointConfiguration endpoint = EndpointConfiguration.newBuilder()
                 .setTransportProfile(TransportProfile.TCP_UASC_UABINARY)
                 .setBindAddress("127.0.0.1")
                 .setBindPort(port)
                 .setHostname("127.0.0.1")
-                .setPath("")
+                .setPath(path == null ? "" : path)
                 .setCertificate(certificate)
                 .setSecurityPolicy(SecurityPolicy.None)
                 .setSecurityMode(MessageSecurityMode.None)

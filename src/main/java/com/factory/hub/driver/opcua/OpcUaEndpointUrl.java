@@ -32,6 +32,25 @@ import org.slf4j.LoggerFactory;
  * 与其猜，不如当场报错让他改对。
  * <p>
  * 消毒后为空 → 抛明确异常，绝不拼出 {@code opc.tcp://:4840} 这种废 URL。
+ * <p>
+ * <b>端点匹配规则</b>（哪部分会被归一、哪部分不会 —— 实测，2026-11-06）：
+ * milo 0.6.x 客户端只尝试「我们给它的 URL」与「那个 URL + /discovery」两个入口，
+ * 而服务端只认自己 advertise 出来的 endpointUrl。对比结果：
+ * <ul>
+ *   <li><b>尾斜杠</b>：<b>归一</b>。{@code opc.tcp://host:port} 能匹配 advertise 的
+ *       {@code opc.tcp://host:port/}。</li>
+ *   <li><b>主机名</b>：<b>归一</b>（会解析）。服务端 advertise {@code 127.0.0.1} 时，
+ *       客户端连 {@code localhost} 照样连得上。</li>
+ *   <li><b>路径</b>：<b>不归一</b>。服务端 advertise {@code opc.tcp://host:port/subpath} 时，
+ *       客户端按 {@code opc.tcp://host:port} 连过去会被拒（Bad_TcpEndpointUrlInvalid）。</li>
+ * </ul>
+ * ⇒ 准确说法：<b>「你给客户端的 URL 的『路径部分』必须和服务端 advertise 的 endpointUrl
+ * 的路径部分一致；主机部分和尾斜杠都会被归一。」</b>
+ * ⇒ <b>端点错位的唯一现实来源就是「服务端把 endpoint 挂在子路径下」</b>。
+ * <p>
+ * <b>默认端口</b>：端口没填（{@code ctx} 里是 0）时用本协议的标准端口 4840。
+ * 「默认端口是多少」是协议知识，所以由协议自己的驱动/URL 构造器定义，
+ * 不写在实体、控制器这些协议无关的地方（那边只表达「未填」）。
  */
 final class OpcUaEndpointUrl {
 
