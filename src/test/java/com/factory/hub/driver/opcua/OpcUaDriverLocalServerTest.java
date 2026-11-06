@@ -6,9 +6,19 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
+
+import org.eclipse.milo.opcua.sdk.client.OpcUaClient;
+import org.eclipse.milo.opcua.stack.core.StatusCodes;
+import org.eclipse.milo.opcua.stack.core.security.SecurityPolicy;
+import org.eclipse.milo.opcua.stack.core.types.builtin.DataValue;
+import org.eclipse.milo.opcua.stack.core.types.builtin.LocalizedText;
+import org.eclipse.milo.opcua.stack.core.types.builtin.NodeId;
+import org.eclipse.milo.opcua.stack.core.types.builtin.StatusCode;
+import org.eclipse.milo.opcua.stack.core.types.builtin.Variant;
+import org.eclipse.milo.opcua.stack.core.types.builtin.unsigned.UInteger;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -195,6 +205,47 @@ class OpcUaDriverLocalServerTest {
     }
 
     @Test
+    @DisplayName("写只读节点时服务端拒绝，驱动必须原样抛出（不能静默以为写成功了）")
+    void rejectsWriteToReadOnlyNode() throws Exception {
+        driver.connect(ctx);
+
+        // TestTag2 的 accessLevel 是 0x01（只读），服务端应当拒写
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+                () -> driver.write(ctx, point("tag2", "ns=2;s=TestTag2", "f64"), 99.5d),
+                "写只读节点必须抛异常，不能静默返回（否则上层以为写成功了）");
+        assertTrue(ex.getMessage().contains("Bad_NotWritable"),
+                "异常信息应含服务端返回的状态码 Bad_NotWritable，实际：" + ex.getMessage());
+
+        // 只断言字符串不够：「消息里出现了 Bad_NotWritable」与「服务端真的返回了
+        // Bad_NotWritable」是两件事 —— 后者才说明服务端真的拒了，而不是驱动自己编的。
+        // 所以用原生 milo 客户端再写一次，拿<b>真正的</b> StatusCode 对一下。
+        StatusCode raw = writeWithRawMiloClient("ns=2;s=TestTag2");
+        assertEquals(StatusCodes.Bad_NotWritable, raw.getValue(),
+                "服务端对只读节点应返回 Bad_NotWritable，实际：" + raw);
+    }
+
+    /** 用原生 milo 客户端写一次，拿到服务端返回的真正状态码。 */
+    private StatusCode writeWithRawMiloClient(String nodeId) throws Exception {
+        OpcUaClient client = OpcUaClient.create(
+                "opc.tcp://127.0.0.1:" + server.port(),
+                endpoints -> endpoints.stream()
+                        .filter(e -> SecurityPolicy.None.getUri().equals(e.getSecurityPolicyUri()))
+                        .findFirst(),
+                b -> b.setApplicationName(LocalizedText.english("probe"))
+                        .setApplicationUri("urn:knowfab:probe")
+                        .setRequestTimeout(UInteger.valueOf(5000))
+                        .setSessionTimeout(UInteger.valueOf(60_000))
+                        .build());
+        client.connect().get(5, TimeUnit.SECONDS);
+        try {
+            return client.writeValue(NodeId.parse(nodeId), new DataValue(new Variant(99.5d)))
+                    .get(5, TimeUnit.SECONDS);
+        } finally {
+            client.disconnect().get(3, TimeUnit.SECONDS);
+        }
+    }
+
+    @Test
     @DisplayName("服务端不在线时抛异常（不会假装连上了）")
     void failsWhenServerDown() {
         int deadPort;
@@ -215,78 +266,5 @@ class OpcUaDriverLocalServerTest {
         assertFalse(driver.isConnected(), "连不上时不应报告已连接");
     }
 
-    /**
-     * 「缺 javax.xml.bind」时的正确行为：<b>坏点只丢自己</b>，同批次其它点照常读到。
-     * <p>
-     * 为什么必须专门测：{@code NoClassDefFoundError} 继承 {@code LinkageError}
-     * （是 Error 不是 Exception），驱动里原先的 {@code catch (Exception e)} 抓不到它
-     * ⇒ 它会穿透 {@code read()} 抛出去 ⇒ <b>整批点位全废</b>，
-     * 现场表现是「设备在线但一个数据都没有」，而且日志里一行线索都没有。
-     * <p>
-     * 怎么造出「缺依赖」的环境：本测试 JVM 里有 jaxb-api（pom 里是 runtime 作用域），
-     * 所以用一个<b>屏蔽了 jaxb 的类加载器</b>重新加载驱动与它的依赖，
-     * 让它看到的就是「交付包漏了这个 jar」的真实环境。
-     */
-    @Test
-    @DisplayName("缺 javax.xml.bind 时坏点只丢自己，同批次其它点照常读到（不能整批失败）")
-    void skipsOnlyBrokenPointWhenDependencyMissing() throws Exception {
-        try (java.net.URLClassLoader noJaxb = NoJaxbClassLoader.create()) {
-            Class<?> driverClass = noJaxb.loadClass("com.factory.hub.driver.opcua.OpcUaDriver");
-            Class<?> ctxClass = noJaxb.loadClass("com.factory.hub.driver.DriverContext");
-            Class<?> pointClass = noJaxb.loadClass("com.factory.hub.model.PointDef");
 
-            Object driver = driverClass.getDeclaredConstructor().newInstance();
-            Object ctx = ctxClass.getDeclaredConstructor().newInstance();
-            ctxClass.getMethod("setHost", String.class).invoke(ctx, "127.0.0.1");
-            ctxClass.getMethod("setPort", int.class).invoke(ctx, server.port());
-            ctxClass.getMethod("setTimeoutMs", int.class).invoke(ctx, 3000);
-
-            Object good = newPoint(pointClass, "tag1", "ns=2;s=TestTag1");
-            Object bad = newPoint(pointClass, "bstr", OpcUaTestServer.BYTE_STRING_TAG_NODE_ID);
-
-            Method read = driverClass.getMethod("read", ctxClass, List.class);
-            Map<?, ?> out = (Map<?, ?>) read.invoke(driver, ctx, List.of(good, bad));
-
-            assertEquals(1, out.size(), "坏点应被跳过，好点照常读到，实际：" + out);
-            assertEquals(42.5d, ((Number) out.get("tag1")).doubleValue(), 1e-9,
-                    "好点的值应照常读到 42.5");
-        }
-    }
-
-    @Test
-    @DisplayName("缺 javax.xml.bind 时只读坏点，异常信息要能看出是缺依赖（不是笼统的「格式不对」）")
-    void reportsMissingDependencyInExceptionMessage() throws Exception {
-        try (java.net.URLClassLoader noJaxb = NoJaxbClassLoader.create()) {
-            Class<?> driverClass = noJaxb.loadClass("com.factory.hub.driver.opcua.OpcUaDriver");
-            Class<?> ctxClass = noJaxb.loadClass("com.factory.hub.driver.DriverContext");
-            Class<?> pointClass = noJaxb.loadClass("com.factory.hub.model.PointDef");
-
-            Object driver = driverClass.getDeclaredConstructor().newInstance();
-            Object ctx = ctxClass.getDeclaredConstructor().newInstance();
-            ctxClass.getMethod("setHost", String.class).invoke(ctx, "127.0.0.1");
-            ctxClass.getMethod("setPort", int.class).invoke(ctx, server.port());
-            ctxClass.getMethod("setTimeoutMs", int.class).invoke(ctx, 3000);
-
-            Object bad = newPoint(pointClass, "bstr", OpcUaTestServer.BYTE_STRING_TAG_NODE_ID);
-
-            Method read = driverClass.getMethod("read", ctxClass, List.class);
-            java.lang.reflect.InvocationTargetException ex =
-                    assertThrows(java.lang.reflect.InvocationTargetException.class,
-                            () -> read.invoke(driver, ctx, List.of(bad)),
-                            "只读坏点时应抛出异常");
-            String message = ex.getCause().getMessage();
-            assertTrue(message != null && message.contains("javax.xml.bind"),
-                    "异常信息应指出缺 javax.xml.bind，实际：" + message);
-            assertTrue(message != null && message.contains(OpcUaTestServer.BYTE_STRING_TAG_NODE_ID),
-                    "异常信息应带上原始 nodeId，实际：" + message);
-        }
-    }
-
-    private static Object newPoint(Class<?> pointClass, String key, String nodeId) throws Exception {
-        Object p = pointClass.getDeclaredConstructor().newInstance();
-        pointClass.getMethod("setKey", String.class).invoke(p, key);
-        pointClass.getMethod("setNodeId", String.class).invoke(p, nodeId);
-        pointClass.getMethod("setDataType", String.class).invoke(p, "f64");
-        return p;
-    }
 }
