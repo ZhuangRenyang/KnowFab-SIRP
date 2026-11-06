@@ -507,7 +507,11 @@ public class ScreenService {
         if (p.contains("rtu") && !"modbus-rtu-tcp".equals(p)) {
             return "串口 " + d.getSerialPort() + " @" + d.getBaudRate();
         }
-        return (d.getHost() == null ? "?" : d.getHost()) + ":" + (d.getPort() == null ? 502 : d.getPort());
+        // 端口没填（null）时<b>不显示端口</b>：我们并不知道它会用哪个 ——
+        // 默认端口是协议知识（Modbus 502 / OPC UA 4840），由各协议自己的驱动兜底。
+        // 这里显示一个猜的 502 会和实际连的端口不一致（界面写 502、实际连 4840），
+        // 比不显示更害人：现场照着界面去查防火墙就查错端口了。
+        return (d.getHost() == null ? "?" : d.getHost()) + (d.getPort() == null ? "" : ":" + d.getPort());
     }
 
     private String statusText(int st) {

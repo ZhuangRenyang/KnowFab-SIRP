@@ -406,7 +406,10 @@ public class DeviceController {
         d.setLocation(req.location());
         d.setProtocol(req.protocol() == null ? "modbus-tcp" : req.protocol());
         d.setHost(req.host());
-        d.setPort(req.port() == null ? 502 : req.port());
+        // 端口：用户没填就存 null（= 未指定），<b>不替用户决定</b>。
+        // 默认端口是协议知识（Modbus 502 / OPC UA 4840），由各协议自己的驱动回落 ——
+        // 在这里填 502 会让「新建 OPC UA 设备不填端口」变成连 502，必然连不上。
+        d.setPort(req.port());
         d.setSerialPort(req.serialPort());
         d.setBaudRate(req.baudRate() == null ? 9600 : req.baudRate());
         d.setDataBits(req.dataBits() == null ? 8 : req.dataBits());

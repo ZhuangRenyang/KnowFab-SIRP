@@ -38,8 +38,17 @@ public class DeviceEntity {
     @Column(name = "host", length = 64)
     private String host = "127.0.0.1";
 
+    /**
+     * 设备端口。<b>null = 用户没填</b>，由各协议自己的驱动回落默认值
+     * （Modbus TCP/RTU-over-TCP 502、OPC UA 4840）。
+     * <p>
+     * <b>为什么不能在这里写死 502</b>：502 是 Modbus 的端口，写成全局默认就等于
+     * 「默认端口是协议无关的常量」—— 每接一个新协议就要改一遍这里，漏改的那个协议
+     * 就会去连错端口（OPC UA 之前就是这么漏的：新建 OPC UA 设备不填端口 ⇒ 落库 502
+     * ⇒ 驱动去连 502 ⇒ 必然连不上）。「默认端口是多少」属于<b>协议知识</b>。
+     */
     @Column(name = "port")
-    private Integer port = 502;
+    private Integer port;
 
     @Column(name = "serial_port", length = 32)
     private String serialPort = "COM3";

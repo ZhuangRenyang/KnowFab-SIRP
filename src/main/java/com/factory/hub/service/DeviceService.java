@@ -77,7 +77,10 @@ public class DeviceService {
         // 模拟器要靠编码算这台机器的产量速率（跟播种的演示数据同一套公式），
         // 不给的话两边对不上，OEE 的性能率会离谱
         ctx.setCode(d.getCode() == null ? "" : d.getCode());
-        ctx.setPort(d.getPort() == null ? 502 : d.getPort());
+        // 端口：没填就传 0（= 未指定），由各协议自己的驱动回落默认端口。
+        // 这里不替协议决定默认端口 —— Modbus 是 502、OPC UA 是 4840，
+        // 那是协议知识，写在控制器/实体里就变成「全局常量 502」，换个协议就要改一遍。
+        ctx.setPort(d.getPort() == null ? 0 : d.getPort());
         ctx.setSerialPort(d.getSerialPort());
         ctx.setBaudRate(d.getBaudRate() == null ? 9600 : d.getBaudRate());
         ctx.setDataBits(d.getDataBits() == null ? 8 : d.getDataBits());

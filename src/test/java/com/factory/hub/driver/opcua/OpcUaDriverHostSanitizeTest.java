@@ -88,6 +88,9 @@ class OpcUaDriverHostSanitizeTest {
                     "host=" + raw + " 带路径应明确报错");
             assertTrue(ex.getMessage().contains("不能带路径"),
                     "异常信息要说清是路径的问题，实际：" + ex.getMessage());
+            // 报错里要带原始输入：客户得知道自己填错了什么，才知道改哪
+            assertTrue(ex.getMessage().contains("原始输入"),
+                    "报错里要带原始输入，客户才知道改哪，实际：" + ex.getMessage());
         }
     }
 
@@ -139,6 +142,30 @@ class OpcUaDriverHostSanitizeTest {
             assertTrue(ex.getMessage().contains("主机地址"),
                     "异常信息要说清是主机地址的问题，实际：" + ex.getMessage());
         }
+    }
+
+    @Test
+    @DisplayName("端口没填（上下文里是 0）时 OPC UA 用自己的默认端口 4840")
+    void opcUaUsesItsOwnDefaultPort() {
+        // 「默认端口是多少」是协议知识：Modbus 502、OPC UA 4840，各驱动自己兜底。
+        // 上游（实体/控制器/上下文）现在统一传 0 表示「未填」，这里验的就是这一段。
+        DriverContext ctx = ctx("192.168.1.10", 0);
+        assertEquals("opc.tcp://192.168.1.10:4840", OpcUaEndpointUrl.build(ctx),
+                "端口未填时 OPC UA 应回落到 4840");
+
+        DriverContext explicit = ctx("192.168.1.10", 4841);
+        assertEquals("opc.tcp://192.168.1.10:4841", OpcUaEndpointUrl.build(explicit),
+                "用户填了端口就用填的");
+    }
+
+    @Test
+    @DisplayName("端口没填（上下文里是 0）且主机栏没端口时不该误报「端口不一致」")
+    void unfilledPortDoesNotTriggerMismatchError() {
+        // 这条是「端口默认值口径」改完之后才成立的：
+        // 之前端口没填会被上游填成 502，于是主机栏里的 :4840 被判成「不一致」而误报。
+        String url = OpcUaEndpointUrl.build(ctx("192.168.1.10:4840", 0));
+        assertEquals("opc.tcp://192.168.1.10:4840", url,
+                "端口未填时按协议兜底成 4840，主机栏里的 4840 与之一致 ⇒ 不该报错");
     }
 
     @Test

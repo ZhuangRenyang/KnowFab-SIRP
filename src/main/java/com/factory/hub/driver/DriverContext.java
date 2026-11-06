@@ -8,7 +8,15 @@ public class DriverContext {
     private String host = "127.0.0.1";
     /** 设备编码。模拟器要靠它算这台机器的产量速率（跟播种的演示数据用同一套公式） */
     private String code = "";
-    private int port = 502;
+    /**
+     * 设备端口。<b>0 = 未指定</b>，由各协议自己的驱动回落默认端口
+     * （Modbus TCP/RTU-over-TCP 502、OPC UA 4840）。
+     * <p>
+     * <b>为什么这里不写死 502</b>：502 是 Modbus 的端口，是协议知识，
+     * 不是所有协议的共同默认。写死在这里会让 OPC UA 之类的协议去连 502，
+     * 而且「协议默认端口」会散落在实体、控制器、上下文多处，改一处漏一处。
+     */
+    private int port = 0;
     private String serialPort = "COM3";
     private int baudRate = 9600;
     private int dataBits = 8;

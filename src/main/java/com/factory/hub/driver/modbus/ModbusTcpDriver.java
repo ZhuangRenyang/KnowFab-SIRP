@@ -18,6 +18,25 @@ import java.net.Socket;
  */
 public class ModbusTcpDriver extends AbstractModbusDriver {
 
+    /**
+     * Modbus TCP 的标准端口。端口没填时用它。
+     * <p>
+     * 「默认端口是多少」属于<b>协议知识</b>，所以定义在协议自己的驱动里 ——
+     * 写成全局常量（实体/控制器/上下文里各写一遍 502）的话，
+     * 每接一个新协议就要去改一遍，漏改的那个协议就会去连错端口。
+     */
+    public static final int DEFAULT_PORT = 502;
+
+    /**
+     * 实际使用的端口：没填（{@code <= 0}）时回落到本协议的默认端口。
+     * <p>
+     * 单独抽出来是为了能<b>直接测</b>：连不上时抛的是 SocketException，
+     * 里面看不出用的是哪个端口，光靠「连一次看报不报错」是验不出回落对不对的。
+     */
+    public static int resolvePort(DriverContext ctx) {
+        return ctx.getPort() <= 0 ? DEFAULT_PORT : ctx.getPort();
+    }
+
     private Socket socket;
     private InputStream in;
     private OutputStream out;
@@ -32,7 +51,10 @@ public class ModbusTcpDriver extends AbstractModbusDriver {
     public void connect(DriverContext ctx) throws Exception {
         disconnect();
         Socket s = new Socket();
-        s.connect(new InetSocketAddress(ctx.getHost(), ctx.getPort()), ctx.getTimeoutMs());
+        // 端口没填（ctx 里是 0）就用 Modbus TCP 的标准端口 502。
+        // 「默认端口是多少」是协议知识，所以由驱动自己定义 ——
+        // 全局写死一个数的话，换个协议就要去改那个数（OPC UA 之前就是这么漏的）。
+        s.connect(new InetSocketAddress(ctx.getHost(), resolvePort(ctx)), ctx.getTimeoutMs());
         s.setSoTimeout(ctx.getTimeoutMs());
         s.setTcpNoDelay(true);
         s.setKeepAlive(true);
