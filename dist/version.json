@@ -1,6 +1,6 @@
 {
   "version": "1.0.28",
-  "notes": "DH-80 库存口径收口；DH-81 计数器水位持久化；补建全新安装丢的排程索引（DH-84）",
+  "notes": "DH-80 库存口径收口；DH-81 计数器水位持久化；DH-84 补建全新安装丢的排程索引；修复重装时 install.sh 因 set -u 直接退出",
   "url": "https://gitee.com/ZhuangRenyang/KnowFab-SIRP/releases/download/v1.0.28/device-hub-1.0.28-update.zip",
-  "sha256": "1ea668d5b461184ba514fdc95dce658fa57c3c93694319889e1dcd6814e614fc"
+  "sha256": "09216ca4c593d732ce3aaaef7c92609f74974fd2a332d9ca1c255d9155e1bdf4"
 }
