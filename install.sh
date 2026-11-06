@@ -205,6 +205,39 @@ if [ -f "$HERE/$JAR" ]; then
 fi
 [ -f "$DIR/$JAR" ] || die "$DIR/$JAR 不存在，请把 device-hub.jar 和本脚本放同一目录"
 
+# 管理员初始密码：**固定 123456**（2026-11-04 用户明确要求）。
+# 之前这里是随机生成 + 写进 INITIAL_ADMIN.txt，有两个实际问题：
+#   ① 客户拿到包不知道密码（得先翻文件），而现场习惯就是先试 123456
+#   ② 库里已有 admin 时应用**不会**改密码 → 文件里那份随机密码永远登不进去
+# 现在密码固定，且装完会把它同步进数据库（见下面 RESET_ADMIN 那段）。
+ADMIN_PASS="123456"
+
+# 这两个只在 if 分支里生成配置时用到；先给空值，避免以后有人在块外引用
+# 又踩同一个 `set -u` 的坑（本文件已经因为这个栽过两次）。
+DB_URL=""
+DB_DRV=""
+
+# 库里有 admin 吗？**必须在下面的 if/else 之前探测。**
+# 应用启动时如果发现 sys_user 里已有用户，**不会**改密码（那是保护客户已改的密码），
+# 所以「库里已有 admin」时必须在装完时同步一次密码（见下面 RESET_ADMIN 那段）。
+#
+# 为什么不能放在 if 分支里（2026-11-06 真机实测踩到）：
+#   这段原来写在 `if [ ! -f application.yml ]` 的**if 分支内**，
+#   而第 400/423 行在块外读它。脚本头是 `set -euo pipefail`，
+#   于是**重装**（配置文件已存在 → 走 else 分支）时 $ADMIN_EXISTS 从未赋值
+#   → `unbound variable` → 当场退出，装不上。
+#   表现极具误导性：**全新装能过、重装必挂**，而重装恰恰最需要这个探测。
+ADMIN_EXISTS=0
+if command -v mysql >/dev/null 2>&1 && [ -n "$DB_PASS" ]; then
+  # 注意 `|| true`：命令替换失败会让整条赋值语句返回非 0，
+  # 在 `set -e` 下**脚本会当场退出**。空库时 sys_user 表还不存在，
+  # mysql 必然报错——不能因此把安装搞挂（`2>/dev/null` 只挡输出，不挡退出码）。
+  CNT=$(mysql -h"$DB_HOST" -P"${DB_PORT:-3306}" -u"$DB_USER" -p"$DB_PASS" -N -B \
+        -e "select count(*) from sys_user where username='admin'" "$DB_NAME" 2>/dev/null \
+        | tr -d '\r' || true)
+  [ "$CNT" = "1" ] && ADMIN_EXISTS=1
+fi
+
 # 首次安装写入默认配置；已存在则保留客户改过的配置
 if [ ! -f "$DIR/application.yml" ]; then
   # 只有一条路径生成配置：下面这段 heredoc。
@@ -214,27 +247,11 @@ if [ ! -f "$DIR/application.yml" ]; then
   if [ -f "$HERE/application.yml" ]; then
     warn "安装目录里有 application.yml，已忽略（配置由本脚本生成，避免两份模板不一致）"
   fi
-  # 库里有 admin 吗？
-  # 应用启动时如果发现 sys_user 里已有用户，**不会**改密码（那是保护用户已改的密码）。
-  # 所以这时必须把密码同步进数据库（见下面 RESET_ADMIN 那段），否则客户还是登不进去。
-  # 这里先查库：已有 admin 就在装完时同步一次密码（只用一次，之后不再动）。
-  ADMIN_EXISTS=0
-  if command -v mysql >/dev/null 2>&1 && [ -n "$DB_PASS" ]; then
-    # 注意 `|| true`：命令替换失败会让整条赋值语句返回非 0，
-    # 在 `set -e` 下**脚本会当场退出**。空库时 sys_user 表还不存在，
-    # mysql 必然报错——不能因此把安装搞挂（`2>/dev/null` 只挡输出，不挡退出码）。
-    CNT=$(mysql -h"$DB_HOST" -P"${DB_PORT:-3306}" -u"$DB_USER" -p"$DB_PASS" -N -B \
-          -e "select count(*) from sys_user where username='admin'" "$DB_NAME" 2>/dev/null \
-          | tr -d '\r' || true)
-    [ "$CNT" = "1" ] && ADMIN_EXISTS=1
-  fi
-  # 管理员初始密码：**固定 123456**（2026-11-04 用户明确要求）。
-  # 之前这里随机生成 + 写进 INITIAL_ADMIN.txt，有两个实际问题：
-  #   ① 客户拿到包不知道密码（得先翻文件），而现场习惯就是先试 123456
-  #   ② 库里已有 admin 时应用**不会**改密码 → 文件里那份随机密码永远登不进去
-  # 现在密码固定，且装完会把它同步进数据库（见下面 RESET_ADMIN 那段），
-  # 所以任何时候用 admin / 123456 都能登录。
-  ADMIN_PASS="123456"
+  # 库里有 admin 吗？—— 探测在下面 if/else **之前**做，这里不再重复。
+
+
+  # 管理员初始密码与 DB_URL/DB_DRV 的定义都在 if/else **之前**，这里不再重复。
+
   if [ "$DB" = "mysql" ]; then
     DB_URL="jdbc:mysql://$DB_HOST:$DB_PORT/$DB_NAME?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true&rewriteBatchedStatements=true"
     DB_DRV="com.mysql.cj.jdbc.Driver"

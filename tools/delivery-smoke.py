@@ -60,6 +60,15 @@ MANIFEST = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dist-manife
 
 def load_manifest():
     req, exe = [], []
+    if not os.path.exists(MANIFEST):
+        # 2026-11-06 真机实测：只把本脚本拷到目标机、忘了带清单时，
+        # 原先直接抛 FileNotFoundError，报错里看不出「该怎么办」。
+        raise SystemExit(
+            "缺发行清单：%s\n"
+            "它必须和本脚本放在同一目录（tools/dist-manifest.txt）。\n"
+            "在目标机上跑时，记得把清单一起传过去。\n"
+            "（清单是「包里该有什么」的单一真相来源，不能内嵌副本，否则两处会漂移。）"
+            % MANIFEST)
     with open(MANIFEST, encoding="utf-8") as f:
         for line in f:
             line = line.strip().replace("\r", "")
@@ -389,24 +398,42 @@ def stage_package(ctx):
     return True
 
 
+def _mysql_cli():
+    """找一个可用的 mysql 客户端（MySQL 叫 mysql，MariaDB 11 起是 mariadb）。"""
+    for cmd in ("mysql", "mariadb"):
+        if shutil.which(cmd):
+            return cmd
+    return None
+
+
+def _mysql_exec(ctx, sql):
+    """执行一条不指定库的 SQL。返回 (rc, 输出)；没有客户端时 rc=None。
+
+    建库与清演练库都用它 —— 两处各写一份命令拼接必然有一处会漏改。
+    """
+    cli = _mysql_cli()
+    if cli is None:
+        return None, "没有 mysql 客户端"
+    a = ctx.a
+    c = ("%s -h%s -P%s -u%s -p%s -e \"%s\""
+         % (cli, a.db_host, a.db_port, a.db_user, a.db_pass, sql))
+    rc, out, err = ctx.run(c, timeout=120, sudo=a.sudo)
+    return rc, (out + err).strip()
+
+
 def stage_createdb(ctx):
     """阶段 0.5：建库（install.sh 只连不建库，交付时库是客户自己准备的）"""
     ctx.head("阶段 0.5 · 建库")
     a = ctx.a
-    for cmd in ("mysql", "mariadb"):
-        if shutil.which(cmd) is None:
-            continue
-        # 库名不用反引号：反引号在 shell 里会被当命令替换（踩过）
-        q = "CREATE DATABASE IF NOT EXISTS %s DEFAULT CHARSET utf8mb4" % a.db_name
-        c = ("%s -h%s -P%s -u%s -p%s -e \"%s\"" % (cmd, a.db_host, a.db_port, a.db_user, a.db_pass, q))
-        rc, out, err = ctx.run(c, timeout=120, sudo=a.sudo)
-        if rc == 0:
-            ctx.ok("建库 %s" % a.db_name)
-            return True
-        ctx.bad("建库 %s" % a.db_name, (out + err).strip()[-120:])
-        return False
-    ctx.info("没有 mysql 客户端，跳过建库（假定库已存在）")
-    return True
+    rc, msg = _mysql_exec(ctx, "CREATE DATABASE IF NOT EXISTS %s DEFAULT CHARSET utf8mb4" % a.db_name)
+    if rc is None:
+        ctx.info("没有 mysql 客户端，跳过建库（假定库已存在）")
+        return True
+    if rc == 0:
+        ctx.ok("建库 %s" % a.db_name)
+        return True
+    ctx.bad("建库 %s" % a.db_name, msg[-120:])
+    return False
 
 
 def stage_install(ctx):
@@ -573,6 +600,20 @@ def stage_restore(ctx):
     ctx.head("阶段 5 · 恢复")
     a = ctx.a
     drill = a.db_name + "_drill"
+    # 先删掉上一次留下的演练库。restore.sh 的闸门是「目标库不存在才自动创建，
+    # 已存在则要 --force」—— 这是**刻意**的安全设计（防误覆盖），不能改弱。
+    # 但冒烟自己不清理的话：**第一次能跑通，第二次必挂**。
+    # 2026-11-06 真机实测就是这个现象：第二次报
+    #   「演练，建议换一个空库名…：dh_smoke_drill_drill / 确实要覆盖这个库，加 --force」
+    # 这个库是冒烟自己造的演练库，删它没有数据风险。
+    rc, msg = _mysql_exec(ctx, "DROP DATABASE IF EXISTS %s" % drill)
+    if rc is None:
+        ctx.info("没有 mysql 客户端，跳过演练库清理（假定它是空的）")
+    elif rc == 0:
+        ctx.info("已清理上次的演练库 %s" % drill)
+    else:
+        ctx.info("清理演练库失败（继续尝试恢复）：%s" % msg[-80:])
+
     rc, out, err = ctx.run("bash bin/restore.sh '%s' %s" % (ctx.backup, drill),
                            timeout=1200, sudo=a.sudo, cwd=a.dir)
     if rc != 0:
