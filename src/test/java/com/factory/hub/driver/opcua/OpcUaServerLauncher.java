@@ -18,7 +18,12 @@ public final class OpcUaServerLauncher {
     }
 
     public static void main(String[] args) throws Exception {
-        int port = args.length > 0 ? Integer.parseInt(args[0].trim()) : 14840;
+        // 默认 0 = 让操作系统分配一个空闲端口。
+        // 为什么不用固定端口（2026-11-06 实测踩到）：固定端口在**上一次跑完、
+        // 端口还处于 TIME_WAIT** 时会 `BindException: Address already in use`
+        // ⇒ 门禁 flaky。flaky 的门禁比没有门禁更糟：大家会开始忽略它，红了也当没事。
+        // 实际端口由 `ENDPOINT=` 输出，调用方从那里读回来。
+        int port = args.length > 0 ? Integer.parseInt(args[0].trim()) : 0;
 
         OpcUaTestServer server = OpcUaTestServer.start(port);
         System.out.println("ENDPOINT=" + server.endpointUrl());

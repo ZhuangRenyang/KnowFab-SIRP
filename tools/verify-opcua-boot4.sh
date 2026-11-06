@@ -37,7 +37,15 @@ if [ "${1:-}" = "--dry-run" ]; then
 elif [ -n "${1:-}" ]; then
   PORT="$1"
 fi
-[ -n "$PORT" ] || PORT=14840
+# ⚠️ **默认端口用 0 = 让操作系统分配空闲端口**，不用固定 14840。
+#   原因（2026-11-06 实测踩到）：固定端口在**上一次跑完、端口还在 TIME_WAIT** 时
+#   会 `BindException: Address already in use` ⇒ **门禁 flaky**。
+#   flaky 的门禁比没有门禁更糟：大家会开始忽略它，红了也当没事 ⇒ 门禁就废了。
+#   （Windows 上 TIME_WAIT 尤其顽固，默认不允许重新绑定）
+#   ⇒ 传 0 → server 用 `OpcUaTestServer.start(0)` 让 OS 挑一个空闲端口，
+#     起来之后从日志的 `ENDPOINT=` 读回**实际端口**，后面探针用那个。
+#   仍然支持显式指定端口（`PORT=xxx` 或第一个参数），便于排查时固定端口对照。
+[ -n "$PORT" ] || PORT=0
 
 # ---------------------------------------------------------------- 跨平台解析
 # classpath 分隔符：Windows 是 ';'，Linux 是 ':'
@@ -198,8 +206,20 @@ if [ "$READY" != "1" ]; then
 fi
 grep -a -E '^(ENDPOINT|NAMESPACE_INDEX)=' target/opcua-server.log
 
+# **从 ENDPOINT 里读回实际端口**。
+#   请求端口是 0（让 OS 分配）时，$PORT 不代表真正在监听的端口 ⇒ 必须读回来。
+#   请求端口非 0 时也要读 —— 因为 server 实际监听端口以它自己 advertise 的为准。
+ACTUAL_PORT="$(grep -a '^ENDPOINT=' target/opcua-server.log | head -1 | sed 's#.*:\([0-9]\+\)$#\1#')"
+if [ -z "$ACTUAL_PORT" ]; then
+  echo "[FAIL] 从 server 日志里读不出实际端口（ENDPOINT= 行缺失）" >&2
+  exit 1
+fi
+if [ "$ACTUAL_PORT" != "$PORT" ]; then
+  echo "  （请求端口 $PORT → 实际监听 $ACTUAL_PORT）"
+fi
+
 echo "== 5/6 用生产运行时类路径跑驱动探针 =="
-PROBE_OUT="$("$JAVA_RESOLVED" -cp "$RUNTIME_CP" com.factory.hub.driver.opcua.OpcUaRuntimeProbe "$PORT" 2>&1)"
+PROBE_OUT="$("$JAVA_RESOLVED" -cp "$RUNTIME_CP" com.factory.hub.driver.opcua.OpcUaRuntimeProbe "$ACTUAL_PORT" 2>&1)"
 PROBE_RC=$?
 echo "$PROBE_OUT"
 
@@ -210,7 +230,7 @@ fi
 
 echo "== 6/6 对照组：把 jaxb-api 从类路径里剔掉，验证防护有效（坏点只丢一个，不整批失败） =="
 NOJAXB_OUT="$("$JAVA_RESOLVED" -cp "target/test-classes${CP_SEP}target/classes${CP_SEP}${NO_JAXB_CP}" \
-      com.factory.hub.driver.opcua.OpcUaRuntimeProbe "$PORT" --expect-missing-jaxb 2>&1)"
+      com.factory.hub.driver.opcua.OpcUaRuntimeProbe "$ACTUAL_PORT" --expect-missing-jaxb 2>&1)"
 NOJAXB_RC=$?
 echo "$NOJAXB_OUT"
 
