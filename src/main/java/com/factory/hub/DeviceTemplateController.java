@@ -1,6 +1,7 @@
 package com.factory.hub;
 
 import com.factory.hub.audit.AuditLog;
+import com.factory.hub.driver.ProtocolDefaults;
 import com.factory.hub.audit.AuditService;
 import com.factory.hub.model.DeviceEntity;
 import com.factory.hub.model.DeviceTemplateEntity;
@@ -208,14 +209,22 @@ public class DeviceTemplateController {
         if (body.get("model") != null) t.setModel(str(body.get("model")));
         String protocol = str(body.get("protocol"));
         if (!protocol.isBlank()) {
+            // 白名单里必须有 opcua：少了它，客户在模板里选 OPC UA 保存后
+            // 协议会被**静默改成 modbus-tcp** ⇒ 界面选的协议和实际生效的不是一个
+            // ⇒ 设备连的是 502，现场表现是「我明明选了 OPC UA，怎么连不上」。
+            // 这比端口填错更难查（协议都不对了），所以必须支持。
             if (!protocol.equals("modbus-tcp") && !protocol.equals("modbus-rtu-tcp")
-                    && !protocol.equals("modbus-rtu")) {
+                    && !protocol.equals("modbus-rtu") && !protocol.equals("opcua")) {
                 t.setProtocol("modbus-tcp");     // 兜底，不让脏协议进库
             } else {
                 t.setProtocol(protocol);
             }
         }
-        if (body.get("port") != null) t.setPort((int) num(body.get("port"), 502));
+        // 端口：用户填了就用用户的；body 里没有这一项就留 null，
+        // 应用到设备上时由 ProtocolDefaults 按协议给默认端口（Modbus 502 / OPC UA 4840）。
+        if (body.get("port") != null) {
+            t.setPort((int) num(body.get("port"), ProtocolDefaults.defaultPort(t.getProtocol())));
+        }
         if (body.get("unitId") != null) t.setUnitId((int) num(body.get("unitId"), 1));
         if (body.get("pollIntervalMs") != null) t.setPollIntervalMs((int) num(body.get("pollIntervalMs"), 1000));
         if (body.get("timeoutMs") != null) t.setTimeoutMs((int) num(body.get("timeoutMs"), 800));

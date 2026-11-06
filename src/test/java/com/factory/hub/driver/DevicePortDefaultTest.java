@@ -1,6 +1,7 @@
 package com.factory.hub.driver;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -10,24 +11,20 @@ import org.junit.jupiter.api.Test;
 import com.factory.hub.driver.modbus.ModbusRtuOverTcpDriver;
 import com.factory.hub.driver.modbus.ModbusTcpDriver;
 import com.factory.hub.model.DeviceEntity;
+import com.factory.hub.model.DeviceTemplateEntity;
 import com.factory.hub.service.DeviceService;
 
 /**
- * 「协议 → 默认端口」的口径钉死。
+ * 「协议 → 默认端口」的口径钉死（口径只定义在 {@link ProtocolDefaults} 一处）。
  * <p>
  * <b>守的是什么坑</b>：502 是 <b>Modbus</b> 的端口，却曾被写成协议无关的全局默认，
- * 散落在实体、控制器、上下文等 5 处（前端还有 4 处）。后果：
+ * 散落在实体、控制器、模板、上下文、大屏等 9 处。后果：
  * <ul>
  *   <li>新建一台 OPC UA 设备不填端口 ⇒ 落库 502 ⇒ 驱动去连 502 ⇒ <b>必然连不上</b>；</li>
  *   <li>每接一个新协议就要改一遍那几处，漏改的那个协议就去连错端口
- *       （OPC UA 就是这么漏的）；</li>
+ *       （OPC UA 就是这次漏的那个）；</li>
  *   <li>前端预填 4840 只是<b>遮住</b>了 UI 路径 —— API 建设备、脚本、老数据仍是 502。</li>
  * </ul>
- * <p>
- * <b>现在的口径</b>：全局语义统一成「<b>未填 = null/0</b>」，
- * 「默认端口是多少」由<b>各协议自己的驱动</b>回落：
- * Modbus TCP / RTU-over-TCP = 502、OPC UA = 4840。
- * ⇒ 加第三个协议不用再动任何全局常量。
  */
 class DevicePortDefaultTest {
 
@@ -40,29 +37,48 @@ class DevicePortDefaultTest {
     }
 
     @Test
-    @DisplayName("设备没填端口 ⇒ 落库为 null（不替用户决定），上下文里是 0（未指定）")
+    @DisplayName("口径只有一处：opcua → 4840，其余 → 502")
+    void protocolDefaultsAreDefinedOnce() {
+        assertEquals(4840, ProtocolDefaults.defaultPort("opcua"));
+        assertEquals(502, ProtocolDefaults.defaultPort("modbus-tcp"));
+        assertEquals(502, ProtocolDefaults.defaultPort("modbus-rtu-tcp"));
+        assertEquals(502, ProtocolDefaults.defaultPort("modbus-rtu"));
+        assertEquals(502, ProtocolDefaults.defaultPort("sim"));
+        assertEquals(502, ProtocolDefaults.defaultPort(null), "protocol 为 null 要有确定的兜底，不能 NPE");
+        assertEquals(4840, ProtocolDefaults.defaultPort("OPCUA"), "大小写/空格不该影响判定");
+        assertEquals(4840, ProtocolDefaults.defaultPort("  opcua  "));
+        assertNotEquals(ProtocolDefaults.MODBUS_TCP_PORT, ProtocolDefaults.OPC_UA_PORT,
+                "两个协议的默认端口不该是同一个数（否则这个映射就没意义了）");
+    }
+
+    @Test
+    @DisplayName("设备没填端口 ⇒ 实体 null，上下文里是按协议解析好的默认端口")
     void unfilledPortStaysUnfilled() {
         assertNull(new DeviceEntity().getPort(),
                 "新建设备的端口默认应为 null（= 没填），不能是 502 —— "
                         + "那是 Modbus 的端口，OPC UA 用 502 必然连不上");
+        assertNull(new DeviceTemplateEntity().getPort(),
+                "新建模板的端口默认应为 null，同上");
 
-        DriverContext ctx = ctxOf("opcua", null);
-        assertEquals(0, ctx.getPort(),
-                "没填端口时上下文里应是 0（= 未指定），由各协议自己的驱动回落默认端口");
+        assertEquals(4840, ctxOf("opcua", null).getPort(),
+                "OPC UA 设备没填端口 ⇒ 采集时用 4840");
+        assertEquals(502, ctxOf("modbus-tcp", null).getPort(),
+                "Modbus 设备没填端口 ⇒ 采集时用 502");
     }
 
     @Test
     @DisplayName("用户显式填的端口不被覆盖")
     void explicitPortIsKept() {
-        DriverContext ctx = ctxOf("opcua", 4841);
-        assertEquals(4841, ctx.getPort(), "用户填的端口必须原样传下去，不能被默认值覆盖");
+        assertEquals(4841, ctxOf("opcua", 4841).getPort(),
+                "用户填的端口必须原样传下去，不能被默认值覆盖");
+        assertEquals(1502, ctxOf("modbus-tcp", 1502).getPort());
     }
 
     @Test
-    @DisplayName("protocol 为 null 也不 NPE（端口照样是 0 = 未指定）")
+    @DisplayName("protocol 为 null 也不 NPE（端口按 502 兜底）")
     void nullProtocolDoesNotBreak() {
-        DriverContext ctx = ctxOf(null, null);
-        assertEquals(0, ctx.getPort(), "protocol 为 null 时不应抛异常，端口应为 0（未指定）");
+        assertEquals(502, ctxOf(null, null).getPort(),
+                "protocol 为 null 时不应抛异常，端口应有确定兜底");
     }
 
     @Test
@@ -79,8 +95,7 @@ class DevicePortDefaultTest {
         explicit.setPort(1502);
         assertEquals(1502, ModbusTcpDriver.resolvePort(explicit),
                 "用户填了端口就用填的，不能被默认值覆盖");
-        assertEquals(1502, ModbusRtuOverTcpDriver.resolvePort(explicit),
-                "用户填了端口就用填的，不能被默认值覆盖");
+        assertEquals(1502, ModbusRtuOverTcpDriver.resolvePort(explicit));
     }
 
     @Test

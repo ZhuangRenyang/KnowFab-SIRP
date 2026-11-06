@@ -71,7 +71,16 @@ final class OpcUaEndpointUrl {
      */
     static String build(DriverContext ctx) {
         String raw = ctx.getHost() == null ? "" : ctx.getHost().trim();
-        int port = ctx.getPort() <= 0 ? DEFAULT_PORT : ctx.getPort();
+        int port = ctx.getPort();
+        if (port <= 0) {
+            // 防御性兜底：正常路径上游（DeviceService.contextOf）已经按协议解析好端口，
+            // 走不到这里。走到这里 = 上游漏了解析 —— 所以要**打 warn 而不是静默**：
+            // 静默的兜底比没有兜底更危险（看着有兜底、其实上游的洞被盖住了，没人知道）。
+            log.warn("OPC UA 端口未指定（ctx.getPort()={}），已回落到本协议默认端口 {}。"
+                    + "正常路径应由上游按协议解析好端口 —— 走到这里说明上游漏了解析，请检查设备配置链路",
+                    ctx.getPort(), DEFAULT_PORT);
+            port = DEFAULT_PORT;
+        }
 
         // 1) 路径 —— 确定性错误，当场报错，不静默丢
         String authority = stripScheme(raw);

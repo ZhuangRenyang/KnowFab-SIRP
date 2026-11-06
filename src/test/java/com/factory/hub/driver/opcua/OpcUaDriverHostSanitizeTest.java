@@ -145,9 +145,9 @@ class OpcUaDriverHostSanitizeTest {
     }
 
     @Test
-    @DisplayName("端口没填（上下文里是 0）时 OPC UA 用自己的默认端口 4840")
+    @DisplayName("端口没填（上下文里是 0）时 OPC UA 用自己的默认端口 4840，并且要打 warn")
     void opcUaUsesItsOwnDefaultPort() {
-        // 「默认端口是多少」是协议知识：Modbus 502、OPC UA 4840，各驱动自己兜底。
+        // 「默认端口是多少」是协议知识：Modbus 502、OPC UA 4840，各协议自己兜底。
         // 上游（实体/控制器/上下文）现在统一传 0 表示「未填」，这里验的就是这一段。
         DriverContext ctx = ctx("192.168.1.10", 0);
         assertEquals("opc.tcp://192.168.1.10:4840", OpcUaEndpointUrl.build(ctx),
@@ -156,6 +156,36 @@ class OpcUaDriverHostSanitizeTest {
         DriverContext explicit = ctx("192.168.1.10", 4841);
         assertEquals("opc.tcp://192.168.1.10:4841", OpcUaEndpointUrl.build(explicit),
                 "用户填了端口就用填的");
+    }
+
+    /**
+     * 兜底分支必须<b>打 warn</b>，不能静默。
+     * <p>
+     * 理由：正常路径上游已经按协议解析好端口，这条分支走不到 ——
+     * 它走得到就说明<b>上游漏了解析</b>。静默兜底会把上游的洞盖住：
+     * 拼出来的 URL 看着正常、连不上也没人知道是哪一步出的问题。
+     * 打了 warn 才能立刻看见「上游漏了解析」。
+     */
+    @Test
+    @DisplayName("走到兜底分支时必须打 warn（静默的兜底比没有兜底更危险）")
+    void fallbackPortLogsWarning() {
+        ch.qos.logback.classic.Logger logger =
+                (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(OpcUaEndpointUrl.class);
+        ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent> appender =
+                new ch.qos.logback.core.read.ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            OpcUaEndpointUrl.build(ctx("192.168.1.10", 0));
+
+            assertTrue(appender.list.stream().anyMatch(e ->
+                            e.getLevel() == ch.qos.logback.classic.Level.WARN
+                                    && e.getFormattedMessage().contains("端口")),
+                    "端口未指定时必须打一条 warn 日志（上游漏了解析要能看见），实际日志："
+                            + appender.list.stream().map(e -> e.getLevel() + ":" + e.getFormattedMessage()).toList());
+        } finally {
+            logger.detachAppender(appender);
+        }
     }
 
     @Test

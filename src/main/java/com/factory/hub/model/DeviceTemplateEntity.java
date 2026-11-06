@@ -41,8 +41,14 @@ public class DeviceTemplateEntity {
     @Column(name = "protocol", length = 32)
     private String protocol = "modbus-tcp";
 
+    /**
+     * 模板里的端口。<b>null = 用户没填</b>，应用到设备上后由 ProtocolDefaults 按协议给默认端口。
+     * <p>
+     * 为什么不写死 502：那是 Modbus 的端口，写成全局默认就等于「默认端口是协议无关的常量」，
+     * 每接一个新协议就要改一遍，漏改的那个协议就会去连错端口。
+     */
     @Column(name = "port")
-    private Integer port = 502;
+    private Integer port;
 
     @Column(name = "unit_id")
     private Integer unitId = 1;

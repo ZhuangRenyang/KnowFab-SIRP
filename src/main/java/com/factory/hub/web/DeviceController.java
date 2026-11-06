@@ -4,6 +4,7 @@ import com.factory.hub.audit.AuditLog;
 import com.factory.hub.audit.AuditService;
 import com.factory.hub.collect.CollectScheduler;
 import com.factory.hub.collect.SnapshotStore;
+import com.factory.hub.driver.ProtocolDefaults;
 import com.factory.hub.erp.ErpProdLine;
 import com.factory.hub.erp.ErpProdLineRepository;
 import com.factory.hub.model.DeviceEntity;
@@ -404,12 +405,29 @@ public class DeviceController {
         d.setCode(req.code());
         d.setName(req.name());
         d.setLocation(req.location());
-        d.setProtocol(req.protocol() == null ? "modbus-tcp" : req.protocol());
+        // ⚠️ 顺序依赖：旧协议必须在 setProtocol 之前取出来。
+        // 下面判断「端口是不是还留着上一个协议的默认值」要用它 —— 取晚了就只剩新协议，
+        // 那条判断永远成立（会误改客户明确指定的端口）。改这块务必先看这一行。
+        String oldProtocol = d.getProtocol();
+        String protocol = req.protocol() == null ? "modbus-tcp" : req.protocol();
+        d.setProtocol(protocol);
         d.setHost(req.host());
-        // 端口：用户没填就存 null（= 未指定），<b>不替用户决定</b>。
-        // 默认端口是协议知识（Modbus 502 / OPC UA 4840），由各协议自己的驱动回落 ——
-        // 在这里填 502 会让「新建 OPC UA 设备不填端口」变成连 502，必然连不上。
-        d.setPort(req.port());
+        // 端口：默认端口是协议知识（Modbus 502 / OPC UA 4840），只由 ProtocolDefaults 定义一处。
+        // 这里不写死任何一个协议的值 —— 写死 502 会让「新建 OPC UA 设备不填端口」
+        // 变成连 502，必然连不上。三种情况：
+        //   ① 用户没填 → 按协议给默认端口（不是一律 502）
+        //   ② 用户填了，且仍等于旧协议的默认端口，同时协议变了 → 跟着新协议走
+        //      （典型场景：设备原来跑 Modbus、端口 502，客户把协议改成 OPC UA 但没动端口栏
+        //        —— 这个端口是跟着上一个协议的默认值来的，不是客户特意指定的）
+        //   ③ 用户明确填了别的端口 → 原样保留，不替用户决定
+        Integer port = req.port();
+        if (port == null) {
+            port = ProtocolDefaults.defaultPort(protocol);
+        } else if (oldProtocol != null && !protocol.equals(oldProtocol)
+                && port == ProtocolDefaults.defaultPort(oldProtocol)) {
+            port = ProtocolDefaults.defaultPort(protocol);
+        }
+        d.setPort(port);
         d.setSerialPort(req.serialPort());
         d.setBaudRate(req.baudRate() == null ? 9600 : req.baudRate());
         d.setDataBits(req.dataBits() == null ? 8 : req.dataBits());
