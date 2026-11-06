@@ -512,7 +512,14 @@ def main():
                 cur.execute("GRANT ALL ON `%s`.* TO '%s'@'%s'" % (db_name, app_user, host))
             except Exception:
                 pass
-        cur.execute("FLUSH PRIVILEGES")
+        # FLUSH PRIVILEGES 只有在 GRANT 真成功时才有意义，而且只有管理员能执行。
+        # 用受限账号（如 devicehub：对已授权的库有权限，但没有 GRANT/FLUSH 权限）时，
+        # GRANT 本来就会失败——而这种账号对目标库往往**已经有**权限了。
+        # 不该因为一句多余的 FLUSH 就把整个建库判成失败。
+        try:
+            cur.execute("FLUSH PRIVILEGES")
+        except Exception:
+            pass
         c.close()
         ok("验证库 %s 已建（用的是 %s@%s，**交付库没动**）" % (db_name, admin[0], args.db_host))
     except Exception as e:
@@ -788,7 +795,10 @@ def _recreate_db(args, admin, name, app_user):
             cur.execute("GRANT ALL ON `%s`.* TO '%s'@'%s'" % (name, app_user, host))
         except Exception:
             pass
-    cur.execute("FLUSH PRIVILEGES")
+    try:
+        cur.execute("FLUSH PRIVILEGES")
+    except Exception:
+        pass
     c.close()
 
 
