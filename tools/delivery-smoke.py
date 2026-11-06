@@ -753,8 +753,16 @@ def main():
     else:
         ctx.say("   全流程通过" if not a.stage0_only else "   包体检通过")
 
-    # 收尾：默认卸载（除非失败且要求保留）
-    if ctx.a.keep and failed:
+    # 收尾：默认清理现场。
+    # ⚠️ `--skip-uninstall` 的语义是「装完留着，我要接着验别的东西」，
+    # 所以**它也必须跳过这里**——只跳过「阶段 6」是不够的。
+    # 2026-11-06 踩到：传了 --skip-uninstall，实例仍被这段无条件删掉，
+    # 于是拿一个「服务已经不在」的环境去验重启不丢电量，结论完全无效
+    # （重启前就查到数据，还以为验过了）。参数名和行为必须一致。
+    if a.skip_uninstall:
+        ctx.say("   --skip-uninstall：现场保留在 %s（服务 %s，端口 %d）"
+                % (a.dir, a.service, a.port))
+    elif ctx.a.keep and failed:
         ctx.say("   --keep：现场保留，未清理")
     else:
         try:
@@ -764,7 +772,8 @@ def main():
                 ctx.run("rm -rf %s" % a.dir, sudo=True)
         except Exception:
             pass
-    if ctx.tmp and os.path.isdir(ctx.tmp) and not (ctx.a.keep and failed):
+    if (ctx.tmp and os.path.isdir(ctx.tmp)
+            and not a.skip_uninstall and not (ctx.a.keep and failed)):
         shutil.rmtree(ctx.tmp, ignore_errors=True)
 
     sys.exit(1 if failed else 0)
