@@ -51,6 +51,21 @@ FAILED=()
 say()  { printf '\n\033[1m== %s\033[0m\n' "$*"; }
 line() { printf '  %s %-24s %s\n' "$1" "$2" "$3"; }
 
+# 前置：工具在不在。
+# 为什么单独查：「命令不存在」也会产生输出（"mvn: command not found"），
+# 所以下面 check 函数的「断言有输出」抓不住它 —— 必须在这里先卡住。
+# （2026-11-06 在 Linux 服务器上真跑时撞到：没装 mvn，测试没跑但门禁只报了别的错。）
+for tool in node npm; do
+  if ! command -v "$tool" >/dev/null 2>&1; then
+    echo "缺少 $tool —— 门禁跑不了" >&2
+    exit 2
+  fi
+done
+if [ "$SKIP_BE" -eq 0 ] && ! command -v "$MVN" >/dev/null 2>&1 && [ ! -x "$MVN" ]; then
+  echo "缺少 Maven（$MVN）—— 用 MVN=/path/to/mvn 指定" >&2
+  exit 2
+fi
+
 # check <名称> <日志文件> <命令...>
 # 关键：**必须断言脚本确有输出**。
 #   光看退出码抓不住「校验器被改残、永远 exit 0」这种假绿
@@ -85,14 +100,20 @@ line "·" "npm"   "$(npm -v 2>/dev/null || echo '缺失')"
 # ================= 后端 =================
 if [ "$SKIP_BE" -eq 0 ]; then
   say "后端单测"
+  # 不用 -ntp（no transfer progress）：它会把输出压到几乎空白，
+  # 出错时看不到「是哪一步失败」。CI 里慢一点换可诊断性，值得。
   check "后端单测" "target/_ci-test.log" \
-    "$MVN" -B -ntp test
-  # 断言真的跑了（而不是「跑了个 0」）
+    "$MVN" -B test
+  # 断言真的跑了（而不是「跑了个 0」）：
+  #   surefire 报告文件数 + 用例总数，两个都要 > 0。
+  #   报告数 > 0 但用例数 = 0，说明测试被跳过了（例如环境里带了 -DskipTests）。
   REPORT_N=$(ls target/surefire-reports/*.txt 2>/dev/null | wc -l | tr -d ' ')
-  if [ "$REPORT_N" -gt 0 ]; then
-    line "✓" "surefire 报告" "$REPORT_N 个文件"
+  CASE_N=$(grep -h "Tests run:" target/surefire-reports/*.txt 2>/dev/null \
+           | sed -n 's/.*Tests run: \([0-9]\+\).*/\1/p' | awk '{s+=$1} END {print s+0}')
+  if [ "$REPORT_N" -gt 0 ] && [ "$CASE_N" -gt 0 ]; then
+    line "✓" "surefire 报告" "$REPORT_N 个文件 / $CASE_N 个用例"
   else
-    line "✗" "surefire 报告" "没有生成 —— 测试可能根本没跑（假绿）"
+    line "✗" "surefire 报告" "报告 $REPORT_N 个 / 用例 $CASE_N 个 —— 测试可能没跑（假绿）"
     FAIL=$((FAIL + 1)); FAILED+=("surefire 报告")
   fi
 else
