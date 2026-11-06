@@ -213,15 +213,24 @@ console.log('\n== 前后端一致性断言：协议默认端口必须与后端 P
 //   后端 defaultPort() 对没单独列出的协议走兜底（Modbus 502），
 //   所以「后端表里没 modbus-tcp」≠ 分叉 —— 得算 defaultPort(协议) 到底返回几。
 {
+  // 后端文件在仓库里的相对路径：报错必须指到人，别只说「后端那边」
+  const REL_BE = path.relative(ROOT, BACKEND_DEFAULTS).split(path.sep).join('/')
+  const PARSE_HINT =
+    '\n         ⇒ 后端文件：' + REL_BE +
+    '\n         ⇒ 这**不是**「两边一致」，也不是「两边分叉」：是**门禁读不懂后端了**。' +
+    '\n         ⇒ 按后端类注释里的格式契约更新本脚本的解析器。' +
+    '\n         ⇒ 千万别把它当成「没差异」放过去 —— 那是最阴的一类坑：工具报「没有」，其实是扫描失败。'
+
   if (!fs.existsSync(BACKEND_DEFAULTS)) {
-    fail('读不到后端 ProtocolDefaults.java（' + BACKEND_DEFAULTS + '）—— 无法校验前后端口径是否一致')
+    fail('[解析失败] 读不到后端 ProtocolDefaults.java（' + REL_BE + '）—— 无法校验前后端口径是否一致')
   } else {
     const be = fs.readFileSync(BACKEND_DEFAULTS, 'utf8')
-    // 端口常量名 → 数值
+    // 端口常量名 → 数值（int / Integer 都认）
     const consts = {}
-    for (const mm of be.matchAll(/static\s+final\s+int\s+([A-Z_][A-Z0-9_]*)\s*=\s*(\d+)/g)) {
+    for (const mm of be.matchAll(/static\s+final\s+(?:int|Integer)\s+([A-Z_][A-Z0-9_]*)\s*=\s*(\d+)/g)) {
       consts[mm[1]] = Number(mm[2])
     }
+    // 值既可能是常量名，也可能是字面量（两种都认，别让无害的写法变化把门禁弄瞎）
     const num = (expr) => {
       if (/^\d+$/.test(expr)) return Number(expr)
       return expr in consts ? consts[expr] : undefined
@@ -233,12 +242,12 @@ console.log('\n== 前后端一致性断言：协议默认端口必须与后端 P
       const v = num(constName)
       if (v !== undefined) explicit[proto] = v
     }
-    for (const mm of be.matchAll(/Map\.entry\(\s*"([^"]+)"\s*,\s*([A-Z_][A-Z0-9_]*)\s*\)/g)) addEntry(mm[1], mm[2])
+    for (const mm of be.matchAll(/Map\.entry\(\s*"([^"]+)"\s*,\s*([A-Z_][A-Z0-9_]*|\d+)\s*\)/g)) addEntry(mm[1], mm[2])
     for (const mm of be.matchAll(/Map\.of(?:Entries)?\(([\s\S]*?)\)\s*;/g)) {
       // Map.of("opcua", OPC_UA_PORT, "modbus-tcp", MODBUS_TCP_PORT)
-      for (const p of mm[1].matchAll(/"([^"]+)"\s*,\s*([A-Z_][A-Z0-9_]*)/g)) addEntry(p[1], p[2])
+      for (const p of mm[1].matchAll(/"([^"]+)"\s*,\s*([A-Z_][A-Z0-9_]*|\d+)/g)) addEntry(p[1], p[2])
     }
-    for (const mm of be.matchAll(/"([^"]+)"\.equals\(\s*\w+\s*\)\s*\)?\s*\{?\s*return\s+([A-Z_][A-Z0-9_]*)\s*;/g)) {
+    for (const mm of be.matchAll(/"([^"]+)"\.equals\(\s*\w+\s*\)\s*\)?\s*\{?\s*return\s+([A-Z_][A-Z0-9_]*|\d+)\s*;/g)) {
       addEntry(mm[1], mm[2])
     }
 
@@ -246,10 +255,10 @@ console.log('\n== 前后端一致性断言：协议默认端口必须与后端 P
     //    映射式：getOrDefault(p, FALLBACK) / orElse(FALLBACK)
     //    分支式：defaultPort() 方法体里那个没被协议判断挡住的 return
     const fallbackSet = new Set()
-    for (const mm of be.matchAll(/getOrDefault\([^,]+,\s*([A-Z_][A-Z0-9_]*)\s*\)/g)) {
+    for (const mm of be.matchAll(/getOrDefault\([^,]+,\s*([A-Z_][A-Z0-9_]*|\d+)\s*\)/g)) {
       const v = num(mm[1]); if (v !== undefined) fallbackSet.add(v)
     }
-    for (const mm of be.matchAll(/orElse\(\s*([A-Z_][A-Z0-9_]*)\s*\)/g)) {
+    for (const mm of be.matchAll(/orElse\(\s*([A-Z_][A-Z0-9_]*|\d+)\s*\)/g)) {
       const v = num(mm[1]); if (v !== undefined) fallbackSet.add(v)
     }
     if (!fallbackSet.size) {
@@ -258,7 +267,7 @@ console.log('\n== 前后端一致性断言：协议默认端口必须与后端 P
       if (mi >= 0) {
         const close = be.indexOf('\n    }', mi)
         const body = be.slice(mi, close > 0 ? close : be.length)
-        for (const mm of body.matchAll(/return\s+([A-Z_][A-Z0-9_]*)\s*;/g)) {
+        for (const mm of body.matchAll(/return\s+([A-Z_][A-Z0-9_]*|\d+)\s*;/g)) {
           const v = num(mm[1])
           // 被协议判断占用的 return 跳过（那个值已在 explicit 里）
           if (v !== undefined && !Object.values(explicit).includes(v)) fallbackSet.add(v)
@@ -267,37 +276,69 @@ console.log('\n== 前后端一致性断言：协议默认端口必须与后端 P
     }
     const fallback = fallbackSet.size === 1 ? [...fallbackSet][0] : undefined
 
-    // 后端 defaultPort(协议) 的有效值
-    const beEffective = (proto) => (proto in explicit ? explicit[proto] : fallback)
+    // ③ 解析完整性自检 —— 这一段是「这条断言能不能当回事」的前提。
+    //    「解析失败」和「两边确实一致」必须能区分开，否则会出现两种坏结果：
+    //      · 假绿：解析器读不懂后端 ⇒ 什么都比不出来 ⇒ 门禁照样绿
+    //        （最阴：漂移直接跑到现场才炸）
+    //      · 假红：解析器读不懂后端 ⇒ 拿兜底值当真相去比 ⇒ 报一条**结论是假的**「两边不一致」
+    //    判据：文件里**明明写着** Map.entry / 协议分支 / getOrDefault，本脚本却一条都没解析出来
+    //    ⇒ 解析失败（后端改了写法），而不是「后端没定义」。
+    const rawMapEntry = (be.match(/Map\.entry\s*\(/g) || []).length
+    const rawBranch = (be.match(/\.equals\s*\(\s*\w+\s*\)/g) || []).length
+    const rawFallback = (be.match(/getOrDefault\s*\(|orElse\s*\(/g) || []).length
+    const parsedExplicit = Object.keys(explicit).length
 
-    if (!Object.keys(explicit).length && fallback === undefined) {
-      fail('从后端 ProtocolDefaults.java 里解析不出 defaultPort(协议) 的有效值 —— ' +
-           '后端若改了写法（映射式/分支式），这里要跟着改，否则一致性断言形同虚设')
+    const parseProblems = []
+    if (rawMapEntry > 0 && parsedExplicit === 0) {
+      parseProblems.push('文件里有 ' + rawMapEntry + ' 处 Map.entry(...)，但脚本一条都没解析出来 —— 映射写法可能变了（协议名不是字面量？端口不是常量名？）')
+    }
+    if (rawMapEntry === 0 && rawBranch === 0) {
+      parseProblems.push('文件里既没有 Map.entry(...) 也没有 "协议".equals(...) 分支 —— 后端可能改用了本脚本不认识的写法')
+    }
+    if (fallback === undefined) {
+      parseProblems.push('解析不出兜底端口（defaultPort() 对未单列的协议返回什么，不知道）')
+    }
+    if (rawFallback === 0 && rawBranch === 0 && fallback === undefined) {
+      parseProblems.push('既找不到 getOrDefault/orElse 兜底，也认不出分支式写法')
+    }
+
+    if (parseProblems.length) {
+      for (const p of parseProblems) fail('[解析失败] ' + p + PARSE_HINT)
     } else {
-      // 前端那份
+      // 前端那份：这里同样要防「读不出来 ⇒ 空转通过」
       const m = src.match(/const PROTO_DEFAULT_PORT[^=]*=\s*\{([^}]*)\}/)
       const fe = {}
       if (m) for (const mm of m[1].matchAll(/'?([\w-]+)'?\s*:\s*(\d+)/g)) fe[mm[1]] = Number(mm[2])
 
-      for (const proto of Object.keys(fe)) {
-        const b = beEffective(proto)
-        if (b === undefined) {
-          fail('前端把协议 ' + proto + ' 的默认端口定为 ' + fe[proto] +
-               '，但后端 ProtocolDefaults.java 里算不出 defaultPort(' + proto + ') —— 两边口径已分叉')
-        } else if (b !== fe[proto]) {
-          fail('前后端口径不一致：后端 ProtocolDefaults.java 里 defaultPort(' + proto + ') = ' + b +
-               '，前端 PROTO_DEFAULT_PORT 里 ' + proto + ' = ' + fe[proto] +
-               ' ⇒ 漂移会让设备连到错端口（前端预填的值会盖掉后端的按协议兜底）')
-        } else {
-          pass('前后端一致：defaultPort(' + proto + ') = ' + b)
+      if (!m) {
+        fail('[解析失败] 读不到 DeviceFormDialog.vue 里的 PROTO_DEFAULT_PORT 表 —— ' +
+             '前端端口表可能被改名或改了写法，这里要跟着改，否则一致性断言空转通过')
+      } else if (!Object.keys(fe).length) {
+        fail('[解析失败] PROTO_DEFAULT_PORT 解析出 0 条协议 —— 同上，空转通过等于没有断言')
+      } else {
+        // 后端 defaultPort(协议) 的有效值
+        const beEffective = (proto) => (proto in explicit ? explicit[proto] : fallback)
+
+        for (const proto of Object.keys(fe)) {
+          const b = beEffective(proto)
+          if (b === undefined) {
+            fail('[解析失败] 前端把协议 ' + proto + ' 的默认端口定为 ' + fe[proto] +
+                 '，但后端 ProtocolDefaults.java 里算不出 defaultPort(' + proto + ') —— ' + PARSE_HINT)
+          } else if (b !== fe[proto]) {
+            fail('[口径不一致] 后端 ' + REL_BE + ' 里 defaultPort(' + proto + ') = ' + b +
+                 '，前端 PROTO_DEFAULT_PORT 里 ' + proto + ' = ' + fe[proto] +
+                 ' ⇒ 漂移会让设备连到错端口（前端预填的值会盖掉后端的按协议兜底）')
+          } else {
+            pass('前后端一致：defaultPort(' + proto + ') = ' + b)
+          }
         }
-      }
-      // 后端有、前端没预填的协议：前端不预填 ⇒ 端口框留空 ⇒ 落库走后端兜底，
-      // 不会连错，只是没有预填提示。不算错误，提示一下即可。
-      for (const proto of Object.keys(explicit)) {
-        if (!(proto in fe)) {
-          console.log('  note  后端有、前端没预填的协议：' + proto + ' = ' + explicit[proto] +
-                      '（落库会走后端兜底，不影响连接正确性）')
+        // 后端有、前端没预填的协议：前端不预填 ⇒ 端口框留空 ⇒ 落库走后端兜底，
+        // 不会连错，只是没有预填提示。不算错误，提示一下即可。
+        for (const proto of Object.keys(explicit)) {
+          if (!(proto in fe)) {
+            console.log('  note  后端有、前端没预填的协议：' + proto + ' = ' + explicit[proto] +
+                        '（落库会走后端兜底，不影响连接正确性）')
+          }
         }
       }
     }
