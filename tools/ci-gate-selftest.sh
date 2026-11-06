@@ -30,7 +30,15 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-WORK="${WORK:-/tmp/ci-gate-selftest}"
+# 隔离副本目录：**每次运行用一个全新的目录**。
+# ⚠️ **为什么不用固定目录 + rm -rf 清空**（2026-11-06 实测踩过）：
+#   · `rm -rf` 一个几千文件的目录，会被**环境的删除保护**打断（报 Permission denied）
+#     ⇒ 旧副本残留下来，新 tar 又覆盖在上面 ⇒ **副本是「新旧混合」的**：
+#       残留的只读文件删不掉、npm ci 也因此失败（它要先清 node_modules）。
+#   · 而且旧副本里还留着上一次没排除 ./dist 时拷进来的 3 GB 发版包。
+#   ⇒ **改成「每次一个新目录」就不用删任何东西**，彻底绕开删除保护。
+WORK="${WORK:-/tmp/ci-gate-selftest/run-$(date +%s)-$$}"
+mkdir -p "$WORK"
 SKIP_BE=1     # 默认只测静态/前端项（不重跑 mvn）
 SKIP_FE=0
 
@@ -48,7 +56,8 @@ line() { printf '  %s %-34s %s\n' "$1" "$2" "$3"; }
 PASS=0; FAIL=0
 
 echo "在隔离副本里做（不碰共享工作树）"
-rm -rf "$WORK"
+# ⚠️ 这里**不再 rm -rf**：每次用新目录（见上面 WORK 的定义），不需要清空旧副本，
+#   也就不受环境的删除保护影响。
 mkdir -p "$WORK" || exit 1
 # ⚠️ **必须复制当前工作树**（不是 git archive HEAD），
 #   否则副本比工作区旧，自检跑的是旧代码 → 报出「已经修好的错误」，
@@ -57,16 +66,40 @@ mkdir -p "$WORK" || exit 1
 #
 #   整树 tar 复制，排除构建产物与依赖目录。
 #   Windows 没有 rsync，用 tar 的排除规则（Git Bash 自带 tar 支持）。
+# ⚠️ **必须排除 ./dist**：它是**已提交进仓库**的历史发版包（1.0.29 那次把 3 GB 的
+#   dist/ 提交进去了，git ls-files dist 能查到）。
+#   不排除的话，副本会是 3 GB ⇒ tar 拷贝被拖垮/被截断 ⇒ 副本里**随机少一堆文件**
+#   ⇒ 后面每条变异都以「No such file or directory」失败 ——
+#   **看起来像门禁坏了，其实是我的锅**（2026-11-06 实际栽过两轮，排查了很久）。
+#   ⇒ 排除之后副本约 160 MB，秒级完成。
 ( cd "$ROOT" && tar -cf - \
     --exclude='./.git' \
     --exclude='./target' \
     --exclude='./node_modules' \
     --exclude='*/node_modules' \
     --exclude='./frontend/dist' \
+    --exclude='./dist' \
+    --exclude='./.portable-test' \
     --exclude='*.tmp' \
     --exclude='./.ssh-test' \
     . ) | tar -xf - -C "$WORK"
-echo "  副本：$WORK"
+echo "  副本：$WORK（$(find "$WORK" -type f | wc -l | tr -d ' ') 个文件）"
+
+# ⚠️ **副本完整性自检**：拷贝被截断时，后面每条变异都会以「文件不存在」失败，
+#   那看起来像门禁坏了 ⇒ 必须在这里就明确报「副本不完整」并退出。
+for must in tools/ci-gate.sh tools/ci-gate-selftest.sh pom.xml \
+            scripts/check-alarmcodes.mjs scripts/check-protocol-port-literals.mjs \
+            tools/verify-opcua-boot4.sh \
+            src/main/resources/alarmcodes/index.txt \
+            frontend/src/locales/en-US.ts \
+            frontend/src/api/deviceTemplates.ts; do
+  if [ ! -f "$WORK/$must" ]; then
+    echo "  ✗ 副本不完整：缺少 $must —— tar 拷贝被截断（多半是没排除 ./dist）" >&2
+    echo "    ⇒ 这不是门禁的问题，是隔离副本没拷全；先修副本，别去查门禁。" >&2
+    exit 2
+  fi
+done
+echo "  副本完整性自检通过"
 
 # ---------- Maven 路径解析 ----------
 # 为什么需要这一步：
@@ -126,8 +159,65 @@ expect_green() {
   return 1
 }
 
+# ---------- 常态断言：门禁的检查项清单里必须含关键项 ----------
+# ⭐ **为什么必须有「常态断言」这一层**（架构师 + 运维专家 2026-11-06 两次实验坐实）：
+#   运维专家把 ci-gate.sh 里**整块 OPC UA 检查删掉**，自检 12/0 全绿，还自夸「门禁确实会红」。
+#   根因：**所有变异都在验「脚本会红」，没有一条验「门禁会不会调它」**。
+#   而且我原来的变异 6 删的是**脚本文件**、红的是**旁路** ⇒ 跟主干被删毫无关系
+#   ⇒ 「一个证明不了它想证明那件事的变异，不只是无效，是误导」。
+#   架构师的原话：「删掉之后没人叫，才是真正的假绿 —— 因为此时连被验的对象都不存在了，
+#   『跑起来红不红』这个问题本身失去意义。」
+# ⇒ 所以结构必须是：**先有常态断言（清单里必须含它），再用变异证明这条断言真的有鉴别力**。
+#   只加变异不加常态断言，那个变异就是「删掉它 ⇒ 当然少了一项」—— 自证，没意义。
+#
+# 判据用「清单里有没有这一项」而不是「跑起来红不红」：
+#   检查块被删了 ⇒ 它根本不会跑 ⇒ 谈不上红不红 ⇒ 只能问「它还在不在」。
+#
+# 用法：expect_check_list <present|absent> <说明>
+expect_check_list() {
+  local want="$1"; shift
+  local note="$1"; shift
+  local out rc missing=""
+  out="$( cd "$WORK" && bash tools/ci-gate.sh --list-checks 2>&1 )"
+  rc=$?
+  if [ "$rc" -ne 0 ]; then
+    line "✗" "检查项清单" "--list-checks 退出码 $rc（应为 0）：$note"
+    echo "$out" | tail -8 | sed 's/^/       /'
+    FAIL=$((FAIL + 1))
+    return 1
+  fi
+  for w in "OPC UA 生产类路径" "端口字面量检查"; do
+    echo "$out" | grep -qF "$w" || missing="$missing [$w]"
+  done
+  if [ "$want" = "present" ]; then
+    if [ -n "$missing" ]; then
+      line "✗" "检查项清单" "清单里缺少：$missing —— $note"
+      echo "$out" | sed 's/^/         /'
+      FAIL=$((FAIL + 1))
+      return 1
+    fi
+    line "✓" "检查项清单" "含关键项（OPC UA 生产类路径 / 端口字面量检查）：$note"
+    PASS=$((PASS + 1))
+    return 0
+  fi
+  # 期望「不在清单里」
+  if echo "$out" | grep -qF "OPC UA 生产类路径"; then
+    line "✗" "检查项清单" "清单里仍有「OPC UA 生产类路径」—— 常态断言没有鉴别力：$note"
+    FAIL=$((FAIL + 1))
+    return 1
+  fi
+  line "✓" "检查项清单" "按预期：清单里已没有「OPC UA 生产类路径」：$note"
+  PASS=$((PASS + 1))
+  return 0
+}
+
 SKIP_ARG="--skip-be"
 [ "$SKIP_BE" -eq 0 ] && SKIP_ARG=""
+
+# ---------- 常态断言（基线）：清单里必须有关键项 ----------
+# ⚠️ 这条**先跑**：清单不对的话，后面的变异都建在坏基础上。
+say "常态断言：门禁检查项清单必须含关键项"
+expect_check_list present "基线"
 
 # ---------- 变异 1：i18n 少一个键 ----------
 say "变异 1：i18n 少一个键"
@@ -338,8 +428,10 @@ else
     FAIL=$((FAIL + 1))
   else
     # 这次**不能**用 expect_red —— 它跑的是完整门禁（含前端，慢）。
-    # 直接跑 OPC UA 那一道门禁，判据更精确也更快。
-    if ( cd "$WORK" && bash tools/verify-opcua-boot4.sh 14877 ) >/tmp/_cgs.log 2>&1; then
+    # 走 **--only-opcua**（门禁自己那条路径），判据更精确也更快；
+    # ⚠️ 关键是**经过 ci-gate.sh**：直接调 verify 脚本验的是「脚本能发现降级」，
+    #    跟「门禁会不会调它」是两件事（运维专家 2026-11-06 的实验就栽在这）。
+    if ( cd "$WORK" && bash tools/ci-gate.sh --only-opcua ) >/tmp/_cgs.log 2>&1; then
       line "✗" "jaxb 降级 → 必须红" "生产类路径验证没有变红 —— 这道门禁失效了（假绿）"
       FAIL=$((FAIL + 1))
     else
@@ -353,7 +445,7 @@ else
       line "✗" "jaxb 还原" "还原失败（scope test 还在）"
       FAIL=$((FAIL + 1))
     else
-      if ( cd "$WORK" && bash tools/verify-opcua-boot4.sh 14878 ) >/tmp/_cgs.log 2>&1; then
+      if ( cd "$WORK" && bash tools/ci-gate.sh --only-opcua ) >/tmp/_cgs.log 2>&1; then
         line "✓" "jaxb 还原后 → 必须绿" "恢复全绿"
         PASS=$((PASS + 1))
       else
@@ -365,20 +457,18 @@ else
   fi
 fi
 
-# ---------- 变异 6：把 OPC UA 那道检查从门禁里摘掉（验「它真的挂在门禁链路上」）----------
-# 为什么需要这条（运维专家 2026-11-06 指出）：
-#   OPC UA 那道检查挂在 ci-gate.sh 的 SKIP_BE 分支里，而**自检默认用 --skip-be 跑**
-#   ⇒ 自检**从来没跑到过它** ⇒ 没人能证明「门禁真的会调它」。
-#   变异 5 验的是「脚本本身会红」，**没验「门禁会不会调它」** ——
-#   哪天有人把 ci-gate.sh 里那行删了/挪到不可达的地方，两条变异都照样绿 ⇒ 假绿。
-#
-# 这一条验的正是「**挂在链路上 + 红了会以正确的项名冒出来**」。
-# 做法：把副本里的 tools/verify-opcua-boot4.sh 删掉（模拟「有人把这项从门禁里摘了」）
+# ---------- 变异 6：OPC UA 的 verify 脚本文件不在 ⇒ 门禁必须红 ----------
+# ⚠️ **这条的范围比它的名字窄**：它验的是「**脚本文件不在时**门禁会红」，
+#   **不是**「主干上挂载点被删时门禁会红」（那是变异 7 验的）。
+#   一条变异只该声称它证明的那件事 —— 名字比范围大，就会变成「装饰性的变异」。
+#   （我第一版把它叫「把 OPC UA 那道检查从门禁里摘掉」，但它删的是脚本文件，
+#     红的是旁路 ⇒ 名字大了一圈 ⇒ 架构师指出这是「误导」。已改名收窄。）
+# 做法：把副本里的 tools/verify-opcua-boot4.sh 删掉
 #   ⇒ ci-gate.sh 的「找不到 tools/verify-opcua-boot4.sh」分支会亮红
 #   ⇒ 断言：门禁红，**且红的正是「OPC UA 生产类路径」这一项**（不是别的项红）。
 # ⚠️ 判据要精确：如果只断言「门禁红了」，那别的项红也算通过 ⇒ 验的还是别的东西。
 # 用 --only-opcua 跑：只跑这一步，不需要 mvn test ⇒ 比跑完整门禁快得多。
-say "变异 6：把 OPC UA 那道检查从门禁里摘掉（验它真的挂在门禁链路上）"
+say "变异 6：OPC UA 的 verify 脚本文件不在 ⇒ 门禁必须红"
 VERIFY="$WORK/tools/verify-opcua-boot4.sh"
 if [ ! -f "$VERIFY" ]; then
   line "✗" "OPC UA 摘除变异" "副本里找不到 tools/verify-opcua-boot4.sh，变异无法进行"
@@ -417,6 +507,69 @@ else
     fi
   fi
 fi
+
+# ---------- 变异 7：删掉 ci-gate.sh 主干上的 OPC UA 检查挂载点 ----------
+# ⭐ **这条才是真正堵住运维专家那个盲区的**：
+#   他的实验：把 ci-gate.sh 里 SKIP_BE=0 主干那段**整块删掉** ⇒ 自检 12/0 全绿，
+#   还自夸「门禁确实会红，可以信任」。
+#   我原来的变异 6 删的是**脚本文件**、红的是**旁路** ⇒ 跟主干被删毫无关系
+#   ⇒ 「看起来像堵上了」比裸奔更糟（架构师：证明不了它想证明那件事的变异是误导）。
+#
+# 为什么判据是「清单里还有没有这一项」而不是「跑起来红不红」：
+#   检查块被删了 ⇒ 它根本不会跑 ⇒ 谈不上红不红 ⇒ 只能问「它还在不在」。
+#   ⇒ 用 --list-checks 的清单 + 常态断言来判。
+#
+# 注入方式：**只删主干那一个挂载点**（`if [ "$SKIP_BE" -eq 0 ]` 那个分支里的 run_opcua_check），
+#   不能碰 `--only-opcua` 旁路里的那一个（旁路还在 ⇒ 变异跑的是旁路 ⇒ 又是错方向）。
+say "变异 7：删掉 ci-gate.sh 主干上的 OPC UA 检查挂载点（验它真挂在主干上）"
+GATE="$WORK/tools/ci-gate.sh"
+if [ ! -f "$GATE" ]; then
+  line "✗" "主干挂载点变异" "副本里找不到 tools/ci-gate.sh，变异无法进行"
+  FAIL=$((FAIL + 1))
+else
+  cp "$GATE" "$GATE.bak"
+  python - "$GATE" <<'PY'
+import io, re, sys
+p = sys.argv[1]
+s = io.open(p, encoding='utf-8', newline='').read()
+# ⚠️ 必须锚定 `SKIP_BE -eq 0` 那个分支 —— 不能匹配到 `--only-opcua` 旁路里的同一行。
+#   （运维专家上一版正则匹配的是注释块、会误删旁路。）
+pat = re.compile(
+    r'(if \[ "\$SKIP_BE" -eq 0 \]; then\n  say "OPC UA 生产运行时类路径"\n)'
+    r'(?:[ \t]*#[^\n]*\n)*'
+    r'[ \t]*run_opcua_check\n', re.S)
+s2, n = pat.subn(r'\1', s)
+if n != 1:
+    print('  注入失败：匹配到 %d 处（应为 1 处）' % n)
+    sys.exit(1)
+io.open(p, 'w', encoding='utf-8', newline='').write(s2)
+print('  已删掉主干那一个挂载点（旁路完好）')
+PY
+  if [ $? -ne 0 ]; then
+    line "✗" "主干挂载点变异" "注入失败"
+    FAIL=$((FAIL + 1))
+  else
+    # 断言注入真的生效（不信脚本自己说成功）：主干那个 if 块里不该再有 run_opcua_check
+    if awk '/if \[ "\$SKIP_BE" -eq 0 \]; then/,/^fi$/' "$GATE" | grep -q 'run_opcua_check'; then
+      line "✗" "主干挂载点变异" "注入没生效（主干分支里还有 run_opcua_check）"
+      FAIL=$((FAIL + 1))
+    else
+      # ⚠️ 判据要精确：失败的必须是**那条清单断言**，不能是别的项红
+      expect_check_list absent "主干挂载点被删 ⇒ 清单里必须不再有「OPC UA 生产类路径」"
+    fi
+  fi
+  # 还原
+  mv "$GATE.bak" "$GATE"
+  if grep -q 'run_opcua_check' "$GATE"; then
+    expect_check_list present "还原后清单必须恢复"
+  else
+    line "✗" "主干挂载点还原" "还原失败（挂载点没了）"
+    FAIL=$((FAIL + 1))
+  fi
+fi
+
+# 尽力清理副本（失败也无所谓：留着只占磁盘，下次运行会用新目录）
+rm -rf "$WORK" 2>/dev/null || true
 
 say "汇总"
 echo "  通过 $PASS / 失败 $FAIL"

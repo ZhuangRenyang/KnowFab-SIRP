@@ -37,8 +37,24 @@ import { fileURLToPath } from 'node:url'
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const SRC = path.join(ROOT, 'src', 'main', 'java')
 
-// 端口字面量：只认独立的 502（不认 1502 / 5021 / 0.502）
-const PORT_LITERAL = /(?<![\w.])502(?![\w.])/
+// 端口字面量：**端口语境**里的 3-4 位数字。
+//
+// 为什么是「端口语境」而不是「所有数字」：
+//   · 扫所有 3-4 位数字 ⇒ 订单号、超时值、寄存器地址全被扫进来 ⇒ 误报满天飞
+//   · 只找 502 一个数 ⇒ **加第三个协议（默认端口比如 9600）时，那行根本不会被扫到**
+//     ⇒ 门禁悄悄失去保护 —— 这正是这道门禁当初被建起来要防的那类漂移。
+//   · 折中：只扫**提到端口的行**（架构师实测：8 处命中、零误报）。
+//
+// 「端口语境」的判定（架构师给的 8 处实测数据）：
+//   int port = req.port() == null ? 502 : req.port();      ← 变量名 port
+//   public static final int MODBUS_TCP_PORT = 502;          ← 常量名后缀 _PORT
+//   static final int DEFAULT_PORT = 4840;                   ← 同上
+// ⚠️ 残留缺口（不 over-promise）：它依赖**命名约定** —— 端口常量带 port/PORT。
+//   将来有人写 `private static final int OPC_UA_DEFAULT = 9600;`（名字里没有 port）就扫不到。
+//   约定靠「格式契约 + 这道门禁」双保险（本项目的端口常量命名约定很强）。
+const PORT_CONTEXT = /(^|[^A-Za-z0-9_])port([^A-Za-z0-9_]|$)|_PORT\b|\bPort\b/
+// 端口字面量：独立的 3-4 位数字（不认 15021 / 0.502 / x502）
+const PORT_LITERAL = /(?<![\w.])(\d{3,4})(?![\w.])/g
 
 // 白名单：{ file, pattern, max, reason }
 //   file    —— 相对 src/main/java 的路径（用 / 分隔）
@@ -48,25 +64,37 @@ const PORT_LITERAL = /(?<![\w.])502(?![\w.])/
 const WHITELIST = [
   {
     file: 'com/factory/hub/driver/ProtocolDefaults.java',
-    pattern: /MODBUS_TCP_PORT\s*=\s*502/,
+    pattern: /MODBUS_TCP_PORT\s*=\s*\d{3,4}/,
     max: 1,
     reason: '协议→默认端口的唯一真相（Modbus TCP / RTU-over-TCP 用 502）'
   },
   {
+    file: 'com/factory/hub/driver/ProtocolDefaults.java',
+    pattern: /OPC_UA_PORT\s*=\s*\d{3,4}/,
+    max: 1,
+    reason: '同上（OPC UA 的标准端口 4840）'
+  },
+  {
     file: 'com/factory/hub/driver/modbus/ModbusTcpDriver.java',
-    pattern: /DEFAULT_PORT\s*=\s*502/,
+    pattern: /DEFAULT_PORT\s*=\s*\d{3,4}/,
     max: 1,
     reason: 'Modbus TCP 驱动自己的防御兜底（上游漏了解析时不至于拼出 host:0）'
   },
   {
     file: 'com/factory/hub/driver/modbus/ModbusRtuOverTcpDriver.java',
-    pattern: /DEFAULT_PORT\s*=\s*502/,
+    pattern: /DEFAULT_PORT\s*=\s*\d{3,4}/,
     max: 1,
     reason: 'Modbus RTU over TCP 驱动自己的防御兜底（同上）'
   },
   {
+    file: 'com/factory/hub/driver/opcua/OpcUaEndpointUrl.java',
+    pattern: /DEFAULT_PORT\s*=\s*\d{3,4}/,
+    max: 1,
+    reason: 'OPC UA 端点 URL 构造器的协议级兜底（上游漏了解析时不至于拼出 host:0）'
+  },
+  {
     file: 'com/factory/hub/discovery/DiscoveryController.java',
-    pattern: /\?\s*502\s*:/,
+    pattern: /\?\s*\d{3,4}\s*:/,
     max: 3,
     reason: 'Modbus 专用探测端点的默认端口：那几个接口带 unitId/functionCode/framing 的 ' +
       'Modbus 语义，且 DiscoveryController 里没有建设备的路径 ⇒ 那里 502 是对的'
@@ -147,7 +175,10 @@ function main () {
       const stripped = stripCommentsAndStrings(raw, inBlock)
       inBlock = stripped.inBlock
       const code = stripped.code
-      if (!PORT_LITERAL.test(code)) continue
+      // 先判「这一行是不是在谈端口」：不是 ⇒ 这一行的数字与端口无关（订单号、超时值…）
+      if (!PORT_CONTEXT.test(code)) continue
+      const nums = code.match(PORT_LITERAL)
+      if (!nums || !nums.length) continue
       totalHits++
       let matched = false
       for (let gi = 0; gi < WHITELIST.length; gi++) {
@@ -165,10 +196,11 @@ function main () {
   }
 
   if (violations.length > 0) {
-    console.log('✗ 发现白名单之外的硬编码端口 502（' + violations.length + ' 处）')
-    console.log('  502 是 Modbus TCP 的端口。协议→默认端口的口径只在')
-    console.log('  com/factory/hub/driver/ProtocolDefaults.java 定义一处，其它地方一律查')
-    console.log('  ProtocolDefaults.defaultPort(protocol)。')
+    console.log('✗ 发现白名单之外的端口字面量（' + violations.length + ' 处）')
+    console.log('  协议→默认端口的口径只在 com/factory/hub/driver/ProtocolDefaults.java 定义一处，')
+    console.log('  其它地方一律查 ProtocolDefaults.defaultPort(protocol)。')
+    console.log('  （扫描范围：提到端口的行里的 3-4 位数字 —— 只找 502 的话，')
+    console.log('    加第三个协议时那行根本不会被扫到 ⇒ 门禁悄悄失去保护。）')
     console.log('')
     for (const v of violations) {
       console.log('  ' + v.rel + ':' + v.lineno)
@@ -205,7 +237,8 @@ function main () {
   }
 
   console.log('✓ 端口字面量检查通过：src/main/java 共 ' + files.length + ' 个文件，' +
-    '硬编码 502 共 ' + totalHits + ' 处，全部在白名单内（' + WHITELIST.length + ' 条白名单规则）')
+    '端口语境里的 3-4 位数字共 ' + totalHits + ' 处，全部在白名单内（' +
+    WHITELIST.length + ' 条白名单规则）')
   for (const rule of WHITELIST) {
     console.log('  · ' + rule.file + '（' + rule.max + ' 处）：' + rule.reason)
   }
