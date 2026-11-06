@@ -89,10 +89,10 @@ die()  { printf '\033[1;31m  失败 %s\033[0m\n' "$*" >&2; exit 1; }
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
 # ---------- 1.5 联网取包（可选） ----------
-# 更新源地址：国内默认 Gitee，海外默认 GitHub raw。仓库还没建就把地址换成你自己的。
-REPO_CN="${DH_REPO_CN:-https://gitee.com/your-account/KnowFab-SIRP/raw/master/dist}"
-# 注意：仓库已转私有（2026-10-27）。私有仓库的 raw 地址需带令牌才能访问，
-# --online 仅在仓库公开或客户侧配置只读令牌时可用；主交付路径是 Docker deploy.sh。
+# 更新源地址：国内默认 Gitee，海外默认 GitHub raw。
+# 分支是 main（不是 master——Gitee 上 master 会 404）；账号与 GitHub 同一个。
+# 客户要换自己的镜像源，用环境变量覆盖：DH_REPO_CN / DH_REPO_GLOBAL。
+REPO_CN="${DH_REPO_CN:-https://gitee.com/ZhuangRenyang/KnowFab-SIRP/raw/main/dist}"
 REPO_GLOBAL="${DH_REPO_GLOBAL:-https://raw.githubusercontent.com/ZhuangRenyang/KnowFab-SIRP/main/dist}"
 if [ "$ONLINE" -eq 1 ]; then
   case "$SOURCE" in
