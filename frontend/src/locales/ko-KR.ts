@@ -119,6 +119,7 @@ export default {
    */
   devForm: {
     opcuaHint: 'OPC UA 포인트는 nodeId로 노드를 지정합니다(표기법은 UaExpert와 동일). 문자열 노드(ns=2;s=Machine1.Output)뿐 아니라 이진 ByteString 노드(ns=2;b=QUJDRA==)도 사용할 수 있습니다. ns 인덱스는 제조사에 따라 다릅니다(S7-1500은 대체로 ns=3, Inovance는 대체로 ns=4) — 현장에서 확인한 값을 기준으로 하세요.',
-    opcuaHostHint: '「IP 주소」에는 IP 주소 또는 호스트명만 입력하세요(예: 192.168.1.10). opc.tcp:// 접두어나 포트 번호, 경로는 붙이지 마세요. 포트는 「포트」 항목에 입력합니다.'
+    opcuaHostHint: '「IP 주소」에는 IP 주소 또는 호스트명만 입력하세요(예: 192.168.1.10). opc.tcp:// 접두어나 포트 번호, 경로는 붙이지 마세요. 포트는 「포트」 항목에 입력합니다.',
+    portPh: '비워 두면 프로토콜 기본 포트 {port} 사용'
   }
 }

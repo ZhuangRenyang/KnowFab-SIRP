@@ -119,6 +119,7 @@ export default {
    */
   devForm: {
     opcuaHint: 'Los puntos OPC UA direccionan los nodos mediante nodeId (notación igual que en UaExpert); se admiten ambas formas: un nodo de cadena como ns=2;s=Machine1.Output y un nodo binario ByteString como ns=2;b=QUJDRA==. El índice ns varía según el fabricante (en S7-1500 suele ser ns=3, en Inovance ns=4): use el que vea en la planta.',
-    opcuaHostHint: 'En el campo «Dirección IP» introduzca solo la dirección IP o el nombre de host (p. ej., 192.168.1.10): sin el prefijo opc.tcp://, sin número de puerto y sin ruta. El puerto se indica en el campo «Puerto».'
+    opcuaHostHint: 'En el campo «Dirección IP» introduzca solo la dirección IP o el nombre de host (p. ej., 192.168.1.10): sin el prefijo opc.tcp://, sin número de puerto y sin ruta. El puerto se indica en el campo «Puerto».',
+    portPh: 'Vacío = puerto predeterminado del protocolo {port}'
   }
 }

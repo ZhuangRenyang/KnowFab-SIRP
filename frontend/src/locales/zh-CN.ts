@@ -1269,6 +1269,7 @@ export default {
     host: 'IP 地址',
     hostPh: '如 192.168.1.50',
     port: '端口',
+    portPh: '留空 = 用协议默认端口 {port}',
     slaveHint: '填盒子后面那台设备的 485 站号',
     serialPort: '串口',
     serialPortPh: '如 COM3',

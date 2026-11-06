@@ -44,7 +44,9 @@
       </div>
       <div v-if="isNet" class="frow">
         <el-form-item :label="t('devForm.host')"><el-input v-model="f.host" :placeholder="t('devForm.hostPh')" /></el-form-item>
-        <el-form-item :label="t('devForm.port')"><el-input-number v-model="f.port" :min="1" :max="65535" /></el-form-item>
+        <el-form-item :label="t('devForm.port')">
+          <el-input-number v-model="f.port" :min="1" :max="65535" :placeholder="t('devForm.portPh', { port: protoDefaultPort })" />
+        </el-form-item>
       </div>
       <!-- OPC UA 的 host 语义与 Modbus 不同：只填 IP/主机名，协议前缀与端口由系统拼。
            单独占一行（不塞进 el-form-item），否则提示会把 host/port 两个输入框顶得高低不齐。 -->
@@ -185,7 +187,7 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ApiError } from '@/api/http'
-import { devicesApi, genKey, PROTOCOLS, BRANDS, TPL } from '@/api/devices'
+import { devicesApi, genKey, PROTOCOLS, BRANDS, TPL, TPL_PROTOCOL } from '@/api/devices'
 import { skuApi, warehouseApi } from '@/api/erp'
 import { DEVICE_TEMPLATES, deviceTplApi, TPL_I18N, type DeviceTpl, type CustomTpl } from '@/api/deviceTemplates'
 import { useDevicesStore } from '@/stores/devices'
@@ -214,7 +216,7 @@ function goDiscovery() {
 
 const f = reactive({
   code: '', name: '', location: '', pollIntervalMs: 1000,
-  protocol: 'modbus-tcp', host: '', port: 502,
+  protocol: 'modbus-tcp', host: '', port: null as number | null,
   serialPort: 'COM3', baudRate: 9600, dataBits: 8, stopBits: 1, parity: 0,
   unitId: 1, unitId2: 1, timeoutMs: 800,
   apiKey: '', apiKeyEnabled: true, servoBrand: '',
@@ -227,12 +229,29 @@ const f = reactive({
   isMeter: false
 })
 
-/* 切协议时给行业默认端口：TCP 族 502；RTU 走串口不动端口（模板里 @change 引用，
-   此函数 2026-11-01 补上——第一版基座就只有模板引用没有实现） */
-function onProto() {
-  if (f.protocol === 'modbus-tcp' || f.protocol === 'modbus-rtu-tcp') f.port = 502
-  if (f.protocol === 'opcua') f.port = 4840
+/* 各协议的默认端口：切协议时预填 + 端口框留空时的提示文案都用它。
+   注意：这只是「界面上给个建议值」，不是数据层的兜底：
+   用户把端口框清空，提交的就是 null（= 没填），由后端各协议驱动自己回落默认值
+   （后端 DriverContext.port=0 即「未指定」，Modbus 502 / OPC UA 4840）。
+   真正的默认值只存在于后端驱动里，前端这份只是让用户少查一次手册。 */
+const PROTO_DEFAULT_PORT: Record<string, number> = {
+  'modbus-tcp': 502,
+  'modbus-rtu-tcp': 502,
+  opcua: 4840
 }
+
+/* 切协议时给行业默认端口：TCP 族 502；RTU 走串口不动端口（模板里 @change 引用，
+   此函数 2026-11-01 补上——第一版基座就只有模板引用没有实现）。
+   换协议就换端口：旧端口属于旧协议，留着会连错服务。
+   （用户自己清空端口框的意图在提交时才生效——那时传的是 null。） */
+function onProto() {
+  const p = PROTO_DEFAULT_PORT[f.protocol]
+  if (p) f.port = p
+}
+
+/* 端口框留空时的提示：告诉用户会连哪个端口（按当前协议）。
+   口径与后端 ProtocolDefaults.defaultPort 一致：不认识 / null 的协议按 Modbus 502 算。 */
+const protoDefaultPort = computed(() => PROTO_DEFAULT_PORT[f.protocol] ?? 502)
 
 const skuList = ref<any[]>([])
 const whList = ref<any[]>([])
@@ -321,7 +340,7 @@ function applyTpl(key: string) {
     const ct = customTpls.value.find((x) => 'c' + x.id === key)
     if (!ct) { tplNote.value = ''; return }
     f.protocol = ct.protocol
-    f.port = ct.port
+    f.port = ct.port ?? null
     f.unitId = ct.unitId
     f.pollIntervalMs = ct.pollIntervalMs
     f.timeoutMs = ct.timeoutMs
@@ -353,7 +372,7 @@ function applyTpl(key: string) {
 function resetDefaults() {
   Object.assign(f, {
     code: '', name: '', location: '', pollIntervalMs: 1000,
-    protocol: 'modbus-tcp', host: '', port: 502,
+    protocol: 'modbus-tcp', host: '', port: null,
     serialPort: 'COM3', baudRate: 9600, dataBits: 8, stopBits: 1, parity: 0,
     unitId: 1, unitId2: 1, timeoutMs: 800, apiKey: '', apiKeyEnabled: true, servoBrand: '',
     pointsText: JSON.stringify(TPL.machine, null, 2),
@@ -392,7 +411,7 @@ watch(visible, async (v) => {
   Object.assign(f, {
     code: c.code || '', name: c.name || '', location: c.location || '',
     pollIntervalMs: c.pollIntervalMs || 1000,
-    protocol: c.protocol || 'modbus-tcp', host: c.host || '', port: c.port || 502,
+    protocol: c.protocol || 'modbus-tcp', host: c.host || '', port: c.port ?? null,
     serialPort: c.serialPort || 'COM3', baudRate: c.baudRate || 9600,
     dataBits: c.dataBits || 8, stopBits: c.stopBits || 1, parity: c.parity == null ? 0 : c.parity,
     unitId: c.unitId || 1, unitId2: c.unitId || 1,
@@ -415,6 +434,14 @@ watch(visible, async (v) => {
 
 function useTpl(k: string) {
   f.pointsText = JSON.stringify(TPL[k], null, 2)
+  /* 内置「OPC UA 示例」给的是 OPC UA 的点表，协议与端口要跟着换，
+     否则会出现「点表是 OPC UA 的、协议还是 modbus-tcp、端口还是 502」的错配配置。
+     其余内置示例都是 Modbus 的（用默认的 modbus-tcp），协议不动。 */
+  const proto = TPL_PROTOCOL[k]
+  if (proto) {
+    f.protocol = proto
+    f.port = PROTO_DEFAULT_PORT[proto] ?? null
+  }
 }
 
 async function save() {
@@ -435,7 +462,10 @@ async function save() {
     location: f.location.trim(),
     protocol: f.protocol,
     host: f.host.trim(),
-    port: Number(f.port) || 502,
+    /* 端口没填就传 null ——「没填」这个信息必须如实传给后端：
+       它决定用哪个协议的默认端口（Modbus 502 / OPC UA 4840）。
+       在这里兜成 502 的话，新建 OPC UA 设备会拿着 502 去连，必然连不上。 */
+    port: f.port === null || f.port === undefined ? null : Number(f.port),
     serialPort: f.serialPort.trim(),
     baudRate: Number(f.baudRate),
     dataBits: Number(f.dataBits),

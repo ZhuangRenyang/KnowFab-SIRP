@@ -196,7 +196,8 @@ export interface CustomTpl {
   brand?: string
   model?: string
   protocol: string
-  port: number
+  /** null = 模板没记端口（用协议默认）。后端 DeviceTemplateEntity.port 是 Integer，可为 null。 */
+  port: number | null
   unitId: number
   pollIntervalMs: number
   timeoutMs: number
@@ -215,7 +216,10 @@ export interface TplSaveBody {
   brand?: string
   model?: string
   protocol: string
-  port: number
+  /** null = 不记端口（用协议默认）。
+   *  后端 applyCommon 只在 body 里带 port 时才写库，所以传 null = 模板不记端口，
+   *  套用到设备上时再由协议层给默认端口。 */
+  port: number | null
   unitId: number
   pollIntervalMs: number
   timeoutMs: number

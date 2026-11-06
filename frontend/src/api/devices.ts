@@ -49,6 +49,14 @@ export const TPL: Record<string, any[]> = {
   empty: []
 }
 
+/* 内置点表示例 → 它对应的协议。
+   点表长什么样取决于协议（OPC UA 用 nodeId，Modbus 用 address+functionCode），
+   所以套用示例时协议要跟着换，否则会造出「点表是 OPC UA 的、协议却是 modbus-tcp」的错配配置。
+   只有 opcua 这份示例是 OPC UA 的；其余都是 Modbus 的（用默认的 modbus-tcp）。 */
+export const TPL_PROTOCOL: Record<string, string> = {
+  opcua: 'opcua'
+}
+
 /* label 保留中文作为兜底，labelKey 供界面按当前语言取 */
 export const PROTOCOLS = [
   { value: 'modbus-tcp', label: 'modbus-tcp（网口 · 标准 Modbus TCP）', labelKey: 'protocol.modbusTcp' },
