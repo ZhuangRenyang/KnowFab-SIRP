@@ -304,6 +304,7 @@ console.log('\n== 前后端一致性断言：协议默认端口必须与后端 P
     // 跨形式乱捡栽过一次：映射式里 `getOrDefault(p, MODBUS_TCP_PORT + 1)` 读不出值，
     // 于是去 defaultPort() 方法体里捡了个 `return MODBUS_TCP_PORT;`（那是 null 分支）
     // 当兜底 ⇒ 认定 502，而真实值是 503 ⇒ 假绿。
+    const rawMapForm = (code.match(/Map\.of(?:Entries)?\s*\(/g) || []).length
     const rawMapEntry = (code.match(/Map\.entry\s*\(/g) || []).length
     const rawBranch = (code.match(/\.equals\s*\(\s*\w+\s*\)/g) || []).length
     const rawGetOrDefault = (code.match(/getOrDefault\s*\(/g) || []).length
@@ -331,7 +332,7 @@ console.log('\n== 前后端一致性断言：协议默认端口必须与后端 P
       const v = num(mm[1]); if (v !== undefined) fallbackSet.add(v)
     }
 
-    if (rawMapEntry > 0) {
+    if (rawMapForm > 0) {
       // 映射式：兜底值只可能来自 getOrDefault / orElse
       if (fallbackSet.size === 1) {
         fallback = [...fallbackSet][0]
@@ -363,7 +364,7 @@ console.log('\n== 前后端一致性断言：协议默认端口必须与后端 P
         parseProblems.push('分支式里读不出唯一的兜底端口（defaultPort() 方法体里没被协议判断挡住的 return）')
       }
     } else {
-      parseProblems.push('文件里既没有 Map.entry(...) 也没有 "协议".equals(...) 分支 —— 后端可能改用了本脚本不认识的写法')
+      parseProblems.push('文件里既没有 Map.ofEntries(...) 也没有 "协议".equals(...) 分支 —— 后端可能改用了本脚本不认识的写法')
     }
 
     if (parseProblems.length) {
@@ -385,9 +386,21 @@ console.log('\n== 前后端一致性断言：协议默认端口必须与后端 P
             fail('[解析失败] 前端把协议 ' + proto + ' 的默认端口定为 ' + fe[proto] +
                  '，但后端 ProtocolDefaults.java 里算不出 defaultPort(' + proto + ') —— ' + PARSE_HINT)
           } else if (b !== fe[proto]) {
-            fail('[口径不一致] 后端 ' + REL_BE + ' 里 defaultPort(' + proto + ') = ' + b +
-                 '，前端 PROTO_DEFAULT_PORT 里 ' + proto + ' = ' + fe[proto] +
-                 ' ⇒ 漂移会让设备连到错端口（前端预填的值会盖掉后端的按协议兜底）')
+            // 分两种情况报 —— 它们的修复动作完全不同，报在一起等于让人瞎猜，
+            // 而「让人瞎猜」正是「红但查不到」的成因：
+            //   ① 后端**没单列**这个协议 ⇒ 它走兜底值。可能是后端误删了这条定义，
+            //      也可能是前端多定义了一个协议 ⇒ 要人去判断「该改哪边」。
+            //   ② 后端**单列了**、只是数字不同 ⇒ 两边都有定义，改数字即可。
+            if (!(proto in explicit)) {
+              fail('[口径不一致] 后端 ' + REL_BE + ' 里**没有单列**协议 ' + proto +
+                   '（defaultPort(' + proto + ') 走兜底 = ' + b + '），前端 PROTO_DEFAULT_PORT 里却是 ' + fe[proto] +
+                   ' ⇒ 两种可能，动作不同：后端补一条 ' + proto + ' 的映射，或前端改成 ' + b +
+                   '（别猜：端口是协议知识，只应有一处定义）')
+            } else {
+              fail('[口径不一致] 后端 ' + REL_BE + ' 里 defaultPort(' + proto + ') = ' + b +
+                   '（映射里明写了），前端 PROTO_DEFAULT_PORT 里 ' + proto + ' = ' + fe[proto] +
+                   ' ⇒ 漂移会让设备连到错端口（前端预填的值会盖掉后端的按协议兜底）')
+            }
           } else {
             pass('前后端一致：defaultPort(' + proto + ') = ' + b)
           }
