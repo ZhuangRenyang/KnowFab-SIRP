@@ -415,13 +415,16 @@ public class DeviceController {
         // 端口：默认端口是协议知识（Modbus 502 / OPC UA 4840），只由 ProtocolDefaults 定义一处。
         // 这里不写死任何一个协议的值 —— 写死 502 会让「新建 OPC UA 设备不填端口」
         // 变成连 502，必然连不上。三种情况：
-        //   ① 用户没填 → 按协议给默认端口（不是一律 502）
+        //   ① 用户没填（null 或 0）→ 按协议给默认端口（不是一律 502）
+        //      ⚠️ 0 也要当「没填」：前端提交的是 Number(f.port) || 0，
+        //      而设备模板套用到设备时也走这条路（后端没有「套用模板」接口，
+        //      是前端把模板的端口填进表单再提交）—— 端口是 0 就该由协议兜底。
         //   ② 用户填了，且仍等于旧协议的默认端口，同时协议变了 → 跟着新协议走
         //      （典型场景：设备原来跑 Modbus、端口 502，客户把协议改成 OPC UA 但没动端口栏
         //        —— 这个端口是跟着上一个协议的默认值来的，不是客户特意指定的）
         //   ③ 用户明确填了别的端口 → 原样保留，不替用户决定
         Integer port = req.port();
-        if (port == null) {
+        if (port == null || port <= 0) {
             port = ProtocolDefaults.defaultPort(protocol);
         } else if (oldProtocol != null && !protocol.equals(oldProtocol)
                 && port == ProtocolDefaults.defaultPort(oldProtocol)) {

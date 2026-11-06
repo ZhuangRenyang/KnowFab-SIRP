@@ -173,7 +173,56 @@ class DevicePortSavePathTest {
     }
 
     @Test
-    @DisplayName("模板没填端口 ⇒ 保持 null，应用到设备上时再按协议给默认端口")
+    @DisplayName("模板端口填了但不是数字 ⇒ 落库 0（未指定），不能兜成 502")
+    void templateWithGarbagePortBecomesUnspecified() throws Exception {
+        DeviceTemplateEntity t = new DeviceTemplateEntity();
+        Map<String, Object> body = new HashMap<>();
+        body.put("protocol", "opcua");
+        body.put("port", "不是数字");
+
+        applyCommon(t, body);
+
+        assertEquals(0, t.getPort(),
+                "端口解析失败应是「未指定」(0)，不能兜成 502 —— "
+                        + "兜成 502 会又造出「未填」与「Modbus 默认」混用的场景");
+    }
+
+    @Test
+    @DisplayName("模板端口填了 4840 ⇒ 落库 4840（用户的值不被覆盖）")
+    void templateKeepsExplicitPort() throws Exception {
+        DeviceTemplateEntity t = new DeviceTemplateEntity();
+        Map<String, Object> body = new HashMap<>();
+        body.put("protocol", "opcua");
+        body.put("port", 4840);
+
+        applyCommon(t, body);
+
+        assertEquals(4840, t.getPort(), "用户填的端口必须原样落库");
+    }
+
+    /**
+     * 模板套用到设备上的端口链路。
+     * <p>
+     * <b>后端没有「套用模板到设备」的接口</b> —— 模板是前端填进表单、再提交 DeviceUpsert 的。
+     * 所以「模板端口 null/0 → 设备端口按协议兜底」这条链的落点是
+     * {@code DeviceController.apply}：它必须把 <b>0 也当成「没填」</b>，
+     * 否则前端提交 0 时，设备会落库 0 → 采集时靠驱动兜底并打一条「上游漏了解析」的 warn。
+     */
+    @Test
+    @DisplayName("模板端口是 0/null 时，套用到 OPC UA 设备上 ⇒ 设备端口按协议兜底成 4840")
+    void templatePortUnspecifiedFallsBackByProtocolOnDevice() throws Exception {
+        DeviceEntity fromTemplate = new DeviceEntity();
+        apply(fromTemplate, req("opcua", 0));       // 前端把模板的 0 填进端口栏再提交
+        assertEquals(4840, fromTemplate.getPort(),
+                "端口是 0（未指定）时，设备端口应按协议兜底成 4840，不能落库 0");
+
+        DeviceEntity fromNull = new DeviceEntity();
+        apply(fromNull, req("opcua", null));
+        assertEquals(4840, fromNull.getPort(), "端口是 null 时同样按协议兜底");
+    }
+
+    @Test
+    @DisplayName("模板端口没填 → 落库 null（= 没填），不能偷偷填成 502")
     void templateWithoutPortStaysNull() throws Exception {
         DeviceTemplateEntity t = new DeviceTemplateEntity();
         Map<String, Object> body = new HashMap<>();

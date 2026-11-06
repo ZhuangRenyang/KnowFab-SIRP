@@ -1,7 +1,6 @@
 package com.factory.hub;
 
 import com.factory.hub.audit.AuditLog;
-import com.factory.hub.driver.ProtocolDefaults;
 import com.factory.hub.audit.AuditService;
 import com.factory.hub.model.DeviceEntity;
 import com.factory.hub.model.DeviceTemplateEntity;
@@ -220,10 +219,13 @@ public class DeviceTemplateController {
                 t.setProtocol(protocol);
             }
         }
-        // 端口：用户填了就用用户的；body 里没有这一项就留 null，
-        // 应用到设备上时由 ProtocolDefaults 按协议给默认端口（Modbus 502 / OPC UA 4840）。
+        // 端口：用户填了就用用户的；body 里没有这一项就留 null（= 没填）。
+        // ⚠️ num() 的第二个参数是「**解析失败**时的兜底值」，不是「没填时的默认值」——
+        // 兜成 502（或协议默认端口）会又造出一个「未填」与「Modbus 默认」混用的场景，
+        // 正是这轮刚拆掉的坑；而且模板可能被套用到**另一种协议**的设备上，
+        // 在模板创建时就定死端口会套错。用 0（= 未指定），跟设备侧一样由协议层兜底。
         if (body.get("port") != null) {
-            t.setPort((int) num(body.get("port"), ProtocolDefaults.defaultPort(t.getProtocol())));
+            t.setPort((int) num(body.get("port"), 0));
         }
         if (body.get("unitId") != null) t.setUnitId((int) num(body.get("unitId"), 1));
         if (body.get("pollIntervalMs") != null) t.setPollIntervalMs((int) num(body.get("pollIntervalMs"), 1000));
