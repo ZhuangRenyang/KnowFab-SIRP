@@ -15,6 +15,13 @@
 # 隔离：在 `git archive HEAD` 的副本里做，不碰共享工作树 ——
 #   否则别人跑出的是假缺陷（改共享树会让别人的构建突然红）。
 #
+# ⚠️ **别在主工作树跑构建的同时跑这个自检**（2026-11-06 踩过）：
+#   自检靠「把当前工作树整树 tar 复制到副本里」来隔离。
+#   若此时主工作树正在被 mvn 构建（写 target/），tar 可能读到变化中的目录树而
+#   **拷贝被截断**（实测：副本只剩 4 个文件）⇒ 后面 6 条变异全部以
+#   「No such file or directory」失败 —— **看起来像门禁坏了，其实是我的锅**。
+#   ⇒ 跑自检前先让主工作树闲下来。
+#
 # ⚠️ 只注入**不依赖数据库**的项（纯静态/纯前端）。
 #   后端单测的变异（改业务逻辑让测试挂）需要重跑 mvn，耗时；
 #   而且注入方式与「注入已知错误 → exit 1」是同一套道理，
@@ -60,6 +67,28 @@ mkdir -p "$WORK" || exit 1
     --exclude='./.ssh-test' \
     . ) | tar -xf - -C "$WORK"
 echo "  副本：$WORK"
+
+# ---------- Maven 路径解析 ----------
+# 为什么需要这一步：
+#   变异 6 要跑 OPC UA 那道检查（--only-opcua），它**需要 maven**。
+#   而副本在 /tmp/ci-gate-selftest ⇒ 相对路径（如 ../tools/apache-maven-3.9.9/bin/mvn）
+#   从副本里跑会找不到；机器上没装 mvn（PATH 里没有）时，门禁会直接
+#   「缺少 Maven —— 用 MVN=/path/to/mvn 指定」exit 2 ⇒ 变异跑不起来。
+# ⇒ 这里把 MVN 解析成**绝对路径**；PATH 里没有 mvn 时，回落到仓库自带的那份。
+if [ -n "${MVN:-}" ] && [ -x "$ROOT/$MVN" ]; then
+  MVN="$(cd "$(dirname "$ROOT/$MVN")" && pwd)/$(basename "$ROOT/$MVN")"
+  export MVN
+  echo "  用仓库自带的 maven：$MVN"
+elif [ -z "${MVN:-}" ] && ! command -v mvn >/dev/null 2>&1; then
+  for cand in "$ROOT/../tools/apache-maven-3.9.9/bin/mvn" "$ROOT/tools/apache-maven-3.9.9/bin/mvn"; do
+    if [ -x "$cand" ]; then
+      MVN="$(cd "$(dirname "$cand")" && pwd)/$(basename "$cand")"
+      export MVN
+      echo "  PATH 里没有 mvn，用仓库自带的：$MVN"
+      break
+    fi
+  done
+fi
 
 # 预装一次依赖：后面 8 次门禁调用会检测到 node_modules 存在而跳过安装。
 # （CI 里没有 node_modules，CI 一定会真跑 npm ci —— 行为不变，只是自检快些。）
@@ -332,6 +361,59 @@ else
         tail -12 /tmp/_cgs.log | sed 's/^/       /'
         FAIL=$((FAIL + 1))
       fi
+    fi
+  fi
+fi
+
+# ---------- 变异 6：把 OPC UA 那道检查从门禁里摘掉（验「它真的挂在门禁链路上」）----------
+# 为什么需要这条（运维专家 2026-11-06 指出）：
+#   OPC UA 那道检查挂在 ci-gate.sh 的 SKIP_BE 分支里，而**自检默认用 --skip-be 跑**
+#   ⇒ 自检**从来没跑到过它** ⇒ 没人能证明「门禁真的会调它」。
+#   变异 5 验的是「脚本本身会红」，**没验「门禁会不会调它」** ——
+#   哪天有人把 ci-gate.sh 里那行删了/挪到不可达的地方，两条变异都照样绿 ⇒ 假绿。
+#
+# 这一条验的正是「**挂在链路上 + 红了会以正确的项名冒出来**」。
+# 做法：把副本里的 tools/verify-opcua-boot4.sh 删掉（模拟「有人把这项从门禁里摘了」）
+#   ⇒ ci-gate.sh 的「找不到 tools/verify-opcua-boot4.sh」分支会亮红
+#   ⇒ 断言：门禁红，**且红的正是「OPC UA 生产类路径」这一项**（不是别的项红）。
+# ⚠️ 判据要精确：如果只断言「门禁红了」，那别的项红也算通过 ⇒ 验的还是别的东西。
+# 用 --only-opcua 跑：只跑这一步，不需要 mvn test ⇒ 比跑完整门禁快得多。
+say "变异 6：把 OPC UA 那道检查从门禁里摘掉（验它真的挂在门禁链路上）"
+VERIFY="$WORK/tools/verify-opcua-boot4.sh"
+if [ ! -f "$VERIFY" ]; then
+  line "✗" "OPC UA 摘除变异" "副本里找不到 tools/verify-opcua-boot4.sh，变异无法进行"
+  FAIL=$((FAIL + 1))
+else
+  cp "$VERIFY" "$VERIFY.bak"
+  rm -f "$VERIFY"
+  if ( cd "$WORK" && bash tools/ci-gate.sh --only-opcua ) >/tmp/_cgs.log 2>&1; then
+    line "✗" "OPC UA 摘除 → 必须红" "门禁没有变红 —— 这道检查已经不在门禁链路上了（假绿）"
+    FAIL=$((FAIL + 1))
+  else
+    # 判据要精确：红的必须是「OPC UA 生产类路径」这一项
+    if grep -aq "OPC UA 生产类路径" /tmp/_cgs.log && grep -aq "找不到 tools/verify-opcua-boot4.sh" /tmp/_cgs.log; then
+      line "✓" "OPC UA 摘除 → 必须红" "变红了，且红的正是「OPC UA 生产类路径」这一项"
+      PASS=$((PASS + 1))
+      grep -aE "OPC UA 生产类路径|找不到" /tmp/_cgs.log | head -3 | sed 's/^/       /'
+    else
+      line "✗" "OPC UA 摘除 → 必须红" "红了，但红的不是「OPC UA 生产类路径」这一项 —— 判据不精确"
+      grep -aE "✓|✗|失败" /tmp/_cgs.log | head -8 | sed 's/^/       /'
+      FAIL=$((FAIL + 1))
+    fi
+  fi
+  # 还原
+  mv "$VERIFY.bak" "$VERIFY"
+  if [ ! -f "$VERIFY" ]; then
+    line "✗" "OPC UA 还原" "还原失败（文件没了）"
+    FAIL=$((FAIL + 1))
+  else
+    if ( cd "$WORK" && bash tools/ci-gate.sh --only-opcua ) >/tmp/_cgs.log 2>&1; then
+      line "✓" "OPC UA 还原后 → 必须绿" "恢复全绿"
+      PASS=$((PASS + 1))
+    else
+      line "✗" "OPC UA 还原后 → 必须绿" "仍然红 —— 还原失败"
+      tail -12 /tmp/_cgs.log | sed 's/^/       /'
+      FAIL=$((FAIL + 1))
     fi
   fi
 fi

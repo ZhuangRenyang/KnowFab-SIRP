@@ -35,13 +35,15 @@ cd "$ROOT" || exit 1
 MVN="${MVN:-mvn}"
 SKIP_BE=0
 SKIP_FE=0
+ONLY_OPCUA=0
 
 for a in "$@"; do
   case "$a" in
     --skip-be) SKIP_BE=1 ;;
     --skip-fe) SKIP_FE=1 ;;
+    --only-opcua) ONLY_OPCUA=1 ;;
     -h|--help) sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-    *) echo "未知参数：$a（--skip-be / --skip-fe / -h）" >&2; exit 2 ;;
+    *) echo "未知参数：$a（--skip-be / --skip-fe / --only-opcua / -h）" >&2; exit 2 ;;
   esac
 done
 
@@ -61,7 +63,8 @@ for tool in node npm; do
     exit 2
   fi
 done
-if [ "$SKIP_BE" -eq 0 ] && ! command -v "$MVN" >/dev/null 2>&1 && [ ! -x "$MVN" ]; then
+if { [ "$SKIP_BE" -eq 0 ] || [ "$ONLY_OPCUA" -eq 1 ]; } \
+   && ! command -v "$MVN" >/dev/null 2>&1 && [ ! -x "$MVN" ]; then
   echo "缺少 Maven（$MVN）—— 用 MVN=/path/to/mvn 指定" >&2
   exit 2
 fi
@@ -96,6 +99,34 @@ say "环境"
 line "·" "node" "$(node -v 2>/dev/null || echo '缺失')"
 line "·" "java"  "$(java -version 2>&1 | head -1)"
 line "·" "npm"   "$(npm -v 2>/dev/null || echo '缺失')"
+
+# ---------- 只跑「OPC UA 生产运行时类路径」这一步 ----------
+# 为什么要有这个模式：
+#   ① **自检需要它**。自检默认用 `--skip-be` 跑（不重跑 mvn test，快），
+#      而 OPC UA 那道检查挂在 SKIP_BE 分支里 ⇒ 自检覆盖不到它
+#      ⇒ 没人能证明「这道检查真的挂在门禁链路上」（变异 5 只验了脚本本身会红，
+#      没验门禁会不会调它）。加了 --only-opcua，自检就能便宜地跑这一步。
+#   ② **开发时也用得上**：只想确认「生产类路径这条路还通不通」时，
+#      不用等整个门禁跑完。
+# ⚠️ 它仍然要 maven（verify 脚本要算类路径），但**不需要 mvn test**。
+if [ "$ONLY_OPCUA" -eq 1 ]; then
+  say "OPC UA 生产运行时类路径"
+  if [ ! -f tools/verify-opcua-boot4.sh ]; then
+    line "✗" "OPC UA 生产类路径" "找不到 tools/verify-opcua-boot4.sh"
+    FAIL=$((FAIL + 1)); FAILED+=("OPC UA 生产类路径")
+  else
+    check "OPC UA 生产类路径" "target/_ci-opcua.log" \
+      bash tools/verify-opcua-boot4.sh "${OPCUA_PORT:-14840}"
+  fi
+  say "汇总"
+  echo "  通过 $OK / 失败 $FAIL / 总耗时 $((SECONDS - START)) 秒"
+  if [ "$FAIL" -gt 0 ]; then
+    echo
+    echo "  ⇒ 门禁不可信，必须先修" >&2
+    exit 1
+  fi
+  exit 0
+fi
 
 # ================= 后端 =================
 if [ "$SKIP_BE" -eq 0 ]; then
