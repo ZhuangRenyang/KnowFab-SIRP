@@ -53,6 +53,9 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: 跑门禁
+        env:
+          # CI 上用 setup-java 提供的 mvn（本地那套在 ../tools/ 下，CI 里没有）
+          MVN: mvn
         run: bash tools/ci-gate.sh
 
       # 门禁失败时把关键日志贴出来，省得再点进每个 step 找。

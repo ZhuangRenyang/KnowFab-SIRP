@@ -276,6 +276,66 @@ else
   fi
 fi
 
+# ---------- 变异 5：jaxb-api 被误降级到 test 作用域 ----------
+# 这是本轮 OPC UA 验证里**最接近真实事故**的形态：
+#   jaxb-api 放 test 作用域 → `mvn test` 全绿（测试类路径上有它）
+#                            → 但生产类路径上没有 → 现场 ByteString 节点号炸穿整批采集
+#   单元测试**抓不到**它，只有「生产运行时类路径验证」能抓到。
+#   ⇒ 这一条变异专门验证：那道门禁真的会在这种情况下变红。
+#     如果它不红，说明我们以为有门禁的地方其实没有 —— 那才是真正的假绿。
+say "变异 5：jaxb-api 被误降级到 test 作用域"
+POM="$WORK/pom.xml"
+cp "$POM" "$POM.bak"
+python - "$POM" <<'PY'
+import io, sys, re
+p = sys.argv[1]
+s = io.open(p, encoding='utf-8', newline='').read()
+# 在 jaxb-api 的 dependency 块里插回 <scope>test</scope>
+m = re.search(r"(<groupId>javax\.xml\.bind</groupId>\s*<artifactId>jaxb-api</artifactId>\s*<version>[^<]+</version>)", s)
+if not m:
+    print("  找不到 jaxb-api 依赖块，变异失败")
+    sys.exit(1)
+s = s[:m.end(1)] + "\n        <scope>test</scope>" + s[m.end(1):]
+io.open(p, 'w', encoding='utf-8', newline='').write(s)
+print("  已把 jaxb-api 降级为 test 作用域")
+PY
+if [ $? -ne 0 ]; then
+  line "✗" "jaxb 降级变异" "注入失败"
+  FAIL=$((FAIL + 1))
+else
+  # 断言注入真的生效（不信脚本自己的报告）
+  if ! grep -A 3 "jaxb-api" "$POM" | grep -q "<scope>test</scope>"; then
+    line "✗" "jaxb 降级变异" "注入没生效（scope 没加上）"
+    FAIL=$((FAIL + 1))
+  else
+    # 这次**不能**用 expect_red —— 它跑的是完整门禁（含前端，慢）。
+    # 直接跑 OPC UA 那一道门禁，判据更精确也更快。
+    if ( cd "$WORK" && bash tools/verify-opcua-boot4.sh 14877 ) >/tmp/_cgs.log 2>&1; then
+      line "✗" "jaxb 降级 → 必须红" "生产类路径验证没有变红 —— 这道门禁失效了（假绿）"
+      FAIL=$((FAIL + 1))
+    else
+      line "✓" "jaxb 降级 → 必须红" "变红了"
+      PASS=$((PASS + 1))
+      grep -aE "jaxb|FAIL|前提" /tmp/_cgs.log | head -3 | sed 's/^/       /'
+    fi
+    # 还原
+    mv "$POM.bak" "$POM"
+    if grep -A 3 "jaxb-api" "$POM" | grep -q "<scope>test</scope>"; then
+      line "✗" "jaxb 还原" "还原失败（scope test 还在）"
+      FAIL=$((FAIL + 1))
+    else
+      if ( cd "$WORK" && bash tools/verify-opcua-boot4.sh 14878 ) >/tmp/_cgs.log 2>&1; then
+        line "✓" "jaxb 还原后 → 必须绿" "恢复全绿"
+        PASS=$((PASS + 1))
+      else
+        line "✗" "jaxb 还原后 → 必须绿" "仍然红 —— 还原失败"
+        tail -12 /tmp/_cgs.log | sed 's/^/       /'
+        FAIL=$((FAIL + 1))
+      fi
+    fi
+  fi
+fi
+
 say "汇总"
 echo "  通过 $PASS / 失败 $FAIL"
 if [ "$FAIL" -gt 0 ]; then
