@@ -16,7 +16,13 @@ name: ci
 
 on:
   push:
-    branches: [main]
+    # main 与**所有其他分支**都跑。
+    # 为什么连非 main 分支也要跑：升级分支要能在合并前就验，
+    # 而不是「推到远程就以为 CI 会跑」——
+    # 只配 `branches: [main]` 的话，推分支**不触发**任何 run（2026-11-06 踩过：
+    # 推了 upgrade/boot-41，Actions 里一条 run 都没有，白等）。
+    # ⚠️ 不能同时写 branches 与 branches-ignore（GitHub 只取其一），所以用通配。
+    branches: ['**']
   pull_request:
     branches: [main]
   # 手动触发（排查用）
