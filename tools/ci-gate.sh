@@ -184,6 +184,9 @@ if [ "$SKIP_FE" -eq 0 ]; then
     say "前端检查"
     check "类型检查" "../target/_ci-typecheck.log" npm run typecheck
     check "前端构建" "../target/_ci-build.log" npm run build
+    # 端口语义门禁：防「表单把未填端口兜成 502」这个坑被改回来。
+    # 源码断言 + element-plus 真实行为断言（哨兵 null 不被夹、0 会被夹成 1）。
+    check "端口语义门禁" "../target/_ci-port.log" npm run check:port
     cd "$ROOT" || exit 1
   fi
 

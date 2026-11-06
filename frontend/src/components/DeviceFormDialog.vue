@@ -334,13 +334,23 @@ async function delTpl() {
   await loadCustomTpls()
 }
 
+/* 端口「未填」在表单里的表示是 null（空框）。
+   不能用 0 当这个哨兵：el-input-number 挂了 :min="1"，verifyValue 会把 0
+   夹成 min 并**反向 emit 回父组件**（实测 element-plus 2.14.8），
+   于是用户会看到端口框里凭空冒出「1」。0 只用于「提交给后端」那一层。
+   后端那边 0 与 null 等价（apply 判 `port == null || port <= 0`）。 */
+function normPort(v: unknown): number | null {
+  const n = Number(v)
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
 function applyTpl(key: string) {
   // 我的模板：key = 'c<id>'
   if (key.startsWith('c')) {
     const ct = customTpls.value.find((x) => 'c' + x.id === key)
     if (!ct) { tplNote.value = ''; return }
     f.protocol = ct.protocol
-    f.port = ct.port ?? null
+    f.port = normPort(ct.port)
     f.unitId = ct.unitId
     f.pollIntervalMs = ct.pollIntervalMs
     f.timeoutMs = ct.timeoutMs
@@ -356,7 +366,7 @@ function applyTpl(key: string) {
   const tpl = DEVICE_TEMPLATES.find((x) => x.id === key)
   if (!tpl) { tplNote.value = ''; return }
   f.protocol = tpl.protocol
-  f.port = tpl.port
+  f.port = normPort(tpl.port)
   f.unitId = tpl.unitId
   f.pollIntervalMs = tpl.pollIntervalMs
   f.timeoutMs = tpl.timeoutMs
@@ -411,7 +421,7 @@ watch(visible, async (v) => {
   Object.assign(f, {
     code: c.code || '', name: c.name || '', location: c.location || '',
     pollIntervalMs: c.pollIntervalMs || 1000,
-    protocol: c.protocol || 'modbus-tcp', host: c.host || '', port: c.port ?? null,
+    protocol: c.protocol || 'modbus-tcp', host: c.host || '', port: normPort(c.port),
     serialPort: c.serialPort || 'COM3', baudRate: c.baudRate || 9600,
     dataBits: c.dataBits || 8, stopBits: c.stopBits || 1, parity: c.parity == null ? 0 : c.parity,
     unitId: c.unitId || 1, unitId2: c.unitId || 1,
@@ -462,10 +472,11 @@ async function save() {
     location: f.location.trim(),
     protocol: f.protocol,
     host: f.host.trim(),
-    /* 端口没填就传 null ——「没填」这个信息必须如实传给后端：
-       它决定用哪个协议的默认端口（Modbus 502 / OPC UA 4840）。
-       在这里兜成 502 的话，新建 OPC UA 设备会拿着 502 去连，必然连不上。 */
-    port: f.port === null || f.port === undefined ? null : Number(f.port),
+    /* 端口没填就传 0（= 未指定），**绝不能兜成 502**：
+       502 是 Modbus 的端口，兜成 502 的话，新建 OPC UA 设备会拿着 502 去连，必然连不上。
+       后端 apply() 判 `port == null || port <= 0` ⇒ 0 与 null 等价，都按协议给默认端口
+       （Modbus 502 / OPC UA 4840，口径在后端 ProtocolDefaults 一处）。 */
+    port: Number(f.port) || 0,
     serialPort: f.serialPort.trim(),
     baudRate: Number(f.baudRate),
     dataBits: Number(f.dataBits),
