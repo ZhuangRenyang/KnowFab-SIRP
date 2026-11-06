@@ -433,6 +433,17 @@ NodeId.class                      ← 驱动直接调的就是它，我漏了
 | 「milo 服务端启动失败」⇒ 「milo 驱动坏了」 | **不成立** —— milo **服务端**装标准命名空间要用 `javax.xml.bind`，**客户端**不需要。是验证工具的依赖问题，不是被测代码的问题 |
 | `mvn dependency:tree`（插件前缀）离线跑 | 插件前缀离线解析不到，要用完整坐标 `org.apache.maven.plugins:maven-dependency-plugin:3.10.0:tree` |
 | 断言「后端表里有没有这个协议」来检查前后端口径一致 | **误报** —— 后端 `defaultPort()` 对没单独列出的协议走**兜底值**，「表里没有 modbus-tcp」≠ 分叉。改成算 `defaultPort(协议)` 到底返回几（显式条目优先，没有就取兜底值） |
+| **共享仓库里 `git commit -F 文件` 不带 pathspec** | **会把暂存区里所有人的文件一起提交** —— 本轮实际发生了一次（后端提交时捎带了前端暂存的两个文件）。修法：`git reset --soft HEAD~1` + `git restore --staged <别人的文件>` + 用原 message 重提 |
+
+最后一条是**协作层面的坑**，值得单列，因为它和上面的「工具骗人」是两类问题：
+上面那些是**工具/断言骗你**，这条是**协作流程骗你** —— 而且它发生时没有任何报错，
+提交成功、退出码 0，不去看 `git status` 就发现不了。
+
+⇒ 共享仓库里的四条铁律（本轮两人都踩过，代价是一次提交拆分）：
+1. **`git add` 显式列路径**，不用 `git add .` / `git add -A`
+2. **`git commit -F 文件` 必须带 pathspec**（`git commit -F msg.txt -- <路径>`）
+3. 提交前 **`git status --short` 看一眼暂存区**，确认没有别人的文件
+4. 带错了按上一行的修法拆开重提 —— **历史乱了以后 bisect 和 revert 都跟着乱**
 
 ---
 
