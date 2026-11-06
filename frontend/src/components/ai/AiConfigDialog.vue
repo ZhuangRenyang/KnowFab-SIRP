@@ -48,7 +48,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, watch } from 'vue'
+import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { aiApi, type AiConfig } from '@/api/ai'
@@ -58,7 +58,20 @@ const { t } = useI18n()
 const props = defineProps<{ modelValue: boolean }>()
 const emit = defineEmits<{ (e: 'update:modelValue', v: boolean): void; (e: 'saved'): void }>()
 
-const fm = reactive<AiConfig>({
+/*
+ * 这里用 ref 而不是 reactive，是被 vue-tsc 3.3.14 逼的 —— 不是风格偏好。
+ *
+ * 换 vue-tsc 3.3.13 → 3.3.14 后，这个文件冒出 9 个
+ * "Property 'value' does not exist on type '{enabled: boolean, ...}'"：
+ * 模板里的 v-model="fm.baseUrl" 被它误判成需要 .value 的 ref。
+ * 同一套其他依赖（vue 3.5.44 / element-plus 2.14.8）下，只换 vue-tsc 就 0 → 9，
+ * 运行时代码本身是对的，属于类型检查的误报。
+ *
+ * 两个选择：退回 3.3.13（等于为了工具 bug 停住升级），或者改写法让它能推断对。
+ * 选后者：ref 在模板里同样自动解包，模板一行不用改，只是脚本里要写 .value —— 
+ * 比在模板里到处塞 as 断言干净。
+ */
+const fm = ref<AiConfig>({
   enabled: false, baseUrl: '', apiKey: '', model: '', maxTokens: 700,
   hour: 7, minute: 0, temperature: 0.3, pushToWechat: true, systemPrompt: ''
 })
@@ -71,16 +84,16 @@ watch(() => props.modelValue, (v) => { if (v) open() })
 
 function readForm(): AiConfig {
   return {
-    enabled: fm.enabled,
-    baseUrl: fm.baseUrl.trim(),
-    apiKey: fm.apiKey.trim(),
-    model: fm.model.trim(),
-    maxTokens: Number(fm.maxTokens || 700),
-    temperature: Number(fm.temperature || 0.3),
-    hour: Number(fm.hour || 7),
-    minute: Number(fm.minute || 0),
-    pushToWechat: fm.pushToWechat,
-    systemPrompt: fm.systemPrompt
+    enabled: fm.value.enabled,
+    baseUrl: fm.value.baseUrl.trim(),
+    apiKey: fm.value.apiKey.trim(),
+    model: fm.value.model.trim(),
+    maxTokens: Number(fm.value.maxTokens || 700),
+    temperature: Number(fm.value.temperature || 0.3),
+    hour: Number(fm.value.hour || 7),
+    minute: Number(fm.value.minute || 0),
+    pushToWechat: fm.value.pushToWechat,
+    systemPrompt: fm.value.systemPrompt
   }
 }
 
@@ -89,7 +102,7 @@ async function open() {
   try {
     const j = await aiApi.config()
     const c = j.config || {}
-    Object.assign(fm, {
+    Object.assign(fm.value, {
       enabled: !!c.enabled,
       baseUrl: c.baseUrl || '',
       apiKey: c.apiKey || '',

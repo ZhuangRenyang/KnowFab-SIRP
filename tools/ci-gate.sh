@@ -1,0 +1,160 @@
+#!/usr/bin/env bash
+#
+# CI 门禁：一条命令跑完「不该进主干」的那些检查。
+#
+#   tools/ci-gate.sh              # 全跑
+#   tools/ci-gate.sh --skip-fe    # 跳前端（只用后端）
+#   tools/ci-gate.sh --skip-be    # 跳后端
+#
+# 为什么要有这个脚本（而不是把命令直接写进 yml）：
+#   ① **门禁逻辑只有一份**。写在 yml 里的话，本地跑一遍和 CI 跑一遍是两条路径，
+#      迟早会走偏。现在本地和 CI 调的是同一个脚本。
+#   ② **可以验证门禁真的会红**。判据只有一个：注入已知错误 → 必须 exit 1。
+#      「跑一下 exit 0」不能证明门禁有效 —— 本项目已经栽过一次
+#      （暂存区里的校验器是个空壳，跑一下就 exit 0，什么都拦不住）。
+#      验证方法见 tools/ci-gate-selftest.sh。
+#   ③ CI 的日志噪音少：失败时 yml 里直接看到「哪一项、什么错」。
+#
+# 检查项及各自能拦住什么：
+#   后端单测    —— 业务逻辑改错（328 个用例）
+#   报警码校验  —— 字典写错（手写维护的 JSON，最容易漂）
+#   校验器变异  —— 校验器自己失效（防「假绿」）
+#   i18n 键     —— 少一个 key（界面会显示键路径原文，不报错、很难发现）
+#   前端类型    —— 类型错误（历史上一直红着，等于没有门禁）
+#   前端构建    —— 编译不过（这个不装前端就没法交付）
+#
+# 注意：这些检查**不需要数据库、不需要 MySQL**。
+#   测试全是纯单测（没有 @SpringBootTest），字典校验和 i18n 是零依赖 node 脚本。
+#   所以 CI 不必起 MySQL 容器 —— 少一个环境变量就少一处「本地能跑、CI 跑不了」。
+#
+set -uo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT" || exit 1
+
+MVN="${MVN:-mvn}"
+SKIP_BE=0
+SKIP_FE=0
+
+for a in "$@"; do
+  case "$a" in
+    --skip-be) SKIP_BE=1 ;;
+    --skip-fe) SKIP_FE=1 ;;
+    -h|--help) sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) echo "未知参数：$a（--skip-be / --skip-fe / -h）" >&2; exit 2 ;;
+  esac
+done
+
+OK=0; FAIL=0
+FAILED=()
+
+say()  { printf '\n\033[1m== %s\033[0m\n' "$*"; }
+line() { printf '  %s %-24s %s\n' "$1" "$2" "$3"; }
+
+# check <名称> <日志文件> <命令...>
+# 关键：**必须断言脚本确有输出**。
+#   光看退出码抓不住「校验器被改残、永远 exit 0」这种假绿
+#   —— 这是本项目真实栽过的坑（见文件头注释）。
+check() {
+  local name="$1"; shift
+  local log="$1"; shift
+  local t0=$SECONDS
+  mkdir -p "$(dirname "$log")"
+  if "$@" >"$log" 2>&1; then
+    if [ ! -s "$log" ]; then
+      line "✗" "$name" "退出码 0 但没有任何输出 —— 门禁可能已失效（假绿）"
+      FAIL=$((FAIL + 1)); FAILED+=("$name")
+      return 1
+    fi
+    line "✓" "$name" "通过（$((SECONDS - t0)) 秒）"
+    OK=$((OK + 1))
+    return 0
+  fi
+  line "✗" "$name" "失败（$((SECONDS - t0)) 秒，日志 $log）"
+  grep -aE "ERROR|FAIL|error|错误|失败|缺失|未通过" "$log" | tail -8 | sed 's/^/       /'
+  FAIL=$((FAIL + 1)); FAILED+=("$name")
+  return 1
+}
+
+START=$SECONDS
+say "环境"
+line "·" "node" "$(node -v 2>/dev/null || echo '缺失')"
+line "·" "java"  "$(java -version 2>&1 | head -1)"
+line "·" "npm"   "$(npm -v 2>/dev/null || echo '缺失')"
+
+# ================= 后端 =================
+if [ "$SKIP_BE" -eq 0 ]; then
+  say "后端单测"
+  check "后端单测" "target/_ci-test.log" \
+    "$MVN" -B -ntp test
+  # 断言真的跑了（而不是「跑了个 0」）
+  REPORT_N=$(ls target/surefire-reports/*.txt 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$REPORT_N" -gt 0 ]; then
+    line "✓" "surefire 报告" "$REPORT_N 个文件"
+  else
+    line "✗" "surefire 报告" "没有生成 —— 测试可能根本没跑（假绿）"
+    FAIL=$((FAIL + 1)); FAILED+=("surefire 报告")
+  fi
+else
+  line "—" "后端单测" "跳过（--skip-be）"
+fi
+
+# ---------- 报警码字典（纯静态检查，不依赖后端/数据库）----------
+# ⚠️ 刻意放在后端块**外面**：它既不需要 Java 也不需要数据库。
+#   之前放在 --skip-be 里 → 自检用 --skip-be 跑时整个字典校验被跳过，
+#   变异 4（把校验器改残）就抓不到门禁失效 → **自检自己骗了自己**。
+#   （2026-11-06 踩过）
+say "报警码字典"
+if command -v node >/dev/null 2>&1; then
+  check "报警码字典校验" "target/_ci-alarmcodes.log" \
+    node scripts/check-alarmcodes.mjs
+  say "校验器变异验证"
+  check "校验器变异验证" "target/_ci-mutation.log" \
+    node scripts/mutation-check-alarmcodes.mjs
+else
+  line "—" "报警码字典" "跳过（没有 node）"
+fi
+
+# ================= 前端 =================
+if [ "$SKIP_FE" -eq 0 ]; then
+  if [ ! -d frontend ]; then
+    line "✗" "前端" "frontend/ 目录不存在"
+    FAIL=$((FAIL + 1)); FAILED+=("前端")
+  else
+    cd frontend || exit 1
+    say "安装依赖"
+    # node_modules 已存在就跳过安装（CI 里不存在，所以 CI 一定会真跑 npm ci）。
+    # 这样 tools/ci-gate-selftest.sh 连跑 8 次门禁时不会每次都花 77 秒重装。
+    if [ -d node_modules ] && [ -z "${CI_FORCE_INSTALL:-}" ]; then
+      line "—" "npm ci" "跳过（node_modules 已存在；要强制重装用 CI_FORCE_INSTALL=1）"
+    elif [ -f package-lock.json ]; then
+      check "npm ci" "../target/_ci-npm.log" npm ci --no-fund --no-audit
+    else
+      check "npm install" "../target/_ci-npm.log" npm install --no-fund --no-audit
+    fi
+
+    say "前端检查"
+    check "类型检查" "../target/_ci-typecheck.log" npm run typecheck
+    check "前端构建" "../target/_ci-build.log" npm run build
+    cd "$ROOT" || exit 1
+  fi
+
+  say "i18n 键完整性"
+  if command -v node >/dev/null 2>&1; then
+    check "i18n 键检查" "target/_ci-i18n.log" node scripts/check-i18n.mjs
+  else
+    line "—" "i18n 键检查" "跳过（没有 node）"
+  fi
+else
+  line "—" "前端" "跳过（--skip-fe）"
+fi
+
+say "汇总"
+echo "  通过 $OK / 失败 $FAIL / 总耗时 $((SECONDS - START)) 秒"
+if [ "$FAIL" -gt 0 ]; then
+  echo
+  echo "  挂了：" >&2
+  for n in "${FAILED[@]}"; do echo "    - $n" >&2; done
+  exit 1
+fi
+echo "  全部通过"

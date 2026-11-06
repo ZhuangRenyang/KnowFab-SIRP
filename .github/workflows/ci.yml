@@ -1,0 +1,69 @@
+# CI 门禁（2026-11-06 定稿）
+#
+# 目的：让「下次升级框架」从「靠人记得跑什么」变成「机器保证」。
+#   升级 Boot 3.2 → 4.1 时，202 个编译错误是手动跑 mvn 才发现的；
+#   前端 typecheck 长期是红的（9 个错误），于是所有人都不跑它 ——
+#   **一个永远红的门禁等于没有门禁**。
+#
+# 门禁逻辑放在 tools/ci-gate.sh，**不写在本文件里**：
+#   ① 本地和 CI 跑同一份脚本，不会走偏；
+#   ② 可以注入已知错误来验证门禁真的会红（判据只有这一条）。
+#
+# 不需要数据库：测试全是纯单测，字典校验和 i18n 是零依赖 node 脚本。
+# 所以 CI 不起 MySQL 容器 —— 少一个环境变量就少一处「本地能跑、CI 跑不了」。
+#
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # 手动触发（排查用）
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Java 17：pom 的 java.version 就是 17，Spring Boot 4.1 要求 ≥17
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      # Node 22：Vite 8 要求 `^20.19.0 || >=22.12.0`
+      # （release.yml 用的 node 20 恰好卡在下限，这里用 22 更稳）
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: 跑门禁
+        run: bash tools/ci-gate.sh
+
+      # 门禁失败时把关键日志贴出来，省得再点进每个 step 找。
+      # 用 `if: always()`：只有失败时才贴，成功时不刷屏。
+      - name: 上传失败日志
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-logs
+          path: |
+            target/_ci-*.log
+            frontend/../target/_ci-*.log
+          retention-days: 7
+          if-no-files-found: ignore
