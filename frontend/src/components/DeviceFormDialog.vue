@@ -230,10 +230,14 @@ const f = reactive({
 })
 
 /* 各协议的默认端口：切协议时预填 + 端口框留空时的提示文案都用它。
-   注意：这只是「界面上给个建议值」，不是数据层的兜底：
-   用户把端口框清空，提交的就是 null（= 没填），由后端各协议驱动自己回落默认值
-   （后端 DriverContext.port=0 即「未指定」，Modbus 502 / OPC UA 4840）。
-   真正的默认值只存在于后端驱动里，前端这份只是让用户少查一次手册。 */
+   ⚠️ 这份**不是**「纯界面建议值」，它是**功能路径上的一份副本**：
+   onProto() 会把它写进表单 ⇒ 提交时是**显式值** ⇒ 后端 apply() 里
+   `if (port == null || port <= 0)` 那个「按协议兜底」的分支**根本不会走**
+   ⇒ ProtocolDefaults.defaultPort() 对这台设备从不被调用。
+   ⇒ 所以它一旦和后端漂移，后果是「**设备连到错端口**」，不是「提示文案对不上」。
+   真正的口径在后端 ProtocolDefaults（唯一真相）；前端这份靠
+   frontend/scripts/check-port-semantics.mjs 的「前后端一致性断言」在**构建期**比对，
+   漂移当场红，不等现场连不上才发现。 */
 const PROTO_DEFAULT_PORT: Record<string, number> = {
   'modbus-tcp': 502,
   'modbus-rtu-tcp': 502,
@@ -243,7 +247,7 @@ const PROTO_DEFAULT_PORT: Record<string, number> = {
 /* 切协议时给行业默认端口：TCP 族 502；RTU 走串口不动端口（模板里 @change 引用，
    此函数 2026-11-01 补上——第一版基座就只有模板引用没有实现）。
    换协议就换端口：旧端口属于旧协议，留着会连错服务。
-   （用户自己清空端口框的意图在提交时才生效——那时传的是 null。） */
+   （用户自己清空端口框的意图在提交时才生效——那时传的是 0，后端按「未指定」兜底。） */
 function onProto() {
   const p = PROTO_DEFAULT_PORT[f.protocol]
   if (p) f.port = p
@@ -450,7 +454,14 @@ function useTpl(k: string) {
   f.pointsText = JSON.stringify(TPL[k], null, 2)
   /* 内置「OPC UA 示例」给的是 OPC UA 的点表，协议与端口要跟着换，
      否则会出现「点表是 OPC UA 的、协议还是 modbus-tcp、端口还是 502」的错配配置。
-     其余内置示例都是 Modbus 的（用默认的 modbus-tcp），协议不动。 */
+     其余内置示例都是 Modbus 的（用默认的 modbus-tcp），协议不动。
+
+     为什么「协议」和「端口」必须一起换，不能只换点表：
+     点表格式由协议决定（OPC UA 用 nodeId，Modbus 用 address+functionCode），
+     而**错配在界面上完全看不出来** —— 点表里一串 nodeId 看着是对的，
+     但采集会按 Modbus 去读那些地址，一条都读不到。
+     现场表现是「客户说按 OPC UA 示例配的，但读不到数」，属于最难查的一类单子。
+     所以这里两个一起换，别拆开。 */
   const proto = TPL_PROTOCOL[k]
   if (proto) {
     f.protocol = proto

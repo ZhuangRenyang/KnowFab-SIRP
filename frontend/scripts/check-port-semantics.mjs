@@ -27,6 +27,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url))
 const FE = path.resolve(HERE, '..')            // frontend/
 const ROOT = path.resolve(FE, '..')             // 仓库根
 const DIALOG = path.join(FE, 'src/components/DeviceFormDialog.vue')
+const BACKEND_DEFAULTS = path.join(ROOT, 'src/main/java/com/factory/hub/driver/ProtocolDefaults.java')
 const LOCALES = ['zh-CN', 'en-US', 'de-DE', 'es-ES', 'ja-JP', 'ko-KR', 'ru-RU']
 
 let failed = 0
@@ -192,6 +193,114 @@ console.log('\n== 内置模板断言：port 必须与协议默认一致 ==')
       }
     }
     if (!seen) fail('没从 deviceTemplates.ts 里解析出任何内置模板 —— 断言可能已失效')
+  }
+}
+
+console.log('\n== 前后端一致性断言：协议默认端口必须与后端 ProtocolDefaults 同源 ==')
+// 守的是什么：前端 PROTO_DEFAULT_PORT 与后端 ProtocolDefaults 是**两份**。
+// 看着只是「界面提示用的副本」，实际是**功能路径**：
+//   onProto() 把前端副本写进表单 → 提交成**显式值** → 后端 apply() 里
+//   `if (port == null || port <= 0)` 根本不走 ⇒ ProtocolDefaults 对这台设备从不被调用。
+// ⇒ 两边漂移的后果是「设备连到错端口」，不是「提示文案对不上」。
+// 所以必须在构建期比对，而不是等运行时连不上才发现。
+//
+// 为什么不加运行时接口拉这份映射（架构师裁定）：
+//   ProtocolDefaults 是编译期常量，为它引入网络依赖会给「单 jar 离线跑」的
+//   交付形态平白加一个加载态与失败模式；接口挂了前端还是得回落到本地副本，
+//   漂移原样回来，只是从构建期挪到运行时。构建期断言才是正解。
+//
+// 比的是**有效值** defaultPort(协议)，不是「表里有没有这个协议」：
+//   后端 defaultPort() 对没单独列出的协议走兜底（Modbus 502），
+//   所以「后端表里没 modbus-tcp」≠ 分叉 —— 得算 defaultPort(协议) 到底返回几。
+{
+  if (!fs.existsSync(BACKEND_DEFAULTS)) {
+    fail('读不到后端 ProtocolDefaults.java（' + BACKEND_DEFAULTS + '）—— 无法校验前后端口径是否一致')
+  } else {
+    const be = fs.readFileSync(BACKEND_DEFAULTS, 'utf8')
+    // 端口常量名 → 数值
+    const consts = {}
+    for (const mm of be.matchAll(/static\s+final\s+int\s+([A-Z_][A-Z0-9_]*)\s*=\s*(\d+)/g)) {
+      consts[mm[1]] = Number(mm[2])
+    }
+    const num = (expr) => {
+      if (/^\d+$/.test(expr)) return Number(expr)
+      return expr in consts ? consts[expr] : undefined
+    }
+
+    // ① 显式列出的协议（映射式或分支式都能认）
+    const explicit = {}
+    const addEntry = (proto, constName) => {
+      const v = num(constName)
+      if (v !== undefined) explicit[proto] = v
+    }
+    for (const mm of be.matchAll(/Map\.entry\(\s*"([^"]+)"\s*,\s*([A-Z_][A-Z0-9_]*)\s*\)/g)) addEntry(mm[1], mm[2])
+    for (const mm of be.matchAll(/Map\.of(?:Entries)?\(([\s\S]*?)\)\s*;/g)) {
+      // Map.of("opcua", OPC_UA_PORT, "modbus-tcp", MODBUS_TCP_PORT)
+      for (const p of mm[1].matchAll(/"([^"]+)"\s*,\s*([A-Z_][A-Z0-9_]*)/g)) addEntry(p[1], p[2])
+    }
+    for (const mm of be.matchAll(/"([^"]+)"\.equals\(\s*\w+\s*\)\s*\)?\s*\{?\s*return\s+([A-Z_][A-Z0-9_]*)\s*;/g)) {
+      addEntry(mm[1], mm[2])
+    }
+
+    // ② 兜底值（没单独列出的协议走它）
+    //    映射式：getOrDefault(p, FALLBACK) / orElse(FALLBACK)
+    //    分支式：defaultPort() 方法体里那个没被协议判断挡住的 return
+    const fallbackSet = new Set()
+    for (const mm of be.matchAll(/getOrDefault\([^,]+,\s*([A-Z_][A-Z0-9_]*)\s*\)/g)) {
+      const v = num(mm[1]); if (v !== undefined) fallbackSet.add(v)
+    }
+    for (const mm of be.matchAll(/orElse\(\s*([A-Z_][A-Z0-9_]*)\s*\)/g)) {
+      const v = num(mm[1]); if (v !== undefined) fallbackSet.add(v)
+    }
+    if (!fallbackSet.size) {
+      // 分支式：defaultPort() 方法体里没被 "x".equals(...) 挡住的 return
+      const mi = be.indexOf('defaultPort(')
+      if (mi >= 0) {
+        const close = be.indexOf('\n    }', mi)
+        const body = be.slice(mi, close > 0 ? close : be.length)
+        for (const mm of body.matchAll(/return\s+([A-Z_][A-Z0-9_]*)\s*;/g)) {
+          const v = num(mm[1])
+          // 被协议判断占用的 return 跳过（那个值已在 explicit 里）
+          if (v !== undefined && !Object.values(explicit).includes(v)) fallbackSet.add(v)
+        }
+      }
+    }
+    const fallback = fallbackSet.size === 1 ? [...fallbackSet][0] : undefined
+
+    // 后端 defaultPort(协议) 的有效值
+    const beEffective = (proto) => (proto in explicit ? explicit[proto] : fallback)
+
+    if (!Object.keys(explicit).length && fallback === undefined) {
+      fail('从后端 ProtocolDefaults.java 里解析不出 defaultPort(协议) 的有效值 —— ' +
+           '后端若改了写法（映射式/分支式），这里要跟着改，否则一致性断言形同虚设')
+    } else {
+      // 前端那份
+      const m = src.match(/const PROTO_DEFAULT_PORT[^=]*=\s*\{([^}]*)\}/)
+      const fe = {}
+      if (m) for (const mm of m[1].matchAll(/'?([\w-]+)'?\s*:\s*(\d+)/g)) fe[mm[1]] = Number(mm[2])
+
+      for (const proto of Object.keys(fe)) {
+        const b = beEffective(proto)
+        if (b === undefined) {
+          fail('前端把协议 ' + proto + ' 的默认端口定为 ' + fe[proto] +
+               '，但后端 ProtocolDefaults.java 里算不出 defaultPort(' + proto + ') —— 两边口径已分叉')
+        } else if (b !== fe[proto]) {
+          fail('前后端口径不一致：后端 ProtocolDefaults.java 里 defaultPort(' + proto + ') = ' + b +
+               '，前端 PROTO_DEFAULT_PORT 里 ' + proto + ' = ' + fe[proto] +
+               ' ⇒ 漂移会让设备连到错端口（前端预填的值会盖掉后端的按协议兜底）')
+        } else {
+          pass('前后端一致：defaultPort(' + proto + ') = ' + b)
+        }
+      }
+      // 后端有、前端没预填的协议：前端不预填 ⇒ 端口框留空 ⇒ 落库走后端兜底，
+      // 不会连错，只是没有预填提示。不算错误，提示一下即可。
+      for (const proto of Object.keys(explicit)) {
+        if (!(proto in fe)) {
+          console.log('  note  后端有、前端没预填的协议：' + proto + ' = ' + explicit[proto] +
+                      '（落库会走后端兜底，不影响连接正确性）')
+        }
+      }
+    }
   }
 }
 
