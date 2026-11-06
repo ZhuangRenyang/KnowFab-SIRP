@@ -42,15 +42,25 @@ import org.eclipse.milo.opcua.stack.server.EndpointConfiguration;
  * </ul>
  * <p>
  * <b>注意</b>：milo 0.6.11 的服务端启动时要用 JAXB 2 的
- * {@code javax.xml.bind.DatatypeConverter} 读内置节点表，
- * 而 Spring Boot 4 把 jaxb 换成了 jakarta 命名空间 → 生产类路径上没有这个类。
- * 本地 server 之所以能起来，是因为 pom 里在 <b>test 作用域</b>补了
- * {@code javax.xml.bind:jaxb-api:2.3.1}（见 {@code OpcUaDriverBoot4ClasspathTest}）。
+ * {@code javax.xml.bind.DatatypeConverter} 读内置节点表。
+ * Boot 4 把 jaxb 换成了 jakarta 命名空间，所以本项目在 pom 里显式补了
+ * {@code javax.xml.bind:jaxb-api}（runtime 作用域）—— 不补的话，
+ * 本地 Server 起不来，客户的 ByteString 节点号（{@code ns=2;b=...}）也会炸。
+ * 见 {@code OpcUaDriverBoot4ClasspathTest}。
  */
 final class OpcUaTestServer implements AutoCloseable {
 
     /** 会被客户端读到、且值随时间递增的节点。用来证明「读到的是实时值，不是缓存」。 */
     static final String LIVE_TAG = "LiveTag";
+
+    /**
+     * 节点号是 ByteString 的那个节点的标识字节（base64 后是 {@code AAEC}）。
+     * 点表里对应写法：{@code ns=2;b=AAEC}
+     */
+    static final byte[] BYTE_STRING_TAG_ID = new byte[]{0, 1, 2};
+
+    /** 点表里那个 ByteString 节点号的字符串写法。 */
+    static final String BYTE_STRING_TAG_NODE_ID = "ns=2;b=AAEC";
 
     private final OpcUaServer server;
     private final OpcUaTestNamespace namespace;
@@ -131,6 +141,10 @@ final class OpcUaTestServer implements AutoCloseable {
         namespace.addDouble("TestTag2", 7.25d, false);
         namespace.addInt32("TestTag3", 123, false);
         namespace.addBoolean("TestTag4", true, false);
+        // 节点号是 ByteString 的节点（nodeId = ns=2;b=AAEC）：
+        // milo 解析这类节点号要走 javax.xml.bind.DatatypeConverter.parseBase64Binary，
+        // 而那个类在 Boot 4 的类路径上曾经整个消失 —— 有这个节点才能端到端验它。
+        namespace.addByteString(BYTE_STRING_TAG_ID, 66.5d);
         UaVariableNode liveNode = namespace.addDouble(LIVE_TAG, 0d, false);
 
         ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {

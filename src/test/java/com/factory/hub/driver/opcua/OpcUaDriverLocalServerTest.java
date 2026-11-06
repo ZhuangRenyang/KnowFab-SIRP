@@ -128,6 +128,19 @@ class OpcUaDriverLocalServerTest {
     }
 
     @Test
+    @DisplayName("ByteString 节点号（ns=2;b=...）能读到值（javax.xml.bind 在运行时类路径上到位了）")
+    void readsByteStringNodeId() throws Exception {
+        driver.connect(ctx);
+
+        Map<String, Object> values = driver.read(ctx, List.of(
+                point("bstr", OpcUaTestServer.BYTE_STRING_TAG_NODE_ID, "f64")));
+
+        assertEquals(1, values.size(), "ByteString 节点号应读到值，实际读到 " + values);
+        assertEquals(66.5d, (Double) values.get("bstr"), 1e-9,
+                "ByteString 节点号的值应等于服务端给的 66.5");
+    }
+
+    @Test
     @DisplayName("读到的是实时值，不是缓存（服务端值在变，两次读应不同）")
     void readsLiveValuesNotCache() throws Exception {
         driver.connect(ctx);

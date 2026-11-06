@@ -68,7 +68,9 @@
         <!-- OPC UA 客户端（Eclipse Milo）。为什么用它：西门子 S7-1500、汇川、
              欧姆龙 NX 等新 PLC 默认带 OPC UA Server，是比 Modbus 更现代的统一入口；
              纯 Java、无原生依赖，和"一个安装包"的交付方式兼容。
-             版本锁 0.6.x：API 稳定，Netty 4.1 与 Spring Boot 3.2 兼容。 -->
+             版本锁 0.6.x：API 稳定；milo 0.6.11 声明的是 Netty 4.1.97，
+             而 Spring Boot 4.1.2 统一带的是 Netty 4.2.19.Final —— 跨大版本但已实测二进制兼容
+             （2026-11-06：建会话 / 批量读 / 写入 全通，见 OpcUaDriverLocalServerTest）。 -->
         <dependency>
             <groupId>org.eclipse.milo</groupId>
             <artifactId>sdk-client</artifactId>
@@ -86,17 +88,20 @@
             <scope>test</scope>
         </dependency>
 
-        <!-- milo 0.6.11 的 stack-core 用的是 JAXB 2 的 javax.xml.bind.DatatypeConverter，
+        <!-- milo 0.6.11 的 stack-core 用的是 JAXB 2 的 javax.xml.bind.DatatypeConverter
+             （NodeId.parse() 解析 ByteString 节点号 ns=2;b=... 时会调它），
              但 Spring Boot 4 把 jaxb-runtime 统一管理成 4.0.9（jakarta 命名空间），
              javax.xml.bind 在 Boot 4 的类路径上整个消失。
-             这里只在 test 作用域补回 jaxb-api 2.3.1，让本地 OPC UA Server 能起来；
-             客户端二进制通道不碰它（见 OpcUaDriverBoot4ClasspathTest 的断言）。
-             ⚠️ 若现场点位用 ByteString 节点号（ns=2;b=...），生产运行时需要把它提到 runtime 作用域。 -->
+             ⇒ 交付 jar 里 javax/xml/bind 计数为 0，客户只要配一个 ByteString 节点号，
+               采集线程里就会抛 NoClassDefFoundError，现场表现是「设备在线但读不到任何点」。
+             所以这里必须是 runtime 作用域（不是 test）：javax 命名空间与 Boot 4 自带的
+             jakarta 命名空间包名不同、可共存，不冲突。
+             将来若 milo 换了实现不再引用 javax.xml.bind，这个依赖就可以删掉 ——
+             OpcUaDriverBoot4ClasspathTest 里有一条断言专门盯这件事。 -->
         <dependency>
             <groupId>javax.xml.bind</groupId>
             <artifactId>jaxb-api</artifactId>
             <version>2.3.1</version>
-            <scope>test</scope>
         </dependency>
 
         <!-- 报表导出 xlsx。选 POI 而不是手搓 XML：厂里要打印、要贴进月报，

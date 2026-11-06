@@ -2,15 +2,20 @@
 # OPC UA 驱动在 Spring Boot 4.1.2 下的「生产运行时类路径」验证。
 #
 # 为什么要有这个脚本（而不是只跑单元测试）：
-#   单元测试跑在**测试类路径**上，那条路径上有两个测试作用域的依赖：
-#     - org.eclipse.milo:sdk-server（本地起 OPC UA Server 用）
-#     - javax.xml.bind:jaxb-api（milo Server 端启动要 javax.xml.bind.DatatypeConverter）
-#   而**交付到客户现场的类路径上没有这两个**。所以「测试绿了」不等于「现场能用」。
+#   单元测试跑在**测试类路径**上，那条路径上多了一个测试作用域的依赖
+#   （org.eclipse.milo:sdk-server —— 用来在本地起 OPC UA Server）。
+#   而**交付到客户现场的类路径上没有它**。所以「测试绿了」不等于「现场能用」。
 #   这个脚本把两件事拆到两个进程里：
 #     进程 A（测试类路径）：起一个真的 milo OPC UA Server
 #     进程 B（生产运行时类路径）：用项目里的 OpcUaDriver 去连、去读、去写
 #   进程 B 的类路径 = 全量依赖类路径里剔除所有 test/provided 作用域的 jar
 #   —— 这才是现场真实的类路径。
+#
+# 探针会连读三类节点：
+#   ns=2;s=TestTag1  字符串节点号
+#   ns=2;s=TestTag2  字符串节点号
+#   ns=2;b=AAEC      ByteString 节点号 ← 走 javax.xml.bind.DatatypeConverter.parseBase64Binary，
+#                    这个类在 Boot 4 的类路径上曾经整个消失（现在 pom 里补在 runtime 作用域）
 #
 # 用法： bash tools/verify-opcua-boot4.sh [端口]
 # 退出码：0 = 驱动在生产运行时类路径上可用；1 = 不可用
@@ -63,15 +68,19 @@ tr ';' '\n' < target/cp-all.txt | awk '
   END { print out }
 ' > target/cp-runtime.txt
 
-if grep -q 'jaxb-api\|sdk-server' target/cp-runtime.txt; then
-  echo "[FAIL] 生产运行时类路径里仍出现了 jaxb-api 或 sdk-server，验证前提不成立" >&2
+if grep -q 'sdk-server' target/cp-runtime.txt; then
+  echo "[FAIL] 生产运行时类路径里出现了 sdk-server（它只该在 test 作用域），验证前提不成立" >&2
+  exit 1
+fi
+if ! grep -q 'jaxb-api' target/cp-runtime.txt; then
+  echo "[FAIL] 生产运行时类路径里没有 javax.xml.bind:jaxb-api —— ByteString 节点号会 NoClassDefFoundError" >&2
   exit 1
 fi
 if ! grep -q 'sdk-client' target/cp-runtime.txt; then
   echo "[FAIL] 生产运行时类路径里连 sdk-client 都没有，类路径算错了" >&2
   exit 1
 fi
-echo "OK 生产运行时类路径：$(tr ';' '\n' < target/cp-runtime.txt | wc -l) 个 jar，无 jaxb-api / sdk-server"
+echo "OK 生产运行时类路径：$(tr ';' '\n' < target/cp-runtime.txt | wc -l) 个 jar，无 sdk-server，含 jaxb-api"
 
 echo "== 2/5 生成测试类路径（Server 端要用） =="
 "$MVN" -o -q dependency:build-classpath -Dmdep.includeScope=test \

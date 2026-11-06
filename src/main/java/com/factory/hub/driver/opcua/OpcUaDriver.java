@@ -40,6 +40,14 @@ import java.util.concurrent.TimeUnit;
  * <b>连接方式</b>：匿名 + SecurityPolicy.None（厂内网最常见配置，零门槛）。
  * 端口默认 4840（OPC UA 标准端口）。需要用户名认证的现场暂不支持——先用 Modbus 或让 PLC 开匿名。
  * <p>
+ * <b>端点 URL 形态</b>：拼出来的是 {@code opc.tcp://<host>:<port>}，<b>不带路径</b>。
+ * milo 0.6.x 的客户端连的是「我们给它的那个 URL」，不是 GetEndpoints 返回的 endpoint URL，
+ * 所以服务端的 endpoint 必须正好是 {@code opc.tcp://host:port}；
+ * 若服务端把 endpoint 挂在子路径下（如 {@code opc.tcp://host:4840/milo}），
+ * 这个驱动连不上，报错是 {@code Bad_TcpEndpointUrlInvalid}
+ * —— <b>长得像「网络不通」，实际是「端点形态对不上」</b>，现场极难定位。
+ * 现场主流 PLC（Kepware / 西门子 S7-1500 / Ignition）都是不带路径的，所以默认没问题。
+ * <p>
  * <b>点表</b>：每个点位用 {@code nodeId} 指定节点，写法同 UaExpert：
  * {@code ns=2;s=Machine1.Output}、{@code ns=4;i=1234}。ns 索引各品牌不同，配错读不到值。
  * <p>
@@ -61,7 +69,11 @@ public class OpcUaDriver implements ProtocolDriver {
 
     @Override
     public void connect(DriverContext ctx) throws Exception {
-        String url = "opc.tcp://" + ctx.getHost() + ":" + (ctx.getPort() <= 0 ? 4840 : ctx.getPort());
+        // 主机地址先消毒再拼 URL：客户常把 host 填成 "192.168.1.10/UA"、"192.168.1.10:4840"、
+        // "opc.tcp://192.168.1.10"，直接拼会得到非法 URL，
+        // 而报错（Bad_TcpEndpointUrlInvalid）长得像「网络不通」，实际是「地址填错了」，现场极难定位。
+        // 详见 OpcUaEndpointUrl。
+        String url = OpcUaEndpointUrl.build(ctx);
         if (client != null && url.equals(endpoint)) {
             return;
         }

@@ -48,20 +48,34 @@ public final class OpcUaRuntimeProbe {
         tag2.setNodeId("ns=2;s=TestTag2");
         tag2.setDataType("f64");
 
+        // ByteString 节点号：milo 解析它要走 javax.xml.bind.DatatypeConverter.parseBase64Binary，
+        // 而那个类在 Boot 4 的类路径上曾经整个消失 → 这条是「runtime 依赖到位了」的端到端证据
+        PointDef bstr = new PointDef();
+        bstr.setKey("bstr");
+        bstr.setNodeId(OpcUaTestServer.BYTE_STRING_TAG_NODE_ID);
+        bstr.setDataType("f64");
+
         OpcUaDriver driver = new OpcUaDriver();
         try {
             driver.connect(ctx);
             System.out.println("PROBE connected=" + driver.isConnected());
 
-            Map<String, Object> values = driver.read(ctx, List.of(tag1, tag2));
+            Map<String, Object> values = driver.read(ctx, List.of(tag1, tag2, bstr));
             System.out.println("PROBE values=" + values);
 
             double v1 = ((Number) values.get("tag1")).doubleValue();
             double v2 = ((Number) values.get("tag2")).doubleValue();
+            double v3 = ((Number) values.get("bstr")).doubleValue();
             if (Math.abs(v1 - 42.5d) > 1e-9 || Math.abs(v2 - 7.25d) > 1e-9) {
                 System.out.println("PROBE FAIL 值不对：tag1=" + v1 + " tag2=" + v2);
                 System.exit(1);
             }
+            if (Math.abs(v3 - 66.5d) > 1e-9) {
+                System.out.println("PROBE FAIL ByteString 节点号没读到：" + v3
+                        + "（多半是 javax.xml.bind 没进生产运行时类路径）");
+                System.exit(1);
+            }
+            System.out.println("PROBE byteStringNodeId=" + v3);
 
             // 写入再读回，确认写通道也通
             driver.write(ctx, tag1, 88.25d);

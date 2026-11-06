@@ -40,7 +40,10 @@ import org.eclipse.milo.opcua.stack.core.types.builtin.NodeId;
  *   <li><b>JAXB / javax.xml.bind</b>：milo 的 {@code NodeId}、{@code ExpandedNodeId}
  *       硬引用了 {@code javax.xml.bind.DatatypeConverter}（JAXB 2），
  *       而 Boot 4 把 jaxb 换成 jakarta → <b>生产运行时类路径上这个类整个消失</b>。
- *       本类第 3、4 条把「哪种 nodeId 会炸、哪种不会」钉死。</li>
+ *       ⇒ 现在 pom.xml 里把 {@code javax.xml.bind:jaxb-api} 放在 <b>runtime 作用域</b>补回来。
+ *       本类把三件事钉死：① 这个类现在确实在运行时类路径上；
+ *       ② ByteString 节点号（{@code ns=2;b=...}）因此能正常解析；
+ *       ③ 万一哪天 milo 换了实现不再引用它，我们能立刻知道可以把这个依赖删掉。</li>
  * </ul>
  */
 class OpcUaDriverBoot4ClasspathTest {
@@ -87,22 +90,47 @@ class OpcUaDriverBoot4ClasspathTest {
     }
 
     @Test
-    @DisplayName("Boot 4 只带 jakarta 版 JAXB；javax 版是本项目在 test 作用域补的（生产运行时没有）")
-    void javaxXmlBindIsGoneFromRuntimeClasspath() throws Exception {
-        // Boot 4 带来的 jakarta 版
+    @DisplayName("javax.xml.bind 在生产运行时类路径上可用（ByteString 节点号靠它）")
+    void javaxXmlBindIsOnRuntimeClasspath() throws Exception {
+        // Boot 4 自带的 jakarta 版
         assertNotNull(Class.forName("jakarta.xml.bind.DatatypeConverter"),
                 "Boot 4 应带 jakarta 版 JAXB");
 
-        // javax 版：测试类路径上有 —— 是 pom 里 test 作用域补的，
-        // 「生产运行时没有」这件事由 mvn dependency:tree 证明（整棵树里 0 个 javax.*）
+        // javax 版：本项目在 runtime 作用域显式补的（pom.xml）。
+        // 为什么必须留着：milo 的 NodeId.parse() 解析 ByteString 节点号时会调它，
+        // 而 Boot 4 把 jaxb 统一成 jakarta → 不补的话客户一配 ns=2;b=... 就
+        // 在采集线程里抛 NoClassDefFoundError，现场表现是「设备在线但读不到任何点」。
         assertNotNull(Class.forName("javax.xml.bind.DatatypeConverter"),
-                "test 作用域补的 jaxb-api 应可用（milo 服务端启动要它；"
-                        + "若这条红了，多半是 pom 里那个 test 依赖被删了，server 会起不来）");
+                "runtime 作用域的 javax.xml.bind:jaxb-api 应可用；"
+                        + "若这条红了，说明 pom 里那个依赖被删了或被降级成 test 作用域了");
 
-        // 两个命名空间是两个不同的类，不能互相替代
+        // 两个命名空间是两个不同的类，可以共存，但 milo 只认 javax 版
         assertNotSame(Class.forName("jakarta.xml.bind.DatatypeConverter"),
                 Class.forName("javax.xml.bind.DatatypeConverter"),
                 "jakarta 版与 javax 版是两个不同的类，milo 只会认 javax 版");
+    }
+
+    @Test
+    @DisplayName("ByteString 节点号（ns=2;b=xxx）在当前类路径上能正常解析（生产运行时依赖到位了）")
+    void byteStringNodeIdParsesWithJaxbPresent() throws Exception {
+        Method parse = NodeId.class.getMethod("parse", String.class);
+
+        Object parsed = parse.invoke(null, "ns=2;b=AAEC");
+
+        assertNotNull(parsed, "ByteString 节点号应能解析出 NodeId");
+        assertTrue(parsed.toString().contains("ns=2"),
+                "解析结果应是 ns=2 的节点，实际：" + parsed);
+    }
+
+    @Test
+    @DisplayName("milo 的 NodeId 仍然硬引用 javax.xml.bind.DatatypeConverter（将来可以据此删依赖）")
+    void miloNodeIdStillHardReferencesJavaxXmlBind() throws Exception {
+        // 这条是「反向护栏」：只要 milo 还引用 javax.xml.bind，
+        // pom 里那个 runtime 依赖就必须留着；哪天这里变成 false，
+        // 说明 milo 换了实现，可以把这个依赖删掉（顺带省一个 jar）。
+        assertTrue(classBytesContain(NodeId.class, "javax/xml/bind/DatatypeConverter"),
+                "milo 的 NodeId 应当仍然引用 javax.xml.bind.DatatypeConverter；"
+                        + "若这里变成 false，说明 milo 换了实现，要重新评估生产依赖");
     }
 
     @Test
@@ -125,8 +153,11 @@ class OpcUaDriverBoot4ClasspathTest {
     }
 
     @Test
-    @DisplayName("ByteString 节点号（ns=2;b=xxx）会踩 javax.xml.bind 缺失的坑（生产风险点）")
-    void byteStringNodeIdNeedsJavaxXmlBind() throws Exception {
+    @DisplayName("ByteString 节点号一旦缺 javax.xml.bind 就会炸（证明这个 runtime 依赖是真必需的）")
+    void byteStringNodeIdWouldBreakWithoutJavaxXmlBind() throws Exception {
+        // 用一个「看不见 javax.xml.bind」的类加载器模拟「万一这个依赖被删了」：
+        // 结果必须是 NoClassDefFoundError —— 这说明 pom 里那个 runtime 依赖不是保险起见，
+        // 而是不加就真的会坏。客户配一个 ns=2;b=... 的点位就是触发条件。
         try (URLClassLoader noJaxb = classLoaderWithoutJaxb()) {
             Class<?> nodeIdClass = noJaxb.loadClass(
                     "org.eclipse.milo.opcua.stack.core.types.builtin.NodeId");
@@ -137,12 +168,6 @@ class OpcUaDriverBoot4ClasspathTest {
                     "ByteString 节点号在缺 javax.xml.bind 时应当失败");
             assertTrue(ex.getCause() instanceof NoClassDefFoundError,
                     "应因 javax.xml.bind.DatatypeConverter 缺失而失败，实际：" + ex.getCause());
-
-            // 同时把「milo 确实硬依赖 javax.xml.bind」这件事钉在字节码上：
-            // 将来 milo 升级换了实现，这条会提醒我们重新评估生产要不要补依赖
-            assertTrue(classBytesContain(NodeId.class, "javax/xml/bind/DatatypeConverter"),
-                    "milo 的 NodeId 应当仍然引用 javax.xml.bind.DatatypeConverter；"
-                            + "若这里变成 false，说明 milo 换了实现，要重新评估生产依赖");
         }
     }
 

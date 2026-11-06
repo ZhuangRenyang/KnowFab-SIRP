@@ -8,6 +8,7 @@ import org.eclipse.milo.opcua.sdk.server.api.ManagedNamespaceWithLifecycle;
 import org.eclipse.milo.opcua.sdk.server.api.MonitoredItem;
 import org.eclipse.milo.opcua.sdk.server.nodes.UaVariableNode;
 import org.eclipse.milo.opcua.stack.core.Identifiers;
+import org.eclipse.milo.opcua.stack.core.types.builtin.ByteString;
 import org.eclipse.milo.opcua.stack.core.types.builtin.DataValue;
 import org.eclipse.milo.opcua.stack.core.types.builtin.LocalizedText;
 import org.eclipse.milo.opcua.stack.core.types.builtin.NodeId;
@@ -59,6 +60,35 @@ final class OpcUaTestNamespace extends ManagedNamespaceWithLifecycle {
     UaVariableNode addBoolean(String identifier, boolean value, boolean writable) {
         UaVariableNode node = newVariable(identifier, Identifiers.Boolean, writable);
         node.setValue(new DataValue(new Variant(value)));
+        return node;
+    }
+
+    /**
+     * 挂一个<b>节点号是 ByteString</b> 的节点（nodeId 形如 {@code ns=2;b=AAEC}）。
+     * <p>
+     * 为什么要专门造一个：milo 解析这类节点号要走
+     * {@code NodeId.parse() → DatatypeConverter.parseBase64Binary}，
+     * 而 {@code javax.xml.bind.DatatypeConverter} 在 Boot 4 的类路径上曾经整个消失。
+     * 有这个节点，才能端到端验「ByteString 节点号在生产运行时真的能读」。
+     *
+     * @param identifier 节点号的字节内容
+     * @param value      节点的值（这里用 Double，方便断言）
+     */
+    UaVariableNode addByteString(byte[] identifier, double value) {
+        NodeId nodeId = new NodeId(getNamespaceIndex(), new ByteString(identifier));
+        UaVariableNode node = new UaVariableNode(
+                getNodeContext(),
+                nodeId,
+                newQualifiedName("ByteStringTag"),
+                LocalizedText.english("ByteStringTag"),
+                LocalizedText.english("KnowFab test tag with ByteString node id"),
+                UInteger.valueOf(-1),
+                UInteger.valueOf(-1));
+        node.setDataType(Identifiers.Double);
+        node.setAccessLevel(UByte.valueOf(0x01));
+        node.setUserAccessLevel(UByte.valueOf(0x01));
+        node.setValue(new DataValue(new Variant(value)));
+        getNodeManager().addNode(node);
         return node;
     }
 
