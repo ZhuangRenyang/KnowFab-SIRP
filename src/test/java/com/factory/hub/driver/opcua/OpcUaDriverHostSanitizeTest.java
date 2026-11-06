@@ -19,17 +19,22 @@ import com.factory.hub.driver.opcua.OpcUaDriver;
 import com.factory.hub.model.PointDef;
 
 /**
- * 主机地址消毒：客户在前端填什么，最后拼出来的端点 URL 都得是对的。
+ * 主机地址校验：客户在前端填什么，最后拼出来的端点 URL 都得是对的。
  * <p>
  * <b>守的是什么坑</b>：{@code DeviceEntity.host} 是前端输入框，没有格式校验。
  * 客户填 {@code 192.168.1.10/UA}、{@code 192.168.1.10:4840}、{@code opc.tcp://192.168.1.10}
- * 都是很自然的事。改造前直接拼字符串，结果是：
+ * 都是很自然的事。而三种填法<b>不能一刀切</b>：
  * <ul>
- *   <li>{@code 192.168.1.10/UA} → {@code opc.tcp://192.168.1.10/UA:4840} → 端口解析失败</li>
- *   <li>{@code 192.168.1.10:4840} → {@code opc.tcp://192.168.1.10:4840:4840} → URL 非法</li>
+ *   <li><b>协议前缀</b>（{@code opc.tcp://}）→ 无害的冗余，静默去掉；</li>
+ *   <li><b>末尾路径</b>（{@code /UA}）→ <b>必须报错</b>。端点带子路径是真实存在的形态，
+ *       静默丢掉等于把客户指向<b>另一台</b>服务端；</li>
+ *   <li><b>主机栏里的端口</b>（{@code :4840}）→ 与连接参数不一致就<b>必须报错</b>。
+ *       静默替换可能连到<b>另一台设备</b>（端口不同 ⇒ 不同的服务）。</li>
  * </ul>
- * 而 milo 报的是 {@code Bad_TcpEndpointUrlInvalid}，<b>长得像「网络不通」</b>，
- * 实际是「地址填歪了」—— 现场排查会往网络方向跑，方向一错就浪费时间。
+ * <p>
+ * <b>为什么「静默丢弃」比「报错」危险</b>（项目铁律）：
+ * 报错会留痕、客户当场能改对；静默丢弃只留一个查不出来的
+ * {@code Bad_TcpEndpointUrlInvalid}，现场会一路往网络方向查，方向一错就浪费时间。
  * <p>
  * <b>断言的是最终拼出的 URL 字符串</b>，不是「没抛异常」：
  * 拼错了但没抛异常的情况，正是这个测试要堵的。
@@ -61,26 +66,53 @@ class OpcUaDriverHostSanitizeTest {
     @ParameterizedTest(name = "host={0} -> opc.tcp://192.168.1.10:4840")
     @ValueSource(strings = {
             "192.168.1.10",
-            "192.168.1.10/UA",
             "192.168.1.10:4840",
             "opc.tcp://192.168.1.10",
+            "opc.tcp://192.168.1.10:4840",
     })
-    @DisplayName("四种常见填法都拼出同一个正确的端点 URL")
-    void sanitizesCommonHostInputs(String rawHost) {
+    @DisplayName("纯 IP、带协议前缀、端口与连接参数一致 → 都拼出同一个正确的端点 URL")
+    void acceptsHarmlessHostInputs(String rawHost) {
         String url = OpcUaEndpointUrl.build(ctx(rawHost, 4840));
 
         assertEquals("opc.tcp://192.168.1.10:4840", url,
-                "host 填成「" + rawHost + "」时应消毒成同一个端点 URL");
+                "host 填成「" + rawHost + "」时应拼出同一个端点 URL");
     }
 
     @Test
-    @DisplayName("端口取连接参数里的值（主机里填的端口被丢弃并记账）")
-    void portComesFromConnectionParameter() {
-        // 客户在主机里填了 49320，但端口配置项是 4840 → 以端口配置项为准
-        assertEquals("opc.tcp://192.168.1.10:4840",
-                OpcUaEndpointUrl.build(ctx("192.168.1.10:49320", 4840)),
-                "端口应取连接参数里的值，不能取主机里夹带的那个");
+    @DisplayName("主机栏带路径必须明确报错（不能静默丢掉 —— 会指向另一台服务端）")
+    void rejectsHostWithPath() {
+        for (String raw : new String[]{"192.168.1.10/UA", "192.168.1.10/milo",
+                "opc.tcp://192.168.1.10:4840/milo"}) {
+            IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                    () -> OpcUaEndpointUrl.build(ctx(raw, 4840)),
+                    "host=" + raw + " 带路径应明确报错");
+            assertTrue(ex.getMessage().contains("不能带路径"),
+                    "异常信息要说清是路径的问题，实际：" + ex.getMessage());
+        }
+    }
 
+    @Test
+    @DisplayName("主机栏里的端口与连接参数不一致必须明确报错（静默替换可能连到别的设备）")
+    void rejectsHostPortMismatch() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> OpcUaEndpointUrl.build(ctx("192.168.1.10:4841", 4840)),
+                "主机栏端口 4841 与连接参数端口 4840 不一致，应报错");
+        assertTrue(ex.getMessage().contains("4841") && ex.getMessage().contains("4840"),
+                "异常信息要把两个端口都写出来，实际：" + ex.getMessage());
+    }
+
+    @Test
+    @DisplayName("主机栏里的端口不是数字也要明确报错")
+    void rejectsNonNumericHostPort() {
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> OpcUaEndpointUrl.build(ctx("192.168.1.10:abc", 4840)));
+        assertTrue(ex.getMessage().contains("不是数字"),
+                "异常信息要说清端口不是数字，实际：" + ex.getMessage());
+    }
+
+    @Test
+    @DisplayName("端口取连接参数里的值（主机里夹带的端口一致时去掉、不一致时报错）")
+    void portComesFromConnectionParameter() {
         assertEquals("opc.tcp://192.168.1.10:49320",
                 OpcUaEndpointUrl.build(ctx("192.168.1.10", 49320)),
                 "连接参数里的端口应原样使用");
@@ -100,7 +132,7 @@ class OpcUaDriverHostSanitizeTest {
     @Test
     @DisplayName("主机地址为空或洗不出来时抛明确异常（不能拼出 opc.tcp://:4840）")
     void rejectsEmptyOrUnusableHost() {
-        for (String bad : new String[]{null, "", "   ", "/", "opc.tcp://", "opc.tcp:///"}) {
+        for (String bad : new String[]{null, "", "   ", "opc.tcp://"}) {
             IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
                     () -> OpcUaEndpointUrl.build(ctx(bad, 4840)),
                     "host=" + bad + " 应抛明确异常");
@@ -115,7 +147,23 @@ class OpcUaDriverHostSanitizeTest {
         assertEquals("opc.tcp://plc-master.local:4840",
                 OpcUaEndpointUrl.build(ctx("plc-master.local", 4840)));
         assertEquals("opc.tcp://plc-master.local:4840",
-                OpcUaEndpointUrl.build(ctx("opc.tcp://plc-master.local:49320/UA", 4840)));
+                OpcUaEndpointUrl.build(ctx("opc.tcp://plc-master.local", 4840)));
+    }
+
+    @Test
+    @DisplayName("裸 IPv6 必须补方括号（否则 URI.getHost() 返回 null、端口都解析不出来）")
+    void bareIpv6GetsBrackets() {
+        assertEquals("[::1]", OpcUaEndpointUrl.sanitizeHost("::1"));
+        assertEquals("[fe80::1]", OpcUaEndpointUrl.sanitizeHost("fe80::1"));
+        assertEquals("[::1]", OpcUaEndpointUrl.sanitizeHost("[::1]"), "已带括号不能重复加");
+        assertEquals("[::1]", OpcUaEndpointUrl.sanitizeHost("[::1]:4840"));
+
+        // 拼出来的 URL 必须能被 java.net.URI 正确解析出 host 与 port
+        String url = OpcUaEndpointUrl.build(ctx("::1", 4840));
+        assertEquals("opc.tcp://[::1]:4840", url);
+        java.net.URI uri = java.net.URI.create(url);
+        assertEquals("[::1]", uri.getHost(), "裸 IPv6 不补括号的话 getHost() 会是 null");
+        assertEquals(4840, uri.getPort(), "裸 IPv6 不补括号的话 getPort() 会是 -1");
     }
 
     /**
@@ -123,9 +171,9 @@ class OpcUaDriverHostSanitizeTest {
      * 少了这条，上面的用例可能全对、但驱动实际仍然连不上。
      */
     @Test
-    @DisplayName("地址填歪了也能真的连上本地 OPC UA Server 并读到值")
+    @DisplayName("地址带协议前缀也能真的连上本地 OPC UA Server 并读到值")
     void connectsWithDirtyHostInput() throws Exception {
-        DriverContext ctx = ctx("127.0.0.1/UA", server.port());
+        DriverContext ctx = ctx("opc.tcp://127.0.0.1", server.port());
         OpcUaDriver driver = new OpcUaDriver();
         try {
             driver.connect(ctx);

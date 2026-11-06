@@ -41,11 +41,10 @@ import java.util.concurrent.TimeUnit;
  * 端口默认 4840（OPC UA 标准端口）。需要用户名认证的现场暂不支持——先用 Modbus 或让 PLC 开匿名。
  * <p>
  * <b>端点 URL 形态</b>：拼出来的是 {@code opc.tcp://<host>:<port>}，<b>不带路径</b>。
- * milo 0.6.x 的客户端连的是「我们给它的那个 URL」，不是 GetEndpoints 返回的 endpoint URL，
- * 所以服务端的 endpoint 必须正好是 {@code opc.tcp://host:port}；
- * 若服务端把 endpoint 挂在子路径下（如 {@code opc.tcp://host:4840/milo}），
- * 这个驱动连不上，报错是 {@code Bad_TcpEndpointUrlInvalid}
- * —— <b>长得像「网络不通」，实际是「端点形态对不上」</b>，现场极难定位。
+ * milo 0.6.x 客户端只尝试「我们给它的 URL」与「那个 URL + /discovery」两个入口，
+ * 而服务端只认自己 advertise 出来的 endpointUrl（尾斜杠会归一化）⇒ 两者必须对得上。
+ * 服务端若把 endpoint 挂在子路径下（如 {@code opc.tcp://host:4840/milo}），这个驱动连不上，
+ * 报错 {@code Bad_TcpEndpointUrlInvalid} —— <b>长得像「网络不通」，实际是「端点形态对不上」</b>。
  * 现场主流 PLC（Kepware / 西门子 S7-1500 / Ignition）都是不带路径的，所以默认没问题。
  * <p>
  * <b>点表</b>：每个点位用 {@code nodeId} 指定节点，写法同 UaExpert：
@@ -80,21 +79,29 @@ public class OpcUaDriver implements ProtocolDriver {
         disconnect();
 
         int reqTimeout = Math.max(2000, ctx.getTimeoutMs() * 3);
-        OpcUaClient newClient = OpcUaClient.create(
-                url,
-                // 只接受不加密的端点：厂内网；加密部署需要证书交换，MVP 阶段不做
-                endpoints -> endpoints.stream()
-                        .filter(e -> SecurityPolicy.None.getUri().equals(e.getSecurityPolicyUri()))
-                        .findFirst(),
-                (OpcUaClientConfigBuilder b) -> {
-                    OpcUaClientConfig cfg = b
-                            .setApplicationName(LocalizedText.english("KnowFab SIRP"))
-                            .setApplicationUri("urn:knowfab:sirp:collector")
-                            .setRequestTimeout(UInteger.valueOf(reqTimeout))
-                            .setSessionTimeout(UInteger.valueOf(60_000))
-                            .build();
-                    return cfg;
-                });
+        OpcUaClient newClient;
+        try {
+            newClient = OpcUaClient.create(
+                    url,
+                    // 只接受不加密的端点：厂内网；加密部署需要证书交换，MVP 阶段不做
+                    endpoints -> endpoints.stream()
+                            .filter(e -> SecurityPolicy.None.getUri().equals(e.getSecurityPolicyUri()))
+                            .findFirst(),
+                    (OpcUaClientConfigBuilder b) -> {
+                        OpcUaClientConfig cfg = b
+                                .setApplicationName(LocalizedText.english("KnowFab SIRP"))
+                                .setApplicationUri("urn:knowfab:sirp:collector")
+                                .setRequestTimeout(UInteger.valueOf(reqTimeout))
+                                .setSessionTimeout(UInteger.valueOf(60_000))
+                                .build();
+                        return cfg;
+                    });
+        } catch (Exception e) {
+            // 端点对不上时 milo 抛的是 Bad_TcpEndpointUrlInvalid / "unrecognized endpoint url"，
+            // 最外层还包着 Netty 的 DecoderException —— 长得像网络不通。
+            // 这里翻译成人话，否则现场会去查网线、查防火墙，而根因是端点形态不对。
+            throw OpcUaEndpointErrors.translateEndpointFailure(e, url);
+        }
         if (newClient == null) {
             throw new IllegalStateException("OPC UA 端点无可用匿名通道（服务端禁用了 None 安全策略）: " + url);
         }
@@ -117,6 +124,9 @@ public class OpcUaDriver implements ProtocolDriver {
         }
         List<ReadValueId> ids = new ArrayList<>();
         List<PointDef> valid = new ArrayList<>();
+        // 记录每个点位为什么没读到：全部失败时要靠它给出可定位的异常信息，
+        // 否则现场只看到「所有点位读取失败」这一句话，无从下手。
+        List<String> failures = new ArrayList<>();
         for (PointDef p : points) {
             String raw = p.getNodeId();
             if (raw == null || raw.isBlank()) {
@@ -126,7 +136,21 @@ public class OpcUaDriver implements ProtocolDriver {
             try {
                 nodeId = NodeId.parse(raw.trim());
             } catch (Exception e) {
-                log.warn("[{}] 点位 {} 的 nodeId 不合法：{}", ctx.getHost(), p.getKey(), raw);
+                // 语法不对：ns=…;s=… 写错了
+                log.warn("[{}] 点位 {} 的 nodeId 格式不对：{}（{}）",
+                        ctx.getHost(), p.getKey(), raw, e.getMessage());
+                failures.add(p.getKey() + "=" + raw + " 格式不对");
+                continue;
+            } catch (LinkageError e) {
+                // ⚠️ LinkageError 是 Error 不是 Exception，catch (Exception) 抓不到它。
+                //    最常见的一种：ByteString 节点号（ns=N;b=…）解析要走
+                //    javax.xml.bind.DatatypeConverter.parseBase64Binary，运行类路径上缺这个类
+                //    就是 NoClassDefFoundError。不接住的话它会穿透 read() 抛出去 →
+                //    不只是这一个点坏，而是<b>整批点位全废</b>（现场：设备在线但一个数据都没有）。
+                log.warn("[{}] 点位 {} 的 nodeId {} 解析失败：缺少运行依赖"
+                                + "（ByteString 节点号 ns=N;b=… 需要 javax.xml.bind，请检查依赖是否在运行时类路径上）：{}",
+                        ctx.getHost(), p.getKey(), raw, e.toString());
+                failures.add(p.getKey() + "=" + raw + " 缺少 javax.xml.bind");
                 continue;
             }
             ids.add(new ReadValueId(nodeId, AttributeId.Value.uid(), null, QualifiedName.NULL_VALUE));
@@ -134,7 +158,15 @@ public class OpcUaDriver implements ProtocolDriver {
         }
         Map<String, Object> out = new LinkedHashMap<>();
         if (ids.isEmpty()) {
-            return out;
+            if (failures.isEmpty()) {
+                // 点位压根没配 nodeId（不是错误），保持原样返回空 Map
+                return out;
+            }
+            // 所有点位都在解析阶段就挂了 —— 必须抛出来，不能静默返回空 Map：
+            // 上层拿到空 Map 只会当成「这轮没数据」，而真正的原因是「每个点的 nodeId 都有问题」，
+            // 不抛出来就等于把根因藏起来了。
+            throw new IllegalStateException("所有点位读取失败（检查 nodeId 的 ns 索引与 PLC 的 OPC UA 配置）"
+                    + "；失败明细：" + String.join("；", failures));
         }
         DataValue[] results = client.read(
                         0.0, TimestampsToReturn.Neither, ids)
@@ -149,17 +181,20 @@ public class OpcUaDriver implements ProtocolDriver {
             StatusCode sc = dv.getStatusCode();
             if (sc != null && !sc.isGood()) {
                 log.debug("[{}] 点位 {} 读失败：{}", ctx.getHost(), p.getKey(), sc);
+                failures.add(p.getKey() + "=" + p.getNodeId() + " 服务端返回 " + sc);
                 continue;
             }
             Variant v = dv.getValue();
             Object val = v == null ? null : v.getValue();
             if (val == null) {
+                failures.add(p.getKey() + "=" + p.getNodeId() + " 值为空");
                 continue;
             }
             out.put(p.getKey(), convert(val, p));
         }
         if (out.isEmpty()) {
-            throw new IllegalStateException("所有点位读取失败（检查 nodeId 的 ns 索引与 PLC 的 OPC UA 配置）");
+            throw new IllegalStateException("所有点位读取失败（检查 nodeId 的 ns 索引与 PLC 的 OPC UA 配置）"
+                    + (failures.isEmpty() ? "" : "；失败明细：" + String.join("；", failures)));
         }
         return out;
     }
@@ -189,7 +224,20 @@ public class OpcUaDriver implements ProtocolDriver {
         if (raw == null || raw.isBlank()) {
             throw new IllegalArgumentException("点位 " + point.getKey() + " 没配 nodeId");
         }
-        NodeId nodeId = NodeId.parse(raw.trim());
+        NodeId nodeId;
+        try {
+            nodeId = NodeId.parse(raw.trim());
+        } catch (Exception e) {
+            throw new IllegalArgumentException("点位 " + point.getKey() + " 的 nodeId 格式不对：" + raw
+                    + "（" + e.getMessage() + "）", e);
+        } catch (LinkageError e) {
+            // 同 read 路径：LinkageError 是 Error 不是 Exception，必须单独接住，
+            // 否则缺依赖时这里抛的是裸 NoClassDefFoundError，现场看不出是哪个点位出的问题。
+            throw new IllegalStateException("点位 " + point.getKey() + " 的 nodeId " + raw
+                    + " 解析失败：缺少运行依赖"
+                    + "（ByteString 节点号 ns=N;b=… 需要 javax.xml.bind，请检查依赖是否在运行时类路径上）："
+                    + e, e);
+        }
         Variant variant = new Variant(toUaValue(point, value));
         // 注意：服务端拒绝（类型不匹配/无权限）不会抛异常，状态码在返回值里，必须检查
         StatusCode sc = client.writeValue(nodeId, new DataValue(variant))

@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
 
@@ -212,5 +213,80 @@ class OpcUaDriverLocalServerTest {
         assertFalse("ClassNotFoundException".equals(ex.getClass().getSimpleName()),
                 "连接失败不应是类加载失败（那说明 Boot 4 类路径上缺东西）：" + ex);
         assertFalse(driver.isConnected(), "连不上时不应报告已连接");
+    }
+
+    /**
+     * 「缺 javax.xml.bind」时的正确行为：<b>坏点只丢自己</b>，同批次其它点照常读到。
+     * <p>
+     * 为什么必须专门测：{@code NoClassDefFoundError} 继承 {@code LinkageError}
+     * （是 Error 不是 Exception），驱动里原先的 {@code catch (Exception e)} 抓不到它
+     * ⇒ 它会穿透 {@code read()} 抛出去 ⇒ <b>整批点位全废</b>，
+     * 现场表现是「设备在线但一个数据都没有」，而且日志里一行线索都没有。
+     * <p>
+     * 怎么造出「缺依赖」的环境：本测试 JVM 里有 jaxb-api（pom 里是 runtime 作用域），
+     * 所以用一个<b>屏蔽了 jaxb 的类加载器</b>重新加载驱动与它的依赖，
+     * 让它看到的就是「交付包漏了这个 jar」的真实环境。
+     */
+    @Test
+    @DisplayName("缺 javax.xml.bind 时坏点只丢自己，同批次其它点照常读到（不能整批失败）")
+    void skipsOnlyBrokenPointWhenDependencyMissing() throws Exception {
+        try (java.net.URLClassLoader noJaxb = NoJaxbClassLoader.create()) {
+            Class<?> driverClass = noJaxb.loadClass("com.factory.hub.driver.opcua.OpcUaDriver");
+            Class<?> ctxClass = noJaxb.loadClass("com.factory.hub.driver.DriverContext");
+            Class<?> pointClass = noJaxb.loadClass("com.factory.hub.model.PointDef");
+
+            Object driver = driverClass.getDeclaredConstructor().newInstance();
+            Object ctx = ctxClass.getDeclaredConstructor().newInstance();
+            ctxClass.getMethod("setHost", String.class).invoke(ctx, "127.0.0.1");
+            ctxClass.getMethod("setPort", int.class).invoke(ctx, server.port());
+            ctxClass.getMethod("setTimeoutMs", int.class).invoke(ctx, 3000);
+
+            Object good = newPoint(pointClass, "tag1", "ns=2;s=TestTag1");
+            Object bad = newPoint(pointClass, "bstr", OpcUaTestServer.BYTE_STRING_TAG_NODE_ID);
+
+            Method read = driverClass.getMethod("read", ctxClass, List.class);
+            Map<?, ?> out = (Map<?, ?>) read.invoke(driver, ctx, List.of(good, bad));
+
+            assertEquals(1, out.size(), "坏点应被跳过，好点照常读到，实际：" + out);
+            assertEquals(42.5d, ((Number) out.get("tag1")).doubleValue(), 1e-9,
+                    "好点的值应照常读到 42.5");
+        }
+    }
+
+    @Test
+    @DisplayName("缺 javax.xml.bind 时只读坏点，异常信息要能看出是缺依赖（不是笼统的「格式不对」）")
+    void reportsMissingDependencyInExceptionMessage() throws Exception {
+        try (java.net.URLClassLoader noJaxb = NoJaxbClassLoader.create()) {
+            Class<?> driverClass = noJaxb.loadClass("com.factory.hub.driver.opcua.OpcUaDriver");
+            Class<?> ctxClass = noJaxb.loadClass("com.factory.hub.driver.DriverContext");
+            Class<?> pointClass = noJaxb.loadClass("com.factory.hub.model.PointDef");
+
+            Object driver = driverClass.getDeclaredConstructor().newInstance();
+            Object ctx = ctxClass.getDeclaredConstructor().newInstance();
+            ctxClass.getMethod("setHost", String.class).invoke(ctx, "127.0.0.1");
+            ctxClass.getMethod("setPort", int.class).invoke(ctx, server.port());
+            ctxClass.getMethod("setTimeoutMs", int.class).invoke(ctx, 3000);
+
+            Object bad = newPoint(pointClass, "bstr", OpcUaTestServer.BYTE_STRING_TAG_NODE_ID);
+
+            Method read = driverClass.getMethod("read", ctxClass, List.class);
+            java.lang.reflect.InvocationTargetException ex =
+                    assertThrows(java.lang.reflect.InvocationTargetException.class,
+                            () -> read.invoke(driver, ctx, List.of(bad)),
+                            "只读坏点时应抛出异常");
+            String message = ex.getCause().getMessage();
+            assertTrue(message != null && message.contains("javax.xml.bind"),
+                    "异常信息应指出缺 javax.xml.bind，实际：" + message);
+            assertTrue(message != null && message.contains(OpcUaTestServer.BYTE_STRING_TAG_NODE_ID),
+                    "异常信息应带上原始 nodeId，实际：" + message);
+        }
+    }
+
+    private static Object newPoint(Class<?> pointClass, String key, String nodeId) throws Exception {
+        Object p = pointClass.getDeclaredConstructor().newInstance();
+        pointClass.getMethod("setKey", String.class).invoke(p, key);
+        pointClass.getMethod("setNodeId", String.class).invoke(p, nodeId);
+        pointClass.getMethod("setDataType", String.class).invoke(p, "f64");
+        return p;
     }
 }

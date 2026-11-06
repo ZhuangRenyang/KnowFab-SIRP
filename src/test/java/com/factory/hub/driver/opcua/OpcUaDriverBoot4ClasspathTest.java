@@ -14,9 +14,14 @@ import java.lang.reflect.Method;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
@@ -123,6 +128,33 @@ class OpcUaDriverBoot4ClasspathTest {
     }
 
     @Test
+    @DisplayName("pom 里 jaxb-api 不能是 test 作用域（那就是这次事故的根源）")
+    void pomDoesNotDeclareJaxbApiAsTestScope() throws Exception {
+        // 为什么这条要单独钉住：jaxb-api 在 test 作用域时，
+        // **单元测试照样全绿**（测试类路径上有它），只有生产运行时才会炸。
+        // 所以「测试绿」根本发现不了「作用域被改回 test」——只能靠断言 pom 本身。
+        Path pom = Paths.get("pom.xml");
+        assertTrue(Files.exists(pom), "应在项目根目录找到 pom.xml（当前工作目录：" + Paths.get("").toAbsolutePath() + "）");
+        String xml = Files.readString(pom, StandardCharsets.UTF_8);
+
+        Matcher matcher = Pattern.compile("<dependency>(.*?)</dependency>", Pattern.DOTALL).matcher(xml);
+        boolean found = false;
+        while (matcher.find()) {
+            String block = matcher.group(1);
+            if (!block.contains("<artifactId>jaxb-api</artifactId>")) {
+                continue;
+            }
+            found = true;
+            assertFalse(block.contains("<scope>test</scope>"),
+                    "javax.xml.bind:jaxb-api 不能声明成 test 作用域："
+                            + "那样交付 jar 里就没有 javax/xml/bind，客户一配 ByteString 节点号"
+                            + "（ns=2;b=...）就在采集线程里抛 NoClassDefFoundError。"
+                            + "改成 compile（无 scope 即可）。");
+        }
+        assertTrue(found, "pom.xml 里应声明 javax.xml.bind:jaxb-api");
+    }
+
+    @Test
     @DisplayName("milo 的 NodeId 仍然硬引用 javax.xml.bind.DatatypeConverter（将来可以据此删依赖）")
     void miloNodeIdStillHardReferencesJavaxXmlBind() throws Exception {
         // 这条是「反向护栏」：只要 milo 还引用 javax.xml.bind，
@@ -187,15 +219,7 @@ class OpcUaDriverBoot4ClasspathTest {
      * 应用类路径里的 jaxb-api 被剔掉。用来模拟 Spring Boot 4 的生产运行时类路径。
      */
     private static URLClassLoader classLoaderWithoutJaxb() throws Exception {
-        List<URL> urls = new ArrayList<>();
-        for (String entry : System.getProperty("java.class.path").split(File.pathSeparator)) {
-            if (entry.contains("jaxb-api") || entry.contains("jakarta.xml.bind")) {
-                continue;
-            }
-            urls.add(new File(entry).toURI().toURL());
-        }
-        return new URLClassLoader(urls.toArray(new URL[0]),
-                ClassLoader.getPlatformClassLoader());
+        return NoJaxbClassLoader.create();
     }
 
     /** 扫类路径上所有 milo 的 jar，看有没有哪个类引用了给定的内部名。 */

@@ -5,26 +5,32 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * OPC UA 端点 URL 的拼装 + 主机地址消毒。
+ * OPC UA 端点 URL 的拼装 + 主机地址校验。
  * <p>
- * <b>为什么单独拆一个类</b>：这段逻辑看起来只有两行，但它守的是一个
+ * <b>为什么单独拆一个类</b>：这段逻辑看起来只有几行，但它守的是一个
  * <b>现场极难定位</b>的坑 —— 客户把主机地址填歪了，报错却是
  * {@code Bad_TcpEndpointUrlInvalid}，长得像「网络不通」，实际是「地址填错了」。
  * 把它拆出来单独测：拼 URL 的逻辑一旦被改坏，测试能一眼看出是哪一步坏了，
  * 而不是只能靠「连不上」这种二值信号去猜。
  * <p>
- * <b>为什么必须消毒</b>：{@code DeviceEntity.host} 是前端输入框，客户会随手填成
- * {@code 192.168.1.10/UA}、{@code 192.168.1.10:4840}、{@code opc.tcp://192.168.1.10}。
- * 直接拼接会得到 {@code opc.tcp://192.168.1.10/UA:4840} 这种非法 URL。
- * <p>
- * <b>消毒规则</b>（只保留纯 IP / 主机名）：
+ * <b>三种输入，三种处理</b>（不能一刀切地「消毒」，也不能一刀切地「报错」）：
  * <ol>
- *   <li>去掉协议前缀：{@code opc.tcp://}、{@code opc.tcp:}、以及任意 {@code xxx://}；</li>
- *   <li>去掉末尾路径：第一个 {@code /} 之后全部丢掉；</li>
- *   <li>去掉已有端口：{@code host:port} 里的 port 丢弃，
- *       <b>端口统一取连接参数里的值</b>（OPC UA 端口是单独一个配置项，
- *       客户在主机里填的端口会被丢掉，日志里会写清楚这件事）。</li>
+ *   <li><b>协议前缀</b>（{@code opc.tcp://}、{@code xxx://}）
+ *       → <b>静默去掉</b>。这是常见无害写法（从别的组态软件复制过来的），
+ *         报错只会让客户莫名其妙。debug 日志留痕。</li>
+ *   <li><b>末尾路径</b>（{@code /UA}、{@code /milo}）
+ *       → <b>必须报错</b>。OPC UA 端点带子路径是真实存在的形态（milo 原生客户端
+ *         URL 带 path 时能连上），静默丢掉等于把客户指向<b>另一台</b>服务端。
+ *         报错的修复方法在现场是确定的（改一个输入框）。</li>
+ *   <li><b>主机栏里的端口</b>（{@code 192.168.1.10:4840}）
+ *       → 与连接参数的端口<b>不一致就报错</b>。静默替换更危险：
+ *         可能连到<b>另一台设备</b>（端口不同 ⇒ 不同的服务）。一致则去掉（debug）。</li>
  * </ol>
+ * <p>
+ * <b>为什么主机栏里的端口以连接参数为准</b>：端口在本系统里是<b>独立的一个配置项</b>，
+ * 主机栏的语义是「主机」。两个地方都能填端口，客户一定会填错一处，
+ * 与其猜，不如当场报错让他改对。
+ * <p>
  * 消毒后为空 → 抛明确异常，绝不拼出 {@code opc.tcp://:4840} 这种废 URL。
  */
 final class OpcUaEndpointUrl {
@@ -42,41 +48,63 @@ final class OpcUaEndpointUrl {
      *
      * @param ctx 连接参数
      * @return 形如 {@code opc.tcp://192.168.1.10:4840} 的端点 URL
-     * @throws IllegalArgumentException 主机地址为空或无法识别
+     * @throws IllegalArgumentException 主机地址为空、带路径、或端口与连接参数不一致
      */
     static String build(DriverContext ctx) {
         String raw = ctx.getHost() == null ? "" : ctx.getHost().trim();
-        String host = sanitizeHost(raw);
         int port = ctx.getPort() <= 0 ? DEFAULT_PORT : ctx.getPort();
+
+        // 1) 路径 —— 确定性错误，当场报错，不静默丢
+        String authority = stripScheme(raw);
+        int slash = authority.indexOf('/');
+        if (slash >= 0) {
+            throw new IllegalArgumentException(
+                    "OPC UA 主机地址不能带路径（本次输入带了 \"" + authority.substring(slash)
+                            + "\"）。本系统只支持 opc.tcp://<host>:<port> 形态的端点："
+                            + "服务端若把 endpoint 挂在子路径下（如 /milo），"
+                            + "客户端按 opc.tcp://<host>:<port> 连过去会被服务端拒绝"
+                            + "（Bad_TcpEndpointUrlInvalid，看着像网络不通，其实是端点形态对不上）。"
+                            + "请只填 IP 或主机名。原始输入：" + raw);
+        }
+
+        // 2) 主机栏里夹带的端口 —— 与连接参数不一致就报错（静默替换可能连到别的设备）
+        String embeddedPort = splitHostPort(authority)[1];
+        if (embeddedPort != null) {
+            if (!embeddedPort.matches("\\d+")) {
+                throw new IllegalArgumentException(
+                        "OPC UA 主机栏里的端口 \"" + embeddedPort + "\" 不是数字。"
+                                + "请只填 IP 或主机名，端口在连接参数里设。原始输入：" + raw);
+            }
+            if (!embeddedPort.equals(String.valueOf(port))) {
+                throw new IllegalArgumentException(
+                        "OPC UA 主机栏里的端口 " + embeddedPort + " 与连接参数的端口 " + port
+                                + " 不一致。请只填 IP 或主机名，端口在连接参数里设（以连接参数为准）。"
+                                + "原始输入：" + raw);
+            }
+        }
+
+        String host = sanitizeHost(raw);
         if (host.isEmpty()) {
             throw new IllegalArgumentException(
                     "OPC UA 主机地址为空或无法识别（原始输入：" + raw + "），请填纯 IP 或主机名");
         }
         if (!raw.equals(host)) {
-            log.debug("OPC UA 主机地址已消毒：{} -> {}（端口取连接参数里的 {}）", raw, host, port);
+            log.debug("OPC UA 主机地址已规范化：{} -> {}（端口取连接参数里的 {}）", raw, host, port);
         }
         return "opc.tcp://" + host + ":" + port;
     }
 
     /**
      * 把用户填的主机地址洗成纯 IP / 主机名。
+     * <p>
+     * 只做「无害的规范化」：去协议前缀、去路径、去端口、给裸 IPv6 补方括号。
+     * <b>路径与端口的歧义判断在 {@link #build} 里</b>（那里要报错，不能静默）。
      *
      * @param raw 用户原始输入，允许为 null
      * @return 清洗后的主机名；无法识别时返回空串
      */
     static String sanitizeHost(String raw) {
-        String s = raw == null ? "" : raw.trim();
-        if (s.isEmpty()) {
-            return "";
-        }
-        // 1) 去掉协议前缀
-        int scheme = s.indexOf("://");
-        if (scheme >= 0) {
-            s = s.substring(scheme + 3);
-        } else if (s.regionMatches(true, 0, "opc.tcp:", 0, "opc.tcp:".length())) {
-            s = s.substring("opc.tcp:".length());
-        }
-        // 2) 去掉路径
+        String s = stripScheme(raw == null ? "" : raw.trim()).trim();
         int slash = s.indexOf('/');
         if (slash >= 0) {
             s = s.substring(0, slash);
@@ -85,21 +113,63 @@ final class OpcUaEndpointUrl {
         if (s.isEmpty()) {
             return "";
         }
-        // 3) 去掉端口
-        //    IPv6 字面量 [::1]:4840：端口在 ']' 之后，不能按 ':' 切
-        if (s.startsWith("[")) {
-            int close = s.indexOf(']');
-            return close < 0 ? "" : s.substring(0, close + 1);
+        String host = splitHostPort(s)[0];
+        if (host.isEmpty()) {
+            return "";
         }
-        int firstColon = s.indexOf(':');
-        int lastColon = s.lastIndexOf(':');
-        if (firstColon >= 0 && firstColon != lastColon) {
-            // 多个冒号 ⇒ 裸 IPv6（没有端口可剥），原样保留
-            return s;
+        // 裸 IPv6（多个冒号、没方括号）必须补方括号：
+        // RFC 3986 要求 URL 里的 IPv6 字面量带方括号，否则 java.net.URI 的
+        // getHost() 返回 null、getPort() 返回 -1（实测 opc.tcp://::1:4840 就是这样），
+        // 后面任何按 host 解析的逻辑都会拿到 null。
+        if (!host.startsWith("[") && host.indexOf(':') >= 0) {
+            host = "[" + host + "]";
         }
-        if (lastColon >= 0) {
-            s = s.substring(0, lastColon).trim();
+        return host;
+    }
+
+    /** 去掉协议前缀：{@code opc.tcp://}、{@code opc.tcp:}、任意 {@code xxx://}。 */
+    private static String stripScheme(String s) {
+        int scheme = s.indexOf("://");
+        if (scheme >= 0) {
+            return s.substring(scheme + 3);
+        }
+        if (s.regionMatches(true, 0, "opc.tcp:", 0, "opc.tcp:".length())) {
+            return s.substring("opc.tcp:".length());
         }
         return s;
+    }
+
+    /**
+     * 把 authority 拆成「主机」与「端口」两部分。
+     *
+     * @return {主机, 端口}；端口为 null 表示没写端口
+     */
+    private static String[] splitHostPort(String authority) {
+        String a = authority.trim();
+        if (a.startsWith("[")) {
+            // IPv6 字面量 [::1]:4840 —— 端口在 ']' 之后，不能按 ':' 切
+            int close = a.indexOf(']');
+            if (close < 0) {
+                return new String[]{a, null};
+            }
+            String host = a.substring(0, close + 1);
+            String rest = a.substring(close + 1);
+            if (rest.startsWith(":") && rest.length() > 1) {
+                return new String[]{host, rest.substring(1).trim()};
+            }
+            return new String[]{host, null};
+        }
+        int firstColon = a.indexOf(':');
+        int lastColon = a.lastIndexOf(':');
+        if (firstColon >= 0 && firstColon != lastColon) {
+            // 多个冒号 ⇒ 裸 IPv6（本身没有端口可剥）
+            return new String[]{a, null};
+        }
+        if (lastColon >= 0) {
+            String host = a.substring(0, lastColon).trim();
+            String port = a.substring(lastColon + 1).trim();
+            return new String[]{host, port.isEmpty() ? null : port};
+        }
+        return new String[]{a, null};
     }
 }

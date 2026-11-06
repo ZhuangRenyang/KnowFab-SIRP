@@ -29,8 +29,81 @@ public final class OpcUaRuntimeProbe {
     private OpcUaRuntimeProbe() {
     }
 
+    /** 对照组模式：类路径上没有 javax.xml.bind，验证驱动的 Error 级防护。 */
+    private static boolean EXPECT_MISSING_JAXB = false;
+
+    /**
+     * 「缺 javax.xml.bind」时的正确行为应该是：
+     * <ol>
+     *   <li>ByteString 节点号那个点被<b>跳过</b>，同批次的其它点<b>照常读到</b>
+     *       —— 不是整批失败（这是加 LinkageError 防护的目的）；</li>
+     *   <li>只读那个坏点时抛出的异常里<b>能看出是缺依赖</b>（含 javax.xml.bind 字样），
+     *       而不是笼统的「nodeId 不合法」。</li>
+     * </ol>
+     */
+    private static void runMissingJaxbScenario(OpcUaDriver driver,
+                                                DriverContext ctx,
+                                                PointDef tag1,
+                                                PointDef bstr) throws Exception {
+        // 1) 坏点只丢自己：其它点照常读到
+        Map<String, Object> values = driver.read(ctx, List.of(tag1, bstr));
+        System.out.println("PROBE mixedValues=" + values);
+        if (!values.containsKey("tag1")) {
+            System.out.println("PROBE FAIL 坏点把整批点位带累了（tag1 也没读到）：" + values);
+            System.exit(1);
+        }
+        if (!(values.get("tag1") instanceof Number)) {
+            System.out.println("PROBE FAIL tag1 的值不是数字：" + values.get("tag1"));
+            System.exit(1);
+        }
+        if (values.containsKey("bstr")) {
+            System.out.println("PROBE FAIL 缺 javax.xml.bind 时 ByteString 节点号竟然读到了："
+                    + values.get("bstr"));
+            System.exit(1);
+        }
+        // 注意：这里不断言 tag1 的具体数值 —— 上一步（正常模式）刚把 tag1 写成 88.25，
+        // 值本身由正常模式那一步断言；这一步要证明的是「坏点没拖累好点」。
+
+        // 2) 只读坏点：异常信息里要能看出是缺依赖
+        try {
+            driver.read(ctx, List.of(bstr));
+            System.out.println("PROBE FAIL 只读坏点时竟然没抛异常");
+            System.exit(1);
+        } catch (Exception e) {
+            System.out.println("PROBE badPointException=" + e.getMessage());
+            if (e.getMessage() == null || !e.getMessage().contains("javax.xml.bind")) {
+                System.out.println("PROBE FAIL 异常信息里看不出是缺 javax.xml.bind：" + e.getMessage());
+                System.exit(1);
+            }
+        }
+
+        // 3) 写路径同样要接住 LinkageError，并带上原始 nodeId
+        try {
+            driver.write(ctx, bstr, 1.0d);
+            System.out.println("PROBE FAIL 写 ByteString 节点号时竟然没抛异常");
+            System.exit(1);
+        } catch (Exception e) {
+            System.out.println("PROBE badWriteException=" + e.getMessage());
+            if (e.getMessage() == null
+                    || !e.getMessage().contains("javax.xml.bind")
+                    || !e.getMessage().contains(OpcUaTestServer.BYTE_STRING_TAG_NODE_ID)) {
+                System.out.println("PROBE FAIL 写路径的异常信息应含「javax.xml.bind」与原始 nodeId："
+                        + e.getMessage());
+                System.exit(1);
+            }
+        }
+
+        System.out.println("PROBE OK (missing-jaxb 防护生效)");
+        System.exit(0);
+    }
+
     public static void main(String[] args) {
         int port = args.length > 0 ? Integer.parseInt(args[0].trim()) : 14840;
+        for (String a : args) {
+            if ("--expect-missing-jaxb".equals(a.trim())) {
+                EXPECT_MISSING_JAXB = true;
+            }
+        }
 
         DriverContext ctx = new DriverContext();
         ctx.setHost("127.0.0.1");
@@ -59,6 +132,11 @@ public final class OpcUaRuntimeProbe {
         try {
             driver.connect(ctx);
             System.out.println("PROBE connected=" + driver.isConnected());
+
+            if (EXPECT_MISSING_JAXB) {
+                runMissingJaxbScenario(driver, ctx, tag1, bstr);
+                return;
+            }
 
             Map<String, Object> values = driver.read(ctx, List.of(tag1, tag2, bstr));
             System.out.println("PROBE values=" + values);
