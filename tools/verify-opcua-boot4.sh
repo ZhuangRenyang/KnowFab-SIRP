@@ -97,8 +97,22 @@ if [ ! -x "$JAVA_RESOLVED" ] && ! command -v "$JAVA_RESOLVED" >/dev/null 2>&1; t
 fi
 
 echo "== 1/6 生成生产运行时类路径（剔除所有 test/provided 作用域的 jar） =="
-"$MVN_RESOLVED" -o -q dependency:list -DoutputFile=target/deplist.txt || exit 1
-"$MVN_RESOLVED" -o -q dependency:build-classpath -Dmdep.outputFile=target/cp-all.txt || exit 1
+# ⚠️ **离线还是联网，取决于 CI 环境**：
+#   CI（GitHub Actions 会设 CI=true）必须**联网** ——
+#     `dependency:list` / `dependency:build-classpath` 属于 **maven-dependency-plugin**，
+#     它**不在 test 生命周期里** ⇒ `mvn test` 不会预先把它拉下来；
+#     而 setup-java 的 maven cache key 跟 pom.xml 绑定 ⇒ pom 一改就 miss
+#     ⇒ 冷缓存的 runner 上用 `mvn -o` 会直接失败
+#     （Cannot access central in offline mode）。
+#     **这个坑是在 Linux 冷缓存 runner 上实测出来的**（2026-11-06，运维验证时发现）。
+#   本地：保持离线（-o），快 —— 本地跑过一次后插件已经在仓库里。
+if [ "${CI:-}" = "true" ]; then
+  MVN_OFFLINE=""
+else
+  MVN_OFFLINE="-o"
+fi
+"$MVN_RESOLVED" $MVN_OFFLINE -q dependency:list -DoutputFile=target/deplist.txt || exit 1
+"$MVN_RESOLVED" $MVN_OFFLINE -q dependency:build-classpath -Dmdep.outputFile=target/cp-all.txt || exit 1
 
 # 从 dependency:list 里取出 test/provided/system 作用域的 artifactId
 # 注意两点：
@@ -142,11 +156,11 @@ fi
 echo "OK 生产运行时类路径：$(tr "$CP_SEP" '\n' < target/cp-runtime.txt | wc -l) 个 jar，无 sdk-server，含 jaxb-api"
 
 echo "== 2/6 生成测试类路径（Server 端要用） =="
-"$MVN_RESOLVED" -o -q dependency:build-classpath -Dmdep.includeScope=test \
+"$MVN_RESOLVED" $MVN_OFFLINE -q dependency:build-classpath -Dmdep.includeScope=test \
       -Dmdep.outputFile=target/cp-test.txt || exit 1
 
 echo "== 3/6 编译 =="
-"$MVN_RESOLVED" -o -q test-compile || exit 1
+"$MVN_RESOLVED" $MVN_OFFLINE -q test-compile || exit 1
 
 TEST_CP="target/test-classes${CP_SEP}target/classes${CP_SEP}$(cat target/cp-test.txt)"
 RUNTIME_CP="target/test-classes${CP_SEP}target/classes${CP_SEP}$(cat target/cp-runtime.txt)"
