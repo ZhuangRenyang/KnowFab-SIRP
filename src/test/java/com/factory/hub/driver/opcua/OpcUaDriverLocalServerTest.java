@@ -246,6 +246,25 @@ class OpcUaDriverLocalServerTest {
     }
 
     @Test
+    @DisplayName("写只读节点时，提示要说「是只读的」而不是「dataType 不一致」（两者的修法相反）")
+    void writeRejectionHintMatchesTheRealReason() throws Exception {
+        driver.connect(ctx);
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+                () -> driver.write(ctx, point("tag2", "ns=2;s=TestTag2", "f64"), 99.5d));
+
+        String message = ex.getMessage();
+        assertTrue(message.contains("Bad_NotWritable"),
+                "异常信息应含服务端返回的状态码 Bad_NotWritable，实际：" + message);
+        // ⭐ 关键断言：不能提 dataType —— 节点只读的原因是**权限**，
+        // 现场照着「改 dataType」会改半天没用。两种原因修法完全相反，不能混着说。
+        assertFalse(message.contains("dataType"),
+                "只读节点被拒的提示不该提 dataType（那是类型不匹配才有的原因），实际：" + message);
+        assertTrue(message.contains("只读") || message.contains("写权限"),
+                "提示应说清是「节点只读 / 写权限不足」，实际：" + message);
+    }
+
+    @Test
     @DisplayName("服务端不在线时抛异常（不会假装连上了）")
     void failsWhenServerDown() {
         int deadPort;

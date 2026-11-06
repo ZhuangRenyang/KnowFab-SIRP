@@ -18,7 +18,7 @@ import com.factory.hub.driver.opcua.OpcUaDriver;
  * {@code "unrecognized endpoint url"}，最外层还包着 Netty 的 {@code DecoderException}
  * —— <b>长得像「网络不通」</b>，现场会去查网线、查防火墙、怀疑 PLC，
  * 而根因是「我们拼的端点 URL 和服务端 advertise 的不是同一个」。
- * {@link OpcUaEndpointErrors} 把它翻译成人话；这条用例守住那段翻译。
+ * {@link OpcUaErrors} 把它翻译成人话；这条用例守住那段翻译。
  * <p>
  * <b>为什么这条不能删</b>：{@code OpcUaEndpointUrl} 的路径校验只能拦住
  * 「用户主动在主机栏填了路径」；<b>拦不住「服务端有路径而用户不知道」</b> ——

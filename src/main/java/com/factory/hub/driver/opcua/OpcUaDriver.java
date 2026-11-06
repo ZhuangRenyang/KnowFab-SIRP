@@ -104,7 +104,7 @@ public class OpcUaDriver implements ProtocolDriver {
             // 端点对不上时 milo 抛的是 Bad_TcpEndpointUrlInvalid / "unrecognized endpoint url"，
             // 最外层还包着 Netty 的 DecoderException —— 长得像网络不通。
             // 这里翻译成人话，否则现场会去查网线、查防火墙，而根因是端点形态不对。
-            throw OpcUaEndpointErrors.translateEndpointFailure(e, url);
+            throw OpcUaErrors.translateEndpointFailure(e, url);
         }
         this.client = newClient;
         this.endpoint = url;
@@ -243,8 +243,7 @@ public class OpcUaDriver implements ProtocolDriver {
         StatusCode sc = client.writeValue(nodeId, new DataValue(variant))
                 .get(Math.max(2000, ctx.getTimeoutMs() * 3), TimeUnit.MILLISECONDS);
         if (sc != null && !sc.isGood()) {
-            throw new IllegalStateException("写入被设备拒绝：" + sc
-                    + "（常见原因：点位 dataType 与 PLC 节点类型不一致，如把 f32 写成 double）");
+            throw new IllegalStateException("写入被设备拒绝：" + sc + OpcUaErrors.writeRejectHint(sc));
         }
     }
 
