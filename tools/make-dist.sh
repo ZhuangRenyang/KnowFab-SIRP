@@ -38,10 +38,18 @@ JAR="$ROOT/target/device-hub.jar"
 # 2026-11-04 真机实测踩到：改完代码只跑了 `mvn test`（不产出 jar），
 # make-dist.sh 拿到的还是上一次的 target/device-hub.jar ——
 # 交付包里**没有**新功能，服务器上 404，而本地单测全绿、审计全过。
-# 所以这里断言 jar 的时间戳比所有源文件新，且抽查关键 class 在里面。
+# 所以这里断言 jar 的时间戳比所有源文件新。
+#
+# ⚠️ 2026-11-06 修：这段原本**无条件在构建之前**跑，于是 `--build` 被自己的门禁废掉了——
+#    有源文件改动时 jar 必然是旧的，检查直接 die，永远走不到构建那一步。
+#    （表现出来就是"改了代码就必须手动 mvn clean package，--build 是个摆设"。）
+#    现在包成函数：
+#      · 不带 --build（用现成 jar）→ 打包前必须验，这是原意
+#      · 带 --build → 验构建**之后**的 jar（构建前旧是正常的）
+assert_jar_fresh() {
 JAR_MTIME=$(python -c "import os,sys;print(int(os.path.getmtime(sys.argv[1])))" "$JAR" 2>/dev/null || echo 0)
 if [ "$JAR_MTIME" = "0" ]; then
-  die "找不到 $JAR —— 先跑 mvn package 再打包"
+  die "找不到 $JAR —— 先跑 mvn package，或加 --build 让本脚本构建"
 fi
 STALE=$(python - "$JAR" "$ROOT/src" <<'PYEOF'
 import os, sys
@@ -61,6 +69,11 @@ if [ "$STALE" != "0" ]; then
   die "jar 比源文件旧（$STALE 个源文件更新）—— 跑 mvn clean package 后再打包，否则交付包里是上一版代码"
 fi
 say "jar 时效检查通过（比所有源文件新）"
+}
+
+if [ "$DO_BUILD" -eq 0 ]; then
+  assert_jar_fresh
+fi
 
 # ---------- 1. 构建 ----------
 if [ "$DO_BUILD" -eq 1 ]; then
@@ -139,6 +152,11 @@ if [ "$DO_BUILD" -eq 1 ]; then
 fi
 
 [ -f "$JAR" ] || die "没有 $JAR，先跑 tools/make-dist.sh --build"
+
+# --build 路径：构建完再验一次，确认这个 jar 确实是刚用当前源码编出来的
+if [ "$DO_BUILD" -eq 1 ]; then
+  assert_jar_fresh
+fi
 
 # ---------- 打包前断言：jar 内资源必须与源码目录一致（DH-83） ----------
 # 2026-11-05 踩到：`db/migrations/1.9.0.sql`（DH-72 排程的迁移脚本）**从未提交过 git**，

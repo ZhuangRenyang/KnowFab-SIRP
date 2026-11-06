@@ -22,12 +22,19 @@ const TMP = join(ROOT, 'target', 'mutation-check');
 const CHECKER = join(ROOT, 'scripts', 'check-alarmcodes.mjs');
 
 function fresh() {
-  rmSync(TMP, { recursive: true, force: true });
-  mkdirSync(TMP, { recursive: true });
+  // **只覆盖，不删除**：本脚本的 11 类变异全是「改现有文件的内容」，不新增文件，
+  // 所以每次从源码重新拷一遍（覆盖）就能拿到干净基线。
+  //
+  // 为什么不做 rm -rf 清空（2026-11-06 踩到）：某些环境（带批量删除保护的沙箱）
+  // 按「单轮对话累计删除文件数」计数，超过 50 就中断整条命令。
+  // 11 个变异 × 每次清 8 个文件 ≈ 88 > 50 → **门禁跑到第 6 个变异就被环境打断**，
+  // 表现出来是「校验器变异验证未通过，不允许打包」，看着像字典坏了，其实是删文件被拦。
+  // 那个保护挡的是「误删用户数据」，我们只是清自己的临时目录 —— 能不删就不删。
+  // 覆盖式的额外好处：TMP 里永远不会累积垃圾。
   // 字典目录与 manifest 分开放 —— manifest 放字典目录里会被当成一个字典文件
   const alarm = join(TMP, 'alarmcodes');
   mkdirSync(alarm, { recursive: true });
-  cpSync(SRC_ALARM, alarm, { recursive: true });
+  cpSync(SRC_ALARM, alarm, { recursive: true, force: true });
   cpSync(SRC_MANIFEST, join(TMP, 'manifest.json'));
   return { alarm, manifest: join(TMP, 'manifest.json') };
 }
