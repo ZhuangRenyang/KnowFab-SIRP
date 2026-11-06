@@ -26,8 +26,12 @@ import { createRequire } from 'node:module'
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const FE = path.resolve(HERE, '..')            // frontend/
 const ROOT = path.resolve(FE, '..')             // 仓库根
-const DIALOG = path.join(FE, 'src/components/DeviceFormDialog.vue')
-const BACKEND_DEFAULTS = path.join(ROOT, 'src/main/java/com/factory/hub/driver/ProtocolDefaults.java')
+// 这三个文件允许用环境变量覆盖 —— 变异验证脚本靠它把校验器指向临时副本，
+// 从而**不碰真文件**（跟 scripts/mutation-check-alarmcodes.mjs 同款做法）。
+// 不覆盖时的行为与从前完全一样。
+const DIALOG = process.env.PORT_CHECK_DIALOG || path.join(FE, 'src/components/DeviceFormDialog.vue')
+const BACKEND_DEFAULTS = process.env.PORT_CHECK_BACKEND || path.join(ROOT, 'src/main/java/com/factory/hub/driver/ProtocolDefaults.java')
+const TEMPLATES_FILE = process.env.PORT_CHECK_TEMPLATES || path.join(FE, 'src/api/deviceTemplates.ts')
 const LOCALES = ['zh-CN', 'en-US', 'de-DE', 'es-ES', 'ja-JP', 'ko-KR', 'ru-RU']
 
 let failed = 0
@@ -130,12 +134,21 @@ console.log('\n== 行为断言：el-input-number 的哨兵行为 ==')
 // 用真实的 element-plus 跑一遍：null 原样保留、0 被夹成 1。
 // 这条断言的意义是「记住为什么哨兵必须是 null」——
 // 如果哪天 element-plus 改了行为，这条会红，提醒我们重新评估（而不是默默失效）。
+//
+// PORT_CHECK_FAST=1：跳过这条探针。**只有变异验证脚本用得上** ——
+// 它跑 15 遍校验器，而这 15 个变异动的是「前端表单/模板/后端协议表」，
+// 动不到 element-plus 的内部行为 ⇒ 探针每次都跑纯属浪费（每次约 1.5 秒）。
+// 常规门禁（npm run check:port）与变异脚本的**基线**都不带这个开关 ⇒ 行为断言照跑。
 const require = createRequire(path.join(FE, 'package.json'))
 let ElInputNumber = null
-try {
-  ElInputNumber = require('element-plus').ElInputNumber
-} catch (e) {
-  console.log('  ! 跳过行为断言（element-plus 不可解析：' + e.code + '）')
+if (process.env.PORT_CHECK_FAST === '1') {
+  console.log('  - 跳过行为断言（PORT_CHECK_FAST=1：变异验证模式，探针与变异无关）')
+} else {
+  try {
+    ElInputNumber = require('element-plus').ElInputNumber
+  } catch (e) {
+    console.log('  ! 跳过行为断言（element-plus 不可解析：' + e.code + '）')
+  }
 }
 
 if (ElInputNumber) {
@@ -191,7 +204,7 @@ console.log('\n== 内置模板断言：port 必须与协议默认一致 ==')
 //   更新时后端「端口跟随协议」触发 ⇒ 落 4840 ⇒ 同一模板两种结果，极难查。
 // 这里直接把 deviceTemplates.ts 的数据与前端协议默认表对一遍，抄错即红。
 {
-  const tplFile = path.join(FE, 'src/api/deviceTemplates.ts')
+  const tplFile = TEMPLATES_FILE
   const tplTxt = fs.readFileSync(tplFile, 'utf8')
   // 从 DeviceFormDialog.vue 里读前端那份协议默认表（唯一副本，不另抄一份）
   const feParsed = parseFrontendPortTable(src)

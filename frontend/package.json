@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "typecheck": "vue-tsc --noEmit",
-    "check:port": "node scripts/check-port-semantics.mjs"
+    "check:port": "node scripts/check-port-semantics.mjs",
+    "check:port:mutation": "node scripts/mutation-check-port-semantics.mjs"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",
