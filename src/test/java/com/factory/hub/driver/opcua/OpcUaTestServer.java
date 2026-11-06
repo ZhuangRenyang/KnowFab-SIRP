@@ -133,6 +133,7 @@ final class OpcUaTestServer implements AutoCloseable {
 
         OpcUaServer server = new OpcUaServer(config);
         server.startup().get();
+        awaitEndpointAdvertised(server, port);
 
         OpcUaTestNamespace namespace = new OpcUaTestNamespace(server);
         namespace.startup();
@@ -183,6 +184,31 @@ final class OpcUaTestServer implements AutoCloseable {
         } catch (Exception ignored) {
             // 关闭失败不影响测试结论
         }
+    }
+
+    /**
+     * 等端点真的被 advertise 出来再返回。
+     * <p>
+     * <b>为什么必须等</b>：milo 的端点描述是<b>懒加载</b>的 ——
+     * {@code startup()} 返回时，端点可能还没 advertise 完，客户端立刻连会收到
+     * {@code Bad_TcpEndpointUrlInvalid}（"unrecognized endpoint url: …/discovery"）。
+     * 那是<b>竞态</b>，不是被测代码的问题，但它会让测试变成 flaky：
+     * 偶发红 ⇒ 大家开始忽略这个测试 ⇒ 测试就废了。
+     * <p>
+     * 这里最多等 30 秒；真的等不到就明确抛异常（而不是让后面的用例莫名失败）。
+     */
+    private static void awaitEndpointAdvertised(OpcUaServer server, int port) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+        while (System.nanoTime() < deadline) {
+            boolean advertised = server.getEndpointDescriptions().stream()
+                    .anyMatch(e -> e.getEndpointUrl() != null && e.getEndpointUrl().contains(":" + port));
+            if (advertised) {
+                return;
+            }
+            Thread.sleep(50L);
+        }
+        throw new IllegalStateException("30 秒内没有 advertise 出端点（端口 " + port + "），"
+                + "服务端没真正就绪，测试不能继续 —— 否则会变成 flaky 的假红");
     }
 
     private static int findFreePort() throws Exception {
