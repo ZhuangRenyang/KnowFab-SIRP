@@ -203,6 +203,69 @@ cause   : org.eclipse.milo.opcua.stack.core.UaException
 
 主流 PLC（Kepware / 西门子 S7-1500 / Ignition）都是无子路径的，实际不受影响。
 
+### 4.3 默认端口的归属（已发现并修复）
+
+**这条不在最初的怀疑点里，是查「端口不一致就报错」那条 UX 问题时挖出来的。**
+
+#### 症状与根因
+
+「主机栏填了 `:4840`、端口栏留空 ⇒ 报『主机栏端口与连接参数端口不一致』」——
+看起来是那条报错规则太严，其实**根因是「端口栏留空」被默认成了 502**。
+
+`502` 是 **Modbus** 的端口，却被当成**协议无关的全局常量**写进了 9 处
+（实体字段默认、控制器、模板控制器、服务、驱动上下文、前端模板、表单初始值、表单编辑回填、表单提交兜底）。
+
+后果两条：
+1. **功能缺陷**：新建 OPC UA 设备不填端口 ⇒ 一路 502 ⇒ 驱动去连 `opc.tcp://host:502` ⇒ **必然连不上**。
+   连带地，驱动里那句 `port <= 0 ? 4840 : port` 的兜底 **在生产里永远不成立**，是死代码。
+2. **每加一个协议漏一处**：加第三个协议还要再改一遍那 9 处，漏改的那个就去连错端口。OPC UA 就是这次漏掉的那个。
+
+#### 修复：口径收回到一处
+
+`ProtocolDefaults`（`src/main/java/com/factory/hub/driver/ProtocolDefaults.java`）是「协议 → 默认端口」的**唯一口径**：
+Modbus 502 / OPC UA 4840。实体、控制器、服务、大屏都从这里查，谁也不许再写死 502。
+大屏显示端口也用同一个源，避免出现「界面写 502、实际连 4840」。
+
+驱动里各自那份 `port <= 0 ? DEFAULT : port` 是**防御性兜底**（万一上游漏了解析，不至于拼出 `opc.tcp://host:0`），
+与 `ProtocolDefaults` 不冲突：正常时走不到。
+
+#### 这里有两个被驳回的建议，值得记下来
+
+**① 「用 0 当未填的哨兵」——错的，会引入更隐蔽的 bug。**
+
+`el-input-number` 挂了 `:min="1"`，它的 `verifyValue`（element-plus 2.14.8 源码）：
+
+```js
+let newVal = !value ? Number(value) : Number.parseFloat(String(value));
+if (isNil(value) || Number.isNaN(newVal)) return null;    // null → 原样返回
+...
+if (newVal > max || newVal < min) {
+    newVal = newVal > max ? max : min;                      // 0 < min(1) → 夹成 1
+    if (newVal !== value) update && emit("update:modelValue", newVal);   // 反向 emit 回父组件
+}
+```
+
+⇒ 表单里用 0 表示「未填」，**用户会在端口框里看到 1，然后提交 1** ——
+从「连不上 502」变成「连不上 1」，后者更难查（1 是特权端口，报的是权限错）。
+**表单里必须用 `null` 表示没填，提交也传 null**，后端 `port == null || port <= 0` 两条都覆盖。
+
+**这条是前端专家用 SSR 探针实测出来的，不是我推的** ——
+我提「用 0」的时候没有去查 element-plus 的真实行为，**差点让一个更隐蔽的 bug 进生产**。
+教训同 §5：**方案不能只靠推理，要用工具实测过再提。**
+
+**② 「把 `deviceTemplates.ts` 里的 OPC UA 模板端口改成 4840」——前提就是错的。**
+
+该文件里 9 个模板全是 Modbus（8 个 `modbus-tcp` + 1 个 `modbus-rtu`），端口都是 502，**对 Modbus 是对的，不该动**。
+真正的「OPC UA 内置示例」在 `api/devices.ts` 的 `TPL.opcua`。
+
+而它带出一个**更值钱的真 bug**：`useTpl('opcua')` **只填点表，不改协议也不改端口** ⇒
+用户点「OPC UA 示例」，得到的是「点表是 OPC UA 的、协议还是 modbus-tcp、端口还是 502」的错配配置 ——
+点表里全是 nodeId，却按 Modbus 去读。已改成套用示例时协议与端口一起跟着换。
+
+⇒ **结论：前端不持有任何「协议 → 默认端口」的权威副本**，
+只有一份给界面提示用的建议值表（`PROTO_DEFAULT_PORT`），口径与后端 `ProtocolDefaults` 对齐。
+
+
 ---
 
 ## 5. 修订记录：这份结论是怎么被推翻又重建的
@@ -436,3 +499,4 @@ esac
 | milo 错误翻译成人话 | `src/main/java/com/factory/hub/driver/opcua/OpcUaEndpointErrors.java` |
 | 本地 OPC UA Server（测试用） | `src/test/java/com/factory/hub/driver/opcua/OpcUaTestServer.java` |
 | 生产运行时类路径探针 | `src/test/java/com/factory/hub/driver/opcua/OpcUaRuntimeProbe.java` |
+| 「协议 → 默认端口」唯一口径 | `src/main/java/com/factory/hub/driver/ProtocolDefaults.java` |
