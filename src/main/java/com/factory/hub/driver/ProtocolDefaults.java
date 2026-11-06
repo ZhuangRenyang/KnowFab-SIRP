@@ -1,5 +1,7 @@
 package com.factory.hub.driver;
 
+import java.util.Map;
+
 /**
  * 「协议 → 默认端口」的<b>唯一</b>口径。
  * <p>
@@ -23,6 +25,13 @@ package com.factory.hub.driver;
  * <p>
  * 放在 {@code driver} 包而不是 {@code utils}：按项目规范，{@code utils} 只放
  * 无业务、无副作用的纯工具函数；这里是<b>协议知识</b>，归协议相关的地方。
+ * <p>
+ * ⚠️ <b>格式契约（前后端门禁靠它对齐）</b>：本文件的映射必须保持
+ * 「<b>每行一条 {@code Map.entry("协议", 常量名)}</b>」的写法。
+ * 前端的构建期门禁要按行解析它，比对前后端的协议→端口映射是否一致
+ * （前端那份是副本，漂移的后果是「<b>设备连到错端口</b>」，不只是文案对不上）。
+ * <b>改成 if/switch 或换成变量赋值，脚本会「静默解析不出来」</b> ——
+ * 而「工具解析失败被当成『没有』」正是本项目栽过的最阴的一类坑。
  */
 public final class ProtocolDefaults {
 
@@ -31,6 +40,22 @@ public final class ProtocolDefaults {
 
     /** OPC UA 的标准端口。 */
     public static final int OPC_UA_PORT = 4840;
+
+    /**
+     * 协议 → 默认端口。
+     * <p>
+     * {@code modbus-tcp} / {@code modbus-rtu-tcp} / {@code modbus-rtu} / {@code sim}
+     * 都不单列，走兜底值 {@link #MODBUS_TCP_PORT}（502）——
+     * sim 不走 TCP，端口对它无意义，填 502 只是让它有个确定值。
+     * <p>
+     * 用 {@code Map.ofEntries} 而不是 {@code Map.of}：两者都不可变，
+     * 但 {@code Map.ofEntries} 可以一条一行地写，加协议时格式不变
+     * （前端脚本按行解析，格式稳定 ⇒ 解析不会突然失效）。
+     * ⚠️ 别写成 {@code Map.of(...)} 之后再想 {@code put} —— 会抛
+     * {@code UnsupportedOperationException}（不可变映射）。
+     */
+    private static final Map<String, Integer> PROTOCOL_PORTS = Map.ofEntries(
+            Map.entry("opcua", OPC_UA_PORT));
 
     private ProtocolDefaults() {
     }
@@ -47,11 +72,6 @@ public final class ProtocolDefaults {
             return MODBUS_TCP_PORT;
         }
         String p = protocol.trim().toLowerCase();
-        if ("opcua".equals(p)) {
-            return OPC_UA_PORT;
-        }
-        // 其余（modbus-tcp / modbus-rtu-tcp / modbus-rtu / sim）都用 Modbus 的 502。
-        // sim 不走 TCP，端口对它无意义，填 502 只是让它有个确定值。
-        return MODBUS_TCP_PORT;
+        return PROTOCOL_PORTS.getOrDefault(p, MODBUS_TCP_PORT);
     }
 }

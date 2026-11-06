@@ -163,6 +163,23 @@ else
   line "—" "报警码字典" "跳过（没有 node）"
 fi
 
+# ---------- 端口字面量检查（纯静态检查，不依赖后端/数据库）----------
+# ⚠️ 刻意放在后端块**外面**：它既不需要 Java 也不需要数据库。
+#   放回 --skip-be 里的话，自检用 --skip-be 跑时它会被跳过 ⇒ 没人能证明这道门禁还活着
+#   （与报警码字典同一个理由：2026-11-06 踩过）。
+#
+# 拦什么：502 是 Modbus TCP 的端口。它曾被当成「所有协议的默认端口」写死 9 处，
+#   于是「新建 OPC UA 设备不填端口 ⇒ 落库 502 ⇒ 驱动去连 502 ⇒ 必然连不上」。
+#   口径已收进 ProtocolDefaults（唯一真相），这条门禁防它再漂回去。
+#   前端有对称的那条（check-port-semantics.mjs），但它只看前端自己的文件 ⇒ 后端这条不能省。
+say "端口字面量"
+if command -v node >/dev/null 2>&1; then
+  check "端口字面量检查" "target/_ci-port-literals.log" \
+    node scripts/check-protocol-port-literals.mjs
+else
+  line "—" "端口字面量" "跳过（没有 node）"
+fi
+
 # ================= 前端 =================
 if [ "$SKIP_FE" -eq 0 ]; then
   if [ ! -d frontend ]; then
