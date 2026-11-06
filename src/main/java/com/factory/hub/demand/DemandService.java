@@ -45,14 +45,19 @@ public class DemandService {
      */
     private final com.factory.hub.energy.MeterScope scope;
 
+    /** 只用来读「本月断线补读了多少度」（DH-86 的数据完整性提示），不参与需量计算 */
+    private final com.factory.hub.energy.EnergyRepository energyRepo;
+
     public DemandService(DemandWindowRepository repo, DemandStore store,
                          DemandTracker tracker, DeviceService deviceService,
-                         com.factory.hub.energy.MeterScope scope) {
+                         com.factory.hub.energy.MeterScope scope,
+                         com.factory.hub.energy.EnergyRepository energyRepo) {
         this.repo = repo;
         this.store = store;
         this.tracker = tracker;
         this.deviceService = deviceService;
         this.scope = scope;
+        this.energyRepo = energyRepo;
     }
 
     /* ==================== 概览 ==================== */
@@ -137,6 +142,26 @@ public class DemandService {
         out.put("monthKwh", round1(monthKwh));
         out.put("billing", billing(cfg, peakKw));
         out.put("status", status(cfg, peakKw));
+
+        // ---- 数据完整性（DH-86）----
+        // 需量峰值可能因为断线而偏低：短时断线（≤4h）已按时间摊回对应窗口（estimated=1），
+        // 长时间离线摊不了、只能丢弃。必须告诉客户——否则他拿一个偏低的峰值去跟电费单对账，
+        // 会以为是我们算错了；更糟的是已经超容，而告警因为峰值偏低一直没响。
+        //
+        // 为什么只报 backfillKwh 不报「丢弃了多少度」：要精确知道后者得给每次丢弃落一条记录
+        // （等于新建一张表）。为一句提示加一张表不值得，所以文案只说「其中一部分可能未计入」。
+        int estWindows = 0;
+        for (DemandWindow w : rows) {
+            if (w.isEstimated()) {
+                estWindows++;
+            }
+        }
+        double backfillKwh = backfillOfMonth(dev, legacy, meterCodes, from, Math.min(to, now));
+        Map<String, Object> dq = new LinkedHashMap<>();
+        dq.put("estimatedWindows", estWindows);
+        dq.put("backfillKwh", round1(backfillKwh));
+        dq.put("hasGap", backfillKwh > 0.5);
+        out.put("dataQuality", dq);
 
         // 今天才刚开始采（或者刚装好），今日曲线几乎是空的。
         // 空图配一条合同线，客户会以为功能坏了，所以退回昨天给他看形状。
@@ -255,6 +280,35 @@ public class DemandService {
             list.add(m);
         }
         return list;
+    }
+
+    /**
+     * 本月「断线补读」的总电量（kWh）。口径与需量一致：METER 模式只算总表，
+     * 否则机床的断线电量会被算进全厂提示，而它本来就不该进需量。
+     * <p>
+     * 查不到就返回 0（不显示提示），绝不能因为一句提示把整个需量页搞挂。
+     */
+    private double backfillOfMonth(String dev, boolean legacy, List<String> meterCodes,
+                                   long from, long to) {
+        double sum = 0;
+        try {
+            for (Object[] r : energyRepo.sumByDevice(from, to)) {
+                String code = (String) r[0];
+                if (!ALL.equals(dev)) {
+                    if (!dev.equals(code)) {
+                        continue;
+                    }
+                } else if (!legacy && !meterCodes.contains(code)) {
+                    continue;
+                }
+                if (r[3] != null) {
+                    sum += ((Number) r[3]).doubleValue();
+                }
+            }
+        } catch (Exception e) {
+            return 0d;
+        }
+        return sum;
     }
 
     /** 距离合同需量还有多少余量 */

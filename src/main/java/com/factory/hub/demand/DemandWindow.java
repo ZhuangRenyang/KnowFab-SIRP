@@ -47,14 +47,33 @@ public class DemandWindow {
     @Column(name = "demand_kw")
     private double demandKw;
 
+    /**
+     * 本窗口是否含**断线摊平**的电量（DH-86）。
+     * <p>
+     * 设备离线后恢复，一次读数带回来整段电量。把它全塞进一个窗口会翻 8 倍（客户会照着
+     * 假峰值去申请扩容），整段丢弃又会让断网期间的峰值凭空消失（超容告警不响，客户被
+     * 电网加收）。折中做法是按时间摊回它覆盖的每个窗口——份额 = 电量 × 窗口内重叠时长 / 总时长。
+     * <p>
+     * 摊平拿到的是「这段时间的平均功率」，**不是实测峰值**（均匀摊平会把峰拉平，所以偏保守）。
+     * 这个标记就是为了让客户能分清：这个数是我们推算的，还是电表实测的。
+     * 月底拿去跟供电局对账时，只有分得清才说得明白。
+     */
+    @Column(name = "estimated", nullable = false)
+    private boolean estimated;
+
     public DemandWindow() {
     }
 
     public DemandWindow(String deviceCode, long windowStart, double kwh) {
+        this(deviceCode, windowStart, kwh, false);
+    }
+
+    public DemandWindow(String deviceCode, long windowStart, double kwh, boolean estimated) {
         this.deviceCode = deviceCode;
         this.windowStart = windowStart;
         this.kwh = kwh;
         this.demandKw = kwh * 4d;
+        this.estimated = estimated;
     }
 
     public Long getId() {
@@ -96,5 +115,14 @@ public class DemandWindow {
 
     public void setDemandKw(double demandKw) {
         this.demandKw = demandKw;
+    }
+
+    /** 本窗口是否含断线摊平（推算）的电量 */
+    public boolean isEstimated() {
+        return estimated;
+    }
+
+    public void setEstimated(boolean estimated) {
+        this.estimated = estimated;
     }
 }

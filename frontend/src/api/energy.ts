@@ -67,6 +67,23 @@ export interface DemandData {
   status: { level?: 'OVER' | 'WARN' | string; message?: string; headroomKw?: number }
   billing: { cost: number; modeText: string; formula: string; demandCost: number; capacityCost: number; mode: string }
   monthMax: { kw: number; atText: string }
+  /**
+   * 数据完整性（DH-86）。
+   *
+   * 需量峰值可能因为采集断线而**偏低**：
+   * - 短时断线（≤4h）：电量已按时间摊回对应窗口，`estimatedWindows` = 含推算值的窗口数
+   * - 长时间离线（>4h）：摊平会把峰值抹平，所以没计入 —— 峰值可能比显示的更高
+   *
+   * `hasGap=true` 时界面必须说明，不能让客户拿一个偏低的数去跟供电局对账。
+   */
+  dataQuality?: {
+    /** 含推算（摊平）电量的窗口数 */
+    estimatedWindows: number
+    /** 本月断线补读的总电量（口径与需量一致：METER 模式只算总表） */
+    backfillKwh: number
+    /** 本月存在断线补读电量 */
+    hasGap: boolean
+  }
   today: {
     fallback?: boolean
     date?: string

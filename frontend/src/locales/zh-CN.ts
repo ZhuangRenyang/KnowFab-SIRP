@@ -1535,6 +1535,8 @@ export default {
     billCurrent: '<br>当前 15 分钟窗口已累计 {kw} kW（窗口走了 {min} 分钟），本月剩余余量 {head} kW',
     billTotalHead: '<br><b>本月电费合计</b>：电度 {degree} 元 + 基本 {basic} 元 = ',
     billTotalTail: '（力调电费未计）',
+    dqSpread: '本月有 {kwh} kWh 是断线后补读的，已按时间摊回 {n} 个窗口（推算值，非实测）。超过 4 小时的离线未计入，实际峰值可能更高。',
+    dqNoSpread: '本月有 {kwh} kWh 是断线后补读的，因离线超过 4 小时未计入需量，实际峰值可能更高。',
     currency: '元',
     contractLine: '合同 {kw} kW'
   },

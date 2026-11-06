@@ -1531,6 +1531,8 @@ unitPerKva: 'CNY/kVA·mo',
     billCurrent: '<br>Current 15-minute window has accumulated {kw} kW ({min} min elapsed), {head} kW headroom left this month',
     billTotalHead: '<br><b>Total this month</b>: energy {degree} + basic {basic} = ',
     billTotalTail: ' (power-factor adjustment not included)',
+    dqSpread: '{kwh} kWh this month was read back after a connection loss and spread across {n} windows by time (estimated, not measured). Outages longer than 4 hours are not counted, so the actual peak may be higher.',
+    dqNoSpread: '{kwh} kWh this month was read back after a connection loss. Outages longer than 4 hours are not counted in demand, so the actual peak may be higher.',
     currency: 'CNY',
     contractLine: 'Contracted {kw} kW'
   },

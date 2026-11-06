@@ -328,6 +328,17 @@ const demandInfo = computed(() => {
   const gap = (bill.demandCost || 0) - (bill.capacityCost || 0)
   const degreeCost = ov.value?.monthCost || 0
   const color = st.level === 'OVER' ? 'var(--alarm)' : st.level === 'WARN' ? 'var(--idle)' : 'var(--muted)'
+  // 数据完整性（DH-86）：断线补读的电量要么摊平了（推算值），要么因离线太久没计入。
+  // 必须说，否则客户拿一个偏低的峰值去跟电费单对账，会以为是我们算错了；
+  // 更糟的是已经超容，而告警因为峰值偏低一直没响。
+  const dq = d.dataQuality
+  const dqLine = dq?.hasGap
+    ? `<div style="margin-top:6px;color:var(--idle)">`
+      + ((dq.estimatedWindows || 0) > 0
+        ? t('energy.dqSpread', { kwh: num(dq.backfillKwh, 0), n: dq.estimatedWindows })
+        : t('energy.dqNoSpread', { kwh: num(dq.backfillKwh, 0) }))
+      + `</div>`
+    : ''
   return t('energy.billTitle') + '<br>'
     + t('energy.billByDemand', { kw: num(mm.kw, 0), price: num(cfg.demandPrice, 2), cost: num(bill.demandCost, 2) })
     + t('energy.billByCapacity', { kva: num(cfg.transformerKva, 0), price: num(cfg.capacityPrice, 2), cost: num(bill.capacityCost, 2) })
@@ -346,6 +357,7 @@ const demandInfo = computed(() => {
     + `<b>¥${num(degreeCost + (bill.cost || 0), 2)}</b>`
     + t('energy.billTotalTail')
     + `<div style="margin-top:8px;color:${color}">${st.message || ''}</div>`
+    + dqLine
 })
 
 const css = (n: string) => getComputedStyle(document.documentElement).getPropertyValue(n).trim()

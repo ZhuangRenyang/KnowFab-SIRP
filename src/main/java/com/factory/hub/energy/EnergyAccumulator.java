@@ -34,9 +34,23 @@ package com.factory.hub.energy;
  */
 public class EnergyAccumulator {
 
-    /** 一次读数产生的结果 */
-    public record Delta(double kwh, boolean reset, boolean backfill) {
-        public static final Delta ZERO = new Delta(0d, false, false);
+    /**
+     * 一次读数产生的结果。
+     *
+     * @param kwh      本次增量（kWh）
+     * @param reset    读数变小（清零/换表/脏数据）
+     * @param backfill 跨过了采集间隔（设备离线后补读回来的电量）
+     * @param fromTs   上一次读数的时刻（这段电量的起点）。backfill 时需量要把电量按
+     *                 [fromTs, toTs) 摊回对应窗口——只有终点是摊不回去的
+     * @param toTs     本次读数的时刻
+     */
+    public record Delta(double kwh, boolean reset, boolean backfill, long fromTs, long toTs) {
+        public static final Delta ZERO = new Delta(0d, false, false, 0L, 0L);
+
+        /** 没有时间跨度信息时的简写（清零、重复扫描等）——不会被摊平，因为 kwh=0 */
+        public Delta(double kwh, boolean reset, boolean backfill) {
+            this(kwh, reset, backfill, 0L, 0L);
+        }
 
         public boolean counted() {
             return kwh > 0;
@@ -76,6 +90,7 @@ public class EnergyAccumulator {
         }
 
         double prev = lastRaw;
+        long prevTs = lastTs;
         long gap = ts - lastTs;
         lastRaw = kwh;
         lastTs = ts;
@@ -93,7 +108,7 @@ public class EnergyAccumulator {
         }
 
         totalKwh += delta;
-        return new Delta(delta, false, gap > BACKFILL_GAP_MS);
+        return new Delta(delta, false, gap > BACKFILL_GAP_MS, prevTs, ts);
     }
 
     /** 点表把单位配成 Wh 时自动换算，避免客户少算 1000 倍 */
