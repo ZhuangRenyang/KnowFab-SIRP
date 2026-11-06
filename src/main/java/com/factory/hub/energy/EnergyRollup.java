@@ -1,5 +1,6 @@
 package com.factory.hub.energy;
 
+import jakarta.annotation.PreDestroy;
 import com.factory.hub.collect.SnapshotStore;
 import com.factory.hub.demand.DemandTracker;
 import com.factory.hub.model.PointValue;
@@ -171,6 +172,28 @@ public class EnergyRollup {
      */
     @Scheduled(fixedDelay = 600_000L)
     public synchronized void checkpoint() {
+        if (currentHour > 0) {
+            persist(currentHour);
+        }
+    }
+
+    /**
+     * 优雅停机时把当前小时落库。
+     * <p>
+     * <b>为什么必须有：</b>{@link DemandTracker} 早就有 `@PreDestroy`，这里一直没有——
+     * 结果每次 `systemctl restart`（<b>发版升级的必经路径</b>）都会把「本小时还没到
+     * 10 分钟落库点」的那段电量丢掉，最多丢 10 分钟。
+     * <p>
+     * 这不是理论问题：2026-11-06 做断网演练时，进程被 SIGTERM 停掉，
+     * 14:00-14:04 的 19.85 kWh（正好是刚补读回来的那笔）全部没落库。
+     * 客户侧的表现是「重启一次，那个小时的电费少了一点」——不会报错，也不会有人发现，
+     * 只会在月度对账时觉得「系统算的跟电表对不上」。
+     * <p>
+     * 边界（写清楚，别让人以为零丢失）：只覆盖<b>优雅停机</b>（SIGTERM → Spring 调本方法）。
+     * 硬杀（SIGKILL）或断电仍会丢最多 10 分钟 —— 那是 checkpoint 周期的固有代价。
+     */
+    @PreDestroy
+    public synchronized void onShutdown() {
         if (currentHour > 0) {
             persist(currentHour);
         }
