@@ -122,7 +122,7 @@ public class DeviceController {
         if (d == null) {
             d = new DeviceEntity();
         }
-        apply(d, req);
+        apply(d, req, created);
         deviceService.save(d);
         scheduler.reload();
         audit.ok(AuditLog.CAT_DEVICE, created ? AuditLog.ACT_CREATE : AuditLog.ACT_UPDATE,
@@ -147,7 +147,7 @@ public class DeviceController {
         if (d == null) {
             return ResponseEntity.notFound().build();
         }
-        apply(d, req);
+        apply(d, req, false);
         deviceService.save(d);
         scheduler.reload();
         audit.ok(AuditLog.CAT_DEVICE, AuditLog.ACT_UPDATE, d.getCode(), d.getName(),
@@ -401,14 +401,30 @@ public class DeviceController {
         return null;
     }
 
-    private void apply(DeviceEntity d, DeviceUpsert req) throws Exception {
+    /**
+     * 把请求体套到设备实体上。
+     *
+     * @param d       目标实体（新建时是新实例，更新时是库里那台）
+     * @param req     请求体
+     * @param created 是否是<b>新建</b>。POST 是「新增或按 code 覆盖」，
+     *                 所以 POST 也可能是更新（按 code 找到已有设备时 created=false）；
+     *                 PUT 永远是更新（created=false）。
+     *                 <b>这个标志只影响「协议切换时端口跟随」那条规则</b>，见下。
+     */
+    private void apply(DeviceEntity d, DeviceUpsert req, boolean created) throws Exception {
         d.setCode(req.code());
         d.setName(req.name());
         d.setLocation(req.location());
         // ⚠️ 顺序依赖：旧协议必须在 setProtocol 之前取出来。
         // 下面判断「端口是不是还留着上一个协议的默认值」要用它 —— 取晚了就只剩新协议，
         // 那条判断永远成立（会误改客户明确指定的端口）。改这块务必先看这一行。
-        String oldProtocol = d.getProtocol();
+        //
+        // ⚠️⚠️ 新建时 oldProtocol 必须是 null，不能用 d.getProtocol()：
+        // 新建的实体里 protocol 字段的默认值是 "modbus-tcp"，那是<b>实体字段的默认值</b>，
+        // 不代表用户的任何意图。拿它当「旧协议」⇒ 新建一台 OPC UA 设备、手填端口 502
+        // 会被静默改成 4840 ⇒ 界面与实际不一致（用户明明填的是 502）。
+        // 「切换」的前提是<b>存在一台旧设备</b>，新建时不存在 ⇒ 这条规则不适用。
+        String oldProtocol = created ? null : d.getProtocol();
         String protocol = req.protocol() == null ? "modbus-tcp" : req.protocol();
         d.setProtocol(protocol);
         d.setHost(req.host());
@@ -419,10 +435,13 @@ public class DeviceController {
         //      ⚠️ 0 也要当「没填」：前端提交的是 Number(f.port) || 0，
         //      而设备模板套用到设备时也走这条路（后端没有「套用模板」接口，
         //      是前端把模板的端口填进表单再提交）—— 端口是 0 就该由协议兜底。
-        //   ② 用户填了，且仍等于旧协议的默认端口，同时协议变了 → 跟着新协议走
+        //   ② 【仅更新时】用户填了，且仍等于旧协议的默认端口，同时协议变了 → 跟着新协议走
         //      （典型场景：设备原来跑 Modbus、端口 502，客户把协议改成 OPC UA 但没动端口栏
         //        —— 这个端口是跟着上一个协议的默认值来的，不是客户特意指定的）
         //   ③ 用户明确填了别的端口 → 原样保留，不替用户决定
+        //
+        // ⚠️ 新建时（created=true）完全按用户填的来：若填了 502（Modbus 的端口）导致连不上，
+        //    那是<b>填错的直接后果</b>，系统不替他改 ——「用户填了就是用户的」比「替他猜对」重要。
         Integer port = req.port();
         if (port == null || port <= 0) {
             port = ProtocolDefaults.defaultPort(protocol);

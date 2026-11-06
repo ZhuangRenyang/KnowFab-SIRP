@@ -34,12 +34,28 @@ import com.factory.hub.web.dto.DeviceUpsert;
  */
 class DevicePortSavePathTest {
 
-    /** 反射调 DeviceController.apply(d, req) —— 它只改实体，不碰外部依赖。 */
-    private static void apply(DeviceEntity d, DeviceUpsert req) throws Exception {
+    /**
+     * 反射调 DeviceController.apply(d, req, created) —— 它只改实体，不碰外部依赖。
+     *
+     * @param created 是否新建。新建时 d 里的 protocol 只是实体字段默认值，
+     *                 <b>不代表用户意图</b>，所以「协议切换时端口跟随」那条规则不该触发。
+     */
+    private static void apply(DeviceEntity d, DeviceUpsert req, boolean created) throws Exception {
         DeviceController controller = new DeviceController(null, null, null, null, null, null, null);
-        Method m = DeviceController.class.getDeclaredMethod("apply", DeviceEntity.class, DeviceUpsert.class);
+        Method m = DeviceController.class
+                .getDeclaredMethod("apply", DeviceEntity.class, DeviceUpsert.class, boolean.class);
         m.setAccessible(true);
-        m.invoke(controller, d, req);
+        m.invoke(controller, d, req, created);
+    }
+
+    /** 新建一台设备（实体是全新的，protocol 字段默认值 "modbus-tcp"）。 */
+    private static void create(DeviceEntity d, DeviceUpsert req) throws Exception {
+        apply(d, req, true);
+    }
+
+    /** 更新一台已有设备（d 里带着库里真实的旧协议与旧端口）。 */
+    private static void update(DeviceEntity d, DeviceUpsert req) throws Exception {
+        apply(d, req, false);
     }
 
     /** 反射调 DeviceTemplateController.applyCommon(t, body) —— 同样只改实体。 */
@@ -90,11 +106,11 @@ class DevicePortSavePathTest {
     @DisplayName("新建设备没填端口 ⇒ 按协议给默认端口（OPC UA 4840 / Modbus 502）")
     void newDeviceGetsProtocolDefaultPort() throws Exception {
         DeviceEntity opcua = new DeviceEntity();
-        apply(opcua, req("opcua", null));
+        create(opcua, req("opcua", null));
         assertEquals(4840, opcua.getPort(), "OPC UA 设备没填端口 ⇒ 落库 4840（不能是 502）");
 
         DeviceEntity modbus = new DeviceEntity();
-        apply(modbus, req("modbus-tcp", null));
+        create(modbus, req("modbus-tcp", null));
         assertEquals(502, modbus.getPort(), "Modbus 设备没填端口 ⇒ 落库 502（行为不能变）");
     }
 
@@ -102,17 +118,45 @@ class DevicePortSavePathTest {
     @DisplayName("用户显式填的端口不被覆盖（Modbus 的 502 也不例外）")
     void explicitPortIsNotOverwritten() throws Exception {
         DeviceEntity d = new DeviceEntity();
-        apply(d, req("opcua", 4841));
+        create(d, req("opcua", 4841));
         assertEquals(4841, d.getPort(), "用户填的端口必须原样落库");
     }
 
+    /**
+     * <b>新建</b> OPC UA 设备、端口手填 502 ⇒ <b>落库 502</b>，不被改成 4840。
+     * <p>
+     * <b>为什么这条要单独钉住</b>：新建的实体里 {@code protocol} 字段的默认值是
+     * {@code "modbus-tcp"}，那是<b>实体字段的默认值</b>，不代表用户的任何意图。
+     * 拿它当「旧协议」⇒ 用户明确填的 502 会被静默改成 4840 ⇒ 界面与实际不一致。
+     * 「协议切换时端口跟随」的前提是<b>存在一台旧设备</b>，新建时不存在 ⇒ 这条规则不适用。
+     * <p>
+     * 后果（明确接受）：保留 502 ⇒ 驱动去连 502 ⇒ 连不上 ⇒
+     * <b>那是用户填错的直接后果，系统不替他改</b> ——
+     * 「用户填了就是用户的」比「替他猜对」更重要（OPC UA 在 502 上监听约等于不可能）。
+     */
     @Test
-    @DisplayName("协议从 modbus-tcp 换成 opcua、端口还是旧的默认值 502 ⇒ 跟着新协议走")
+    @DisplayName("新建 OPC UA 手填 502 ⇒ 落库 502（用户的值不被改，新建不走「端口跟随」）")
+    void createKeepsUserFilledPortEvenIfItLooksLikeAnotherProtocolDefault() throws Exception {
+        DeviceEntity d = new DeviceEntity();
+        // 注意 d.getProtocol() 此时是实体字段默认值 "modbus-tcp"，
+        // 它<b>不是</b>用户的旧协议 —— 新建时不存在旧设备
+        assertEquals("modbus-tcp", d.getProtocol(), "新建实体的协议字段默认值（前提，不是用户意图）");
+
+        create(d, req("opcua", 502));
+
+        assertEquals("opcua", d.getProtocol());
+        assertEquals(502, d.getPort(),
+                "新建时端口完全按用户填的来：用户填了 502 就保留 502，"
+                        + "不能被静默改成 4840（那会造成界面与实际不一致）");
+    }
+
+    @Test
+    @DisplayName("更新（原来是 modbus + 502）→ 改成 opcua ⇒ 落库 4840（端口跟随）")
     void portFollowsProtocolSwitch() throws Exception {
         DeviceEntity d = new DeviceEntity();
         d.setProtocol("modbus-tcp");
         d.setPort(502);                 // 原来是 Modbus，端口 502
-        apply(d, req("opcua", 502));     // 客户改了协议，端口没动（还是带着 502）
+        update(d, req("opcua", 502));     // 客户改了协议，端口没动（还是带着 502）
 
         assertEquals("opcua", d.getProtocol());
         assertEquals(4840, d.getPort(),
@@ -125,7 +169,7 @@ class DevicePortSavePathTest {
         DeviceEntity d = new DeviceEntity();
         d.setProtocol("modbus-tcp");
         d.setPort(1502);
-        apply(d, req("opcua", 1502));
+        update(d, req("opcua", 1502));
 
         assertEquals("opcua", d.getProtocol());
         assertEquals(1502, d.getPort(), "用户明确填的端口不能被协议切换改掉");
@@ -135,12 +179,12 @@ class DevicePortSavePathTest {
     @DisplayName("Modbus 设备的端口行为完全不变（回归：改口径不许动到存量语义）")
     void modbusBehaviourUnchanged() throws Exception {
         DeviceEntity d = new DeviceEntity();
-        apply(d, req("modbus-tcp", null));
+        create(d, req("modbus-tcp", null));
         assertEquals("modbus-tcp", d.getProtocol());
         assertEquals(502, d.getPort(), "Modbus 没填端口 ⇒ 仍然是 502，一样都不许变");
 
         DeviceEntity rtu = new DeviceEntity();
-        apply(rtu, req("modbus-rtu-tcp", null));
+        create(rtu, req("modbus-rtu-tcp", null));
         assertEquals(502, rtu.getPort(), "Modbus RTU over TCP 没填端口 ⇒ 仍然是 502");
     }
 
@@ -212,12 +256,12 @@ class DevicePortSavePathTest {
     @DisplayName("模板端口是 0/null 时，套用到 OPC UA 设备上 ⇒ 设备端口按协议兜底成 4840")
     void templatePortUnspecifiedFallsBackByProtocolOnDevice() throws Exception {
         DeviceEntity fromTemplate = new DeviceEntity();
-        apply(fromTemplate, req("opcua", 0));       // 前端把模板的 0 填进端口栏再提交
+        create(fromTemplate, req("opcua", 0));       // 前端把模板的 0 填进端口栏再提交
         assertEquals(4840, fromTemplate.getPort(),
                 "端口是 0（未指定）时，设备端口应按协议兜底成 4840，不能落库 0");
 
         DeviceEntity fromNull = new DeviceEntity();
-        apply(fromNull, req("opcua", null));
+        create(fromNull, req("opcua", null));
         assertEquals(4840, fromNull.getPort(), "端口是 null 时同样按协议兜底");
     }
 
