@@ -1,6 +1,6 @@
 package com.factory.hub.system;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -388,7 +388,7 @@ public class UpdateService {
                     ? "https://gitee.com/api/v5/repos/" + repo + "/releases/latest"
                     : "https://api.github.com/repos/" + repo + "/releases/latest";
             try {
-                com.fasterxml.jackson.databind.JsonNode root = mapper.readTree(httpGet(url, 8000));
+                tools.jackson.databind.JsonNode root = mapper.readTree(httpGet(url, 8000));
                 String tag = root.path("tag_name").asText("");
                 if (tag.isBlank()) {
                     throw new IllegalStateException("响应里没有 tag_name");
@@ -402,7 +402,7 @@ public class UpdateService {
                 // 优先取名字带 update 的（发版脚本统一命名 device-hub-<ver>-update.zip），
                 // 没有才退回旧命名，保证历史版本还能升级。
                 String asset = null;
-                for (com.fasterxml.jackson.databind.JsonNode a : root.path("assets")) {
+                for (tools.jackson.databind.JsonNode a : root.path("assets")) {
                     String name = a.path("name").asText("");
                     if (name.startsWith("device-hub-") && name.endsWith(".zip")
                             && name.contains("update")) {
@@ -411,7 +411,7 @@ public class UpdateService {
                     }
                 }
                 if (asset == null) {
-                    for (com.fasterxml.jackson.databind.JsonNode a : root.path("assets")) {
+                    for (tools.jackson.databind.JsonNode a : root.path("assets")) {
                         String name = a.path("name").asText("");
                         if (name.startsWith("device-hub-") && name.endsWith(".zip")) {
                             asset = a.path("browser_download_url").asText(null);
@@ -436,7 +436,7 @@ public class UpdateService {
                                 ? "https://gitee.com/" + repo + "/raw/main/dist"
                                 : "https://raw.githubusercontent.com/" + repo + "/main/dist";
                         try {
-                            com.fasterxml.jackson.databind.JsonNode vj =
+                            tools.jackson.databind.JsonNode vj =
                                     mapper.readTree(httpGet(rawBase + "/version.json", 8000));
                             // 只认与当前 latest 同版本的声明（main 分支上的 version.json
                             // 永远是最新一版，历史版本对不上就别用）
@@ -622,8 +622,8 @@ public class UpdateService {
      *
      * @return 64 位十六进制；没有就 null
      */
-    private static String sha256FromAssets(com.fasterxml.jackson.databind.JsonNode root, String assetUrl) {
-        for (com.fasterxml.jackson.databind.JsonNode a : root.path("assets")) {
+    private static String sha256FromAssets(tools.jackson.databind.JsonNode root, String assetUrl) {
+        for (tools.jackson.databind.JsonNode a : root.path("assets")) {
             String url = a.path("browser_download_url").asText(null);
             if (!assetUrl.equals(url)) {
                 continue;

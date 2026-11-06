@@ -1,7 +1,7 @@
 package com.factory.hub.screen;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -89,7 +89,7 @@ public class AlarmCodeDict {
                 m.put("brandText", node.path("brandText").asText(brand));
                 m.put("note", node.path("note").asText(""));
                 Map<String, Object> codes = new LinkedHashMap<>();
-                node.path("codes").fields().forEachRemaining(e ->
+                node.path("codes").properties().forEach(e ->
                         codes.put(e.getKey(), mapper.convertValue(e.getValue(), Object.class)));
                 m.put("codes", codes);
                 brands.put(brand, m);

@@ -2,7 +2,7 @@ package com.factory.hub.report;
 
 import com.factory.hub.config.AppSetting;
 import com.factory.hub.config.AppSettingRepository;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

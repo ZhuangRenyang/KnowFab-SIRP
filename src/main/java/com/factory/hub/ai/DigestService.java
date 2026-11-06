@@ -44,13 +44,13 @@ public class DigestService {
     private final AlarmNotifier notifier;
     private final DemandService demandService;
     private final AppSettingRepository settings;
-    private final com.fasterxml.jackson.databind.ObjectMapper mapper;
+    private final tools.jackson.databind.ObjectMapper mapper;
 
     public DigestService(DigestDataBuilder builder, DailyDigestRepository repo,
                          AiConfigStore configStore, AiClient aiClient,
                          AlarmNotifier notifier, DemandService demandService,
                          AppSettingRepository settings,
-                         com.fasterxml.jackson.databind.ObjectMapper mapper) {
+                         tools.jackson.databind.ObjectMapper mapper) {
         this.builder = builder;
         this.repo = repo;
         this.configStore = configStore;

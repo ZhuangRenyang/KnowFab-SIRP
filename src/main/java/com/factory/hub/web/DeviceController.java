@@ -13,7 +13,7 @@ import com.factory.hub.service.DeviceService;
 import com.factory.hub.web.dto.DeviceConfig;
 import com.factory.hub.web.dto.DeviceUpsert;
 import com.factory.hub.web.dto.DeviceView;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;

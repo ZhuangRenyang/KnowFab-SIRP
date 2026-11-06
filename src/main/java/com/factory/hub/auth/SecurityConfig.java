@@ -1,6 +1,6 @@
 package com.factory.hub.auth;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -17,7 +17,7 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -215,7 +215,7 @@ public class SecurityConfig {
         var entries = new java.util.LinkedHashMap<
                 org.springframework.security.web.util.matcher.RequestMatcher,
                 org.springframework.security.web.AuthenticationEntryPoint>();
-        entries.put(new AntPathRequestMatcher("/api/**"),
+        entries.put(PathPatternRequestMatcher.pathPattern("/api/**"),
                 (req, res, ex) -> write(res, mapper, HttpServletResponse.SC_UNAUTHORIZED, "请先登录"));
         var delegating = new org.springframework.security.web.authentication
                 .DelegatingAuthenticationEntryPoint(entries);

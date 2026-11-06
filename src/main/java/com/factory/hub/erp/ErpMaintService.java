@@ -26,7 +26,7 @@ import com.factory.hub.auth.UserRepository;
 import com.factory.hub.model.DeviceEntity;
 import com.factory.hub.screen.AlarmCodeDict;
 import com.factory.hub.service.DeviceService;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * 设备维修闭环：AI 诊断 → 转工单 → 修完回填实际原因 → 下次同类报警参考历史。

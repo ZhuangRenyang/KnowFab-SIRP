@@ -5,7 +5,7 @@ import com.factory.hub.model.DeviceEntity;
 import com.factory.hub.report.ProdHourly;
 import com.factory.hub.report.ProdHourlyRepository;
 import com.factory.hub.service.DeviceService;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;

@@ -6,7 +6,7 @@ import com.factory.hub.alarm.AlarmNotifier;
 import com.factory.hub.alarm.AlarmRule;
 import com.factory.hub.alarm.SystemAlarms;
 import com.factory.hub.web.WsHandler;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
