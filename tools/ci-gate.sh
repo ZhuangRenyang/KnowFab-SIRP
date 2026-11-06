@@ -120,20 +120,32 @@ else
   line "—" "后端单测" "跳过（--skip-be）"
 fi
 
-# ---------- OPC UA 生产运行时类路径验证（暂未接入，等脚本跨平台化） ----------
-# ⏸ **为什么还没接进来**：`tools/verify-opcua-boot4.sh` 里硬编码了 Windows 的
-#    classpath 分隔符 `;` 和 Windows 的 JAVA_HOME/MVN 路径。
-#    在 Linux CI 上整条类路径会拼成一段 → Java 找不到类 → 门禁第一次跑就是红的。
-#    **「本地全绿 ≠ CI 能跑」**（1.0.28 就这么漏掉的）。
-#    ⇒ 等脚本改成跨平台（CP_SEP 按平台取、MVN/JAVA 从 PATH 回落）后再接。
+# ---------- OPC UA 生产运行时类路径验证 ----------
+# ⚠️ **单元测试覆盖不到这一层**：`mvn test` 跑在**测试类路径**上，那条路径有
+#   test 作用域的 sdk-server（本地起 OPC UA Server 用）。
+#   而**交付到客户现场的类路径上没有它**，还有依赖作用域的区别
+#   （jaxb-api 必须是 runtime/compile —— 放 test 的话单测照样绿，现场却炸）。
+#   ⇒ 只有这个脚本能发现「作用域被误降级」「生产类路径缺依赖」这类问题。
 #
-#    接入时要做的事（别漏）：
-#      1) 这里的分支加 `check "OPC UA 生产类路径" ...`
-#      2) `.github/workflows/ci.yml` 里设 `MVN: mvn`（本地那套在 ../tools/ 下，CI 没有）
-#      3) `tools/ci-gate-selftest.sh` 加一条变异：把 jaxb-api 降级成 test 作用域
-#         → 这道门禁必须变红（单元测试抓不到，只有它能抓到）
-#    现在那条变异已经在 selftest 里了，但它验的是脚本本身、不是门禁接没接上 ——
-#    接入后要把它改成跑完整门禁。
+# 为什么必须单独跑、不能只靠单测：
+#   jaxb-api 在 test 作用域时，**单元测试照样全绿**（测试类路径上有它），
+#   只有生产运行时才会炸 ⇒ 「测试绿」根本发现不了「作用域被改回 test」。
+#
+# ⚠️ **脚本必须跨平台**：classpath 分隔符按 `uname -s` 取（Windows `;` / Linux `:`），
+#   写死 `;` 在 Linux 上会把整条类路径拼成一段 → Java 找不到类。
+#   ⇒ **「本地全绿 ≠ CI 能跑」**（1.0.28 就是这么漏掉的）。
+#   本地跑请用：`bash tools/verify-opcua-boot4.sh`
+if [ "$SKIP_BE" -eq 0 ] && [ -f tools/verify-opcua-boot4.sh ]; then
+  say "OPC UA 生产运行时类路径"
+  # 端口用 14840（脚本默认值）。CI 上并发只有一个 job，不会撞。
+  check "OPC UA 生产类路径" "target/_ci-opcua.log" \
+    bash tools/verify-opcua-boot4.sh "${OPCUA_PORT:-14840}"
+elif [ "$SKIP_BE" -eq 0 ]; then
+  line "✗" "OPC UA 生产类路径" "找不到 tools/verify-opcua-boot4.sh"
+  FAIL=$((FAIL + 1)); FAILED+=("OPC UA 生产类路径")
+else
+  line "—" "OPC UA 生产类路径" "跳过（--skip-be）"
+fi
 
 # ---------- 报警码字典（纯静态检查，不依赖后端/数据库）----------
 # ⚠️ 刻意放在后端块**外面**：它既不需要 Java 也不需要数据库。
