@@ -89,6 +89,18 @@ if (/f\.port\s*=\s*ct\.port\s*\?\?\s*null/.test(src)) {
   fail('套用「我的模板」没用 normPort(ct.port)')
 }
 
+// ⑥ 内置模板套用：模板没写端口时按协议默认端口兜底。
+//    为什么要这条：内置模板是「这个型号的设备怎么连」，端口本属协议知识。
+//    少这一层，将来加一个 opcua 内置模板若忘写 port，就会退回旧默认（502），
+//    而新建时后端不覆盖用户填的值 ⇒ 新建落 502、更新落 4840，同一模板两种结果。
+if (/f\.port\s*=\s*normPort\(tpl\.port\s*\?\?\s*PROTO_DEFAULT_PORT\[tpl\.protocol\]\s*\?\?\s*null\)/.test(src)) {
+  pass('套用「内置模板」按协议默认端口兜底（tpl.port ?? PROTO_DEFAULT_PORT[tpl.protocol] ?? null）')
+} else if (/f\.port\s*=\s*normPort\(tpl\.port\)/.test(src)) {
+  fail('套用「内置模板」没有按协议兜底端口 —— 模板忘写 port 时会退回旧默认，新建/更新落库结果不一致')
+} else {
+  fail('套用「内置模板」的端口表达式不是预期写法')
+}
+
 console.log('\n== 行为断言：el-input-number 的哨兵行为 ==')
 
 // 用真实的 element-plus 跑一遍：null 原样保留、0 被夹成 1。
@@ -146,6 +158,41 @@ for (const loc of LOCALES) {
   if (!m[1].includes('{port}')) { fail(loc + ' 的 portPh 缺 {port} 插值'); continue }
   if (/�/.test(m[1])) { fail(loc + ' 的 portPh 里有损坏字符'); continue }
   pass(loc + ' portPh = "' + m[1] + '"')
+}
+
+console.log('\n== 内置模板断言：port 必须与协议默认一致 ==')
+// 守的是「新增 opcua 内置模板时把 port 顺手抄成 502」这个坑：
+//   内置模板的 port 是**协议知识**，不是每个型号的特殊配置。
+//   抄错的话，套用模板 → 新建时后端 created=true 不覆盖用户值 ⇒ 落 502；
+//   更新时后端「端口跟随协议」触发 ⇒ 落 4840 ⇒ 同一模板两种结果，极难查。
+// 这里直接把 deviceTemplates.ts 的数据与前端协议默认表对一遍，抄错即红。
+{
+  const tplFile = path.join(FE, 'src/api/deviceTemplates.ts')
+  const tplTxt = fs.readFileSync(tplFile, 'utf8')
+  // 从 DeviceFormDialog.vue 里读前端那份协议默认表（唯一副本，不另抄一份）
+  const m = src.match(/const PROTO_DEFAULT_PORT[^=]*=\s*\{([^}]*)\}/)
+  if (!m) {
+    fail('读不到 DeviceFormDialog.vue 的 PROTO_DEFAULT_PORT 表')
+  } else {
+    const def = {}
+    for (const mm of m[1].matchAll(/'?([\w-]+)'?\s*:\s*(\d+)/g)) def[mm[1]] = Number(mm[2])
+    const block = tplTxt.slice(tplTxt.indexOf('export const DEVICE_TEMPLATES'),
+                             tplTxt.indexOf('客户自定义模板'))
+    let seen = 0
+    for (const mm of block.matchAll(/id:\s*'([^']+)'[\s\S]*?protocol:\s*'([^']+)'[\s\S]*?port:\s*(\d+)/g)) {
+      seen++
+      const [, id, proto, portStr] = mm
+      const port = Number(portStr)
+      if (!(proto in def)) continue          // 该协议没有默认端口概念（如串口 modbus-rtu）
+      if (port !== def[proto]) {
+        fail('内置模板 ' + id + ' 的 port=' + port + ' 与协议 ' + proto +
+             ' 的默认端口 ' + def[proto] + ' 不一致 —— 抄错会让新建/更新落库结果不同')
+      } else {
+        pass('内置模板 ' + id + '：' + proto + ' port=' + port + '（与协议默认一致）')
+      }
+    }
+    if (!seen) fail('没从 deviceTemplates.ts 里解析出任何内置模板 —— 断言可能已失效')
+  }
 }
 
 console.log('')

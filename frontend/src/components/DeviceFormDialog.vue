@@ -366,7 +366,11 @@ function applyTpl(key: string) {
   const tpl = DEVICE_TEMPLATES.find((x) => x.id === key)
   if (!tpl) { tplNote.value = ''; return }
   f.protocol = tpl.protocol
-  f.port = normPort(tpl.port)
+  /* 内置模板没写端口 ⇒ 用该协议的默认端口（与后端 ProtocolDefaults 同口径）。
+     注意 ?? 的短路顺序：tpl.port 有值就用它（模板是显式指定的，不替它决定），
+     为 null/undefined 才看协议默认，协议也不认识才回 null（留空）。
+     normPort 再兜一层：把 0 归一成 null —— 0 在表单里会被 el-input-number 夹成 1。 */
+  f.port = normPort(tpl.port ?? PROTO_DEFAULT_PORT[tpl.protocol] ?? null)
   f.unitId = tpl.unitId
   f.pollIntervalMs = tpl.pollIntervalMs
   f.timeoutMs = tpl.timeoutMs
