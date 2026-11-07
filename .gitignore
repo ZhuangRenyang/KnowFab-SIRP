@@ -1,4 +1,7 @@
 target/
+# ⚠️ 门禁日志放这里而**不放 target/**：`mvn clean` 会把整个 target/ 删掉，
+#   而门禁是「命令 > target/xxx.log」⇒ clean 把日志本身删了 ⇒ 门禁误判「假绿」。
+target-logs/
 data/
 logs/
 run.log

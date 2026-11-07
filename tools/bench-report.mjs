@@ -22,7 +22,11 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const LOG_DIR = join(ROOT, 'target', 'bench');
+// ⚠️ **日志目录刻意不在 target/ 里**：`mvn clean` 会把整个 target/ 删掉
+//   ⇒ 压测日志会被一起清掉 ⇒ 报告立刻对不上（`--check` 报「日志缺失」）
+//   ⇒ **结论的原始证据不耐 clean** ⇒ 而「结论要能复现」要求证据能活过任何一次构建。
+//   ⇒ 改放 target-logs/bench/（target-logs/ 已在 .gitignore）。
+const LOG_DIR = join(ROOT, 'target-logs', 'bench');
 
 /** 场景定义：名字 → 描述（与 tools/bench-collect-scale.sh 保持一致） */
 const SCENES = [
@@ -96,7 +100,11 @@ const s6 = existsSync(s6File) ? (() => {
 
 const missing = scenes.filter((s) => !s);
 if (missing.length) {
-  console.error(`✗ 日志缺失：${missing.map((m) => m.id).join(', ')} —— 先跑 tools/bench-collect-scale.sh`);
+  // ⚠️ 别写 `missing.map((m) => m.id)` —— m 本身就是 null（parseScene 认不出日志时返回 null）
+  //   ⇒ 一旦有场景日志缺失，工具不是给出清晰报错，而是抛 TypeError 崩掉
+  //   ⇒ 「工具崩了」比「工具报缺日志」难查得多（崩在栈里，报错在日志里）。
+  const missingIds = SCENES.filter((s) => !scenes.find((x) => x && x.id === s.id)).map((s) => s.id);
+  console.error(`✗ 日志缺失：${missingIds.join(', ')} —— 先跑 tools/bench-collect-scale.sh`);
   process.exit(2);
 }
 
@@ -131,7 +139,7 @@ function buildL2Section() {
 
   const nameOf = { 0: '持锁 + 每台查库（**改造前**）', 1: '无锁 + 每台查库（只去锁的假设形态）', 2: '**无锁 + 批量快照（改造后的真实形态）**' };
   const out = [];
-  out.push('> ⚠️ **本段由 `tools/bench-report.mjs` 从 `target/bench/L2.log` 自动生成，勿手抄**');
+  out.push('> ⚠️ **本段由 `tools/bench-report.mjs` 从 `target-logs/bench/L2.log` 自动生成，勿手抄**');
   out.push('');
   out.push('| 形态 | 一轮耗时（1000 台并发） |');
   out.push('|---|---|');
@@ -167,6 +175,88 @@ function buildL2Section() {
   return out.join('\n');
 }
 
+/**
+ * 生成 L4 段（真实 ProdRollup 类 + 真实 MySQL 的改造前后对比）。
+ * ⚠️ 为什么必须有：2026-11-07 实测 —— 文档里的 L4 数字是**手抄**的，
+ *   改造后重跑 L4 得到 682/30ms，文档还写着 647/29ms ⇒ **报告在骗人**。
+ *   而当时的 --check 只比主表与 L2 ⇒ **抓不到** ⇒ 根治：L4 也不手抄。
+ */
+function buildL4Section() {
+  const f = join(LOG_DIR, 'L4.log');
+  if (!existsSync(f)) return null;
+  const text = readFileSync(f, 'utf8');
+  // ⚠️ 对比表是**空格对齐**的（`一轮平均耗时(ms)   682   30   95.7%`），
+  //   **不是 `|` 分隔的表格** ⇒ 按「≥2 个空格」切列。
+  //   （第一版误用 `/\|/` 写正则 ⇒ 三个指标全部解析为 null ⇒ 而代码还继续往下走。）
+  const row = (label) => {
+    const line = text.split('\n').find((l) => l.trim().startsWith(label));
+    if (!line) return null;
+    const cols = line.trim().split(/\s{2,}/);
+    return cols.length >= 3 ? cols : null;
+  };
+  const avg = row('一轮平均耗时(ms)');
+  const p99 = row('锁等待 P99(ms)');
+  const qry = row('每轮查库次数');
+  if (!avg || !p99 || !qry) return null;
+
+  const out = [];
+  out.push('> ⚠️ **本段由 `tools/bench-report.mjs` 从 `target-logs/bench/L4.log` 自动生成，勿手抄**');
+  out.push('');
+  out.push('| 指标 | 改造前（持锁查库） | 改造后（批量快照） | 改善 |');
+  out.push('|---|---|---|---|');
+  out.push(`| 一轮耗时（1000 台） | ${avg[1]} ms | **${avg[2]} ms** | **${avg[3]}** |`);
+  out.push(`| 锁等待 P99 | ${p99[1]} ms | **${p99[2]} ms** | 消除 |`);
+  out.push(`| 每轮查库次数 | ${qry[1]} | **${qry[2]}** | 消除 |`);
+  out.push('');
+  out.push('⚠️ **口径说明（不是缺陷，但必须说清）**：上表「新模式」的轮耗时**不含快照刷新成本**');
+  out.push('（刷新在计时区外触发，对应生产里 `scan()` 每 60 秒刷一次、读路径不承担它）');
+  out.push('⇒ 刷新的真实成本见上方 L2 段的「批量刷新耗时」⇒ 折算锁占用率 ≈ 0.13%。');
+  out.push('');
+  out.push('⇒ 这正是「**改生产代码必须用 L4**」的原因：L1 把 `ProdRollup` 整个 mock 掉，');
+  out.push('改内部行为它**结构上没反应**（S7 只从 2686ms 变到 2588ms，**那是「测不到」不是「无效」**）。');
+  return out.join('\n');
+}
+
+/**
+ * 生成「容量公式与实测的对照」段。
+ * ⚠️ 为什么也要生成：这张表里也是**手抄**的数字（P50、理论周期、差异百分比）
+ *   ⇒ 每次重跑压测它就会过期，而它是**给现场定 collect.threads 的依据**
+ *   ⇒ 过期 ⇒ 照着它定线程数 ⇒ 定错。
+ */
+function buildCapacitySection() {
+  const ids = ['S3', 'S4', 'S5'];
+  const rows = [];
+  for (const id of ids) {
+    const f = join(LOG_DIR, `${id}.log`);
+    if (!existsSync(f)) continue;
+    const text = readFileSync(f, 'utf8');
+    const gap = text.match(/轮间隔\(ms\)\s*:\s*P50=(\d+)\s+P95=(\d+)\s+P99=(\d+)/);
+    // ⚠️ 日志里这一行前面有粗体标记「**容量公式 N**」⇒ 正则不能假设它前面没别的字符
+    const cap = text.match(/容量公式 N\*\*\s*:\s*ceil\(1000 × ([\d.]+)ms \/ 1000ms\) = (\d+)/)
+      || text.match(/容量公式 N\s*:\s*ceil\(1000 × ([\d.]+)ms \/ 1000ms\) = (\d+)/);
+    if (!gap || !cap) continue;
+    const p50 = Number(gap[1]);
+    const n = Number(cap[2]);
+    const threads = 32;
+    // 理论周期：1000 台 × P95 单轮占用 / 线程数
+    const theo = Math.round((1000 * Number(cap[1])) / threads);
+    const diff = ((theo - p50) / theo) * 100;
+    rows.push({ id, p95: cap[1], n, theo, p50, diff: diff.toFixed(1) });
+  }
+  if (rows.length === 0) return null;
+
+  const out = [];
+  out.push('> ⚠️ **本段由 `tools/bench-report.mjs` 从日志生成，勿手抄**');
+  out.push('');
+  out.push('| 场景 | 公式算出的 N | 理论周期（1000×P95/32） | 实测轮间隔 P50 | 差异 |');
+  out.push('|---|---|---|---|---|');
+  for (const r of rows) {
+    const big = Number(r.diff) > 10 ? '**' : '';
+    out.push(`| ${r.id} | ceil(1000 × ${r.p95}ms / 1000ms) = ${r.n} | ${r.theo}ms | ${r.p50}ms | ${big}差 ${r.diff}%${big} |`);
+  }
+  return out.join('\n');
+}
+
 // ---- 生成 Markdown 表格 ----
 function cell(v, fallback = '—') {
   return v === null || v === undefined ? fallback : String(v);
@@ -192,15 +282,29 @@ const s6Line = s6
 
 const fullTable = table + '\n' + s6Line;
 const l2Section = buildL2Section();
+const l4Section = buildL4Section();
+const capSection = buildCapacitySection();
 
 console.log('### 压测结果（数字由 tools/bench-report.mjs 从日志生成，勿手抄）');
 console.log('');
 console.log(fullTable);
 console.log('');
+if (l4Section) {
+  console.log('### 改造前后对比（L4：真实 ProdRollup 类 + 真实 MySQL + 真实连接池）');
+  console.log('');
+  console.log(l4Section);
+  console.log('');
+}
 if (l2Section) {
   console.log('### 三种形态并排（L2：真实 MySQL + 真实连接池）');
   console.log('');
   console.log(l2Section);
+  console.log('');
+}
+if (capSection) {
+  console.log('### 容量公式与实测的对照');
+  console.log('');
+  console.log(capSection);
   console.log('');
 }
 
@@ -300,7 +404,42 @@ if (checkIdx >= 0) {
       }
     }
   } else {
-    console.log('（提示：没有 target/bench/L2.log ⇒ 跳过 L2 段的核对）');
+    console.log('（提示：没有 target-logs/bench/L2.log ⇒ 跳过 L2 段的核对）');
+  }
+
+  // ---- L4 段（真实 ProdRollup 类）也要校验 ----
+  // ⚠️ 为什么不能只比一个数字：L4 有三个指标（轮耗时 / 锁等待 / 查库次数），
+  //   只查一个 ⇒ 另两个抄错了照样绿。⇒ 三个**逐个**断言。
+  const l4File = join(LOG_DIR, 'L4.log');
+  if (existsSync(l4File)) {
+    const l4 = readFileSync(l4File, 'utf8');
+    // ⚠️ 与 buildL4Section 用**同一套解析**（空格对齐，不是 `|` 分隔）
+    const l4Row = (label) => {
+      const line = l4.split('\n').find((l) => l.trim().startsWith(label));
+      if (!line) return null;
+      const cols = line.trim().split(/\s{2,}/);
+      return cols.length >= 3 ? cols : null;
+    };
+    const l4Avg = l4Row('一轮平均耗时(ms)');
+    const l4P99 = l4Row('锁等待 P99(ms)');
+    const l4Qry = l4Row('每轮查库次数');
+    if (l4Avg && l4P99 && l4Qry) {
+      // 报告里这三行必须逐字命中（用整行匹配，避免「647」出现在别处就算过）
+      const l4Needs = [
+        { label: '一轮平均耗时', line: `| 一轮耗时（1000 台） | ${l4Avg[1]} ms | **${l4Avg[2]} ms** | **${l4Avg[3]}** |` },
+        { label: '锁等待 P99', line: `| 锁等待 P99 | ${l4P99[1]} ms | **${l4P99[2]} ms** | 消除 |` },
+        { label: '每轮查库次数', line: `| 每轮查库次数 | ${l4Qry[1]} | **${l4Qry[2]}** | 消除 |` },
+      ];
+      for (const need of l4Needs) {
+        if (!report.includes(need.line)) {
+          problems.push(`L4 的「${need.label}」与日志不一致，报告里应逐字是：\n    ${need.line}`);
+        }
+      }
+    } else {
+      problems.push('L4.log 里认不出对比表的三行指标（轮耗时 / 锁等待 / 查库次数）⇒ 工具或日志格式变了');
+    }
+  } else {
+    console.log('（提示：没有 target-logs/bench/L4.log ⇒ 跳过 L4 段的核对）');
   }
 
   // ---- 全文数字体检：报告里出现的每个「N / N / N」都必须在某个日志里原样存在 ----
@@ -340,6 +479,30 @@ if (checkIdx >= 0) {
     for (const t of new Set(pPairs)) {
       if (!allLogs.includes(t)) {
         problems.push(`报告里的「${t}」在任何压测日志里都找不到 ⇒ 过期/手抄错的数字`);
+      }
+    }
+
+    // ---- 「单个数字 + 单位」形态（正文里的散落数字）----
+    // ⚠️ 2026-11-07 实测踩到的**盲区**：上面的体检只查「N / N / N」与「P50=… P95=…」
+    //   ⇒ 正文里**单个**的旧数字（如「轮间隔 2588ms」「丢轮 61.7%」）**完全查不到**
+    //   ⇒ 实测文档里就有 4 处这样的过期数字（2686 / 2588 / 1606 / 3159 / 0.955ms）。
+    // ⇒ 这里补一条：报告里每个「数字 + ms 或 %」的组合，该数字必须在某个日志里出现过。
+    //   （仍是**弱校验**：常见数字可能漏检；但**过期的大数字必被抓到**。）
+    {
+      // 只查**正文里带单位的数字**；排除表格行（表格已由主表比对逐行核对过）
+      const bodyLines = report.split('\n').filter((l) => !l.trim().startsWith('|'));
+      const body = bodyLines.join('\n');
+      const singles = body.match(/\b\d+(?:\.\d+)?\s*(?:ms|%)\b/g) || [];
+      const seen = new Set();
+      for (const t of singles) {
+        if (seen.has(t)) continue;
+        seen.add(t);
+        const num = t.replace(/\s*(?:ms|%)$/, '');
+        // 百分比在日志里通常带 %，毫秒可能带也可能不带 ⇒ 两种形态都试
+        const hit = new RegExp('(^|\\D)' + num.replace('.', '\\.') + '(\\D|$)').test(allLogs);
+        if (!hit) {
+          problems.push(`报告正文里的「${t}」在任何压测日志里都找不到 ⇒ 这是个过期/手抄错的数字`);
+        }
       }
     }
   }

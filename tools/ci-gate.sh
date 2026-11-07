@@ -67,8 +67,8 @@ if [ "$LIST_ONLY" -eq 0 ]; then
     fi
   done
   if { [ "$SKIP_BE" -eq 0 ] || [ "$ONLY_OPCUA" -eq 1 ]; } \
-     && ! command -v "$MVN" >/dev/null 2>&1 && [ ! -x "$MVN" ]; then
-    echo "缺少 Maven（$MVN）—— 用 MVN=/path/to/mvn 指定" >&2
+     && ! command -v "$MVN" >/dev/null 2>&1 && [ ! -f "$MVN" ] && [ ! -x "$MVN" ]; then
+    echo "缺少 Maven（$MVN）—— 用 MVN=/path/to/mvn 指定（Windows 上可用 mvn.cmd 的绝对路径）" >&2
     exit 2
   fi
 fi
@@ -192,8 +192,19 @@ if [ "$SKIP_BE" -eq 0 ]; then
   say "后端单测"
   # 不用 -ntp（no transfer progress）：它会把输出压到几乎空白，
   # 出错时看不到「是哪一步失败」。CI 里慢一点换可诊断性，值得。
-  check "后端单测" "target/_ci-test.log" \
-    "$MVN" -B test
+  # ⚠️ **必须 clean**：增量编译不可信 —— 源码「改了又改回原内容」时 Maven **不重编**
+  #   ⇒ class 里是旧值、源码里是新值 ⇒ **测试跑的不是你以为的那份代码**
+  #   ⇒ 症状是「测试全绿而代码是坏的」。⇒ 门禁后端这步一律 clean。
+  #
+  # ⚠️⚠️ **日志必须放在 target/ 外面**：`mvn clean` 会把整个 `target/` 删掉，
+  #   而 check() 是「命令 > 日志文件」⇒ **clean 先把日志文件本身删了**
+  #   （文件句柄还开着，但文件已不在目录里）⇒ 事后 `[ ! -s "$log" ]` 判「没有输出」
+  #   ⇒ **测试其实全绿，门禁却报「可能已失效（假绿）」** ⇒ 自己把自己判成假绿。
+  #   （2026-11-07 实测踩到：加上 clean 的那一刻，门禁立刻红了，而 surefire 是 409 个用例全绿。）
+  #   ⇒ 日志放 target/ 之外的 target-logs/（gitignore 覆盖）。
+  mkdir -p "$ROOT/target-logs"
+  check "后端单测" "target-logs/_ci-test.log" \
+    "$MVN" -B clean test
   # 断言真的跑了（而不是「跑了个 0」）：
   #   surefire 报告文件数 + 用例总数，两个都要 > 0。
   #   报告数 > 0 但用例数 = 0，说明测试被跳过了（例如环境里带了 -DskipTests）。
@@ -266,6 +277,28 @@ if command -v node >/dev/null 2>&1; then
     node scripts/check-protocol-port-literals.mjs
 else
   line "—" "端口字面量" "跳过（没有 node）"
+fi
+
+# ---------- 压测报告数字核对（L4 段）----------
+# ⚠️ 刻意放在后端块**外面**（与端口字面量同一个理由）：
+#   自检用 --skip-be 跑时它必须仍然执行 ⇒ 否则「门禁还活着」没人能证明。
+#
+# 拦什么：压测报告里的数字**手抄**。2026-11-07 实测 —— L4 改造后重跑得到
+#   682/30ms，文档里还写着上一版的 647/29ms ⇒ **报告在骗人**，而没人发现。
+#   ⇒ 根治：报告数字由 tools/bench-report.mjs 从日志生成，本项**核对它**。
+#
+# ⚠️ 为什么本项**不依赖真实压测日志**：压测不在 CI 里跑（耗时且占资源）
+#   ⇒ 本项用**合成日志**自证「核对逻辑本身有鉴别力」（错时红 / 对时绿 / 格式变了也红）
+#   ⇒ 这样 CI 里也能证明这条检查不是装饰性的。
+#   若本地恰好有 target-logs/bench/L4.log，则**额外**核对真实报告。
+say "压测报告数字核对"
+if command -v node >/dev/null 2>&1; then
+  # ⚠️ 日志也放 target-logs/（与后端单测同一个理由：任何 clean 都不该删掉门禁的证据）
+  mkdir -p "$ROOT/target-logs"
+  check "压测报告数字核对" "target-logs/_ci-bench-l4.log" \
+    node tools/verify-l4-section.mjs
+else
+  line "—" "压测报告数字核对" "跳过（没有 node）"
 fi
 
 # ================= 前端 =================

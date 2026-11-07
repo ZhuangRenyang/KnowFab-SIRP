@@ -21,7 +21,7 @@ export PATH
 
 MVN="${MVN:-$(cd "$ROOT/.." && pwd)/tools/apache-maven-3.9.9/bin/mvn}"
 CP_FILE="target/test-cp.txt"
-LOG_DIR="target/bench"
+LOG_DIR="target-logs/bench"
 mkdir -p "$LOG_DIR"
 
 QUICK=0
