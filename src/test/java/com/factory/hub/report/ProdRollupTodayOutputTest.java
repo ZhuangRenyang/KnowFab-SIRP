@@ -120,11 +120,19 @@ class ProdRollupTodayOutputTest {
     void sumsAllRows() {
         long now = System.currentTimeMillis();
         long curHour = now - (now % HOUR_MS);
-        long prevHour = curHour - HOUR_MS;
+        // ⚠️⚠️ **「上一小时」必须用生产同口径（本地时区）构造，不能用 epoch 对齐**：
+        //   生产的「今天起点」是 ProdDay.dayStart(now, rh)（本地时区口径），
+        //   而 curHour = now - now%HOUR_MS 是 **epoch 对齐** ⇒ 在**非整小时时区**
+        //   （如 Asia/Kolkata +5:30）两者错位半小时 ⇒ 「上一小时」可能落在今天起点之前
+        //   ⇒ 被正确地裁掉 ⇒ 期望值就错了 ⇒ 本地绿、CI 红的另一个来源。
+        //   ⇒ 做法：清零时刻取「当前本地小时 - 1」，「上一小时」= dayStart(now, rh)
+        //     ⇒ 它恒 ≥ 今天起点、且恒 ≠ 当前小时（本地整点 ≠ epoch 整点）⇒ 所有时区都成立。
+        int rh = (currentLocalHour(now) + 23) % 24;
+        long prevHour = ProdDay.dayStart(now, rh);
 
         Map<String, List<ProdHourly>> rows = new HashMap<>();
         rows.put("D1", List.of(row("D1", prevHour, 10d), row("D1", curHour, 5d)));
-        Map<String, DeviceEntity> devs = Map.of("D1", device("D1", 0));
+        Map<String, DeviceEntity> devs = Map.of("D1", device("D1", rh));
 
         ProdRollup r = rollupWith(rows, devs);
         // 当前小时没有内存桶 ⇒ 保留 DB 的 5
@@ -137,11 +145,19 @@ class ProdRollupTodayOutputTest {
     void liveValueOverridesCurrentHourRow() {
         long now = System.currentTimeMillis();
         long curHour = now - (now % HOUR_MS);
-        long prevHour = curHour - HOUR_MS;
+        // ⚠️⚠️ **「上一小时」必须用生产同口径（本地时区）构造，不能用 epoch 对齐**：
+        //   生产的「今天起点」是 ProdDay.dayStart(now, rh)（本地时区口径），
+        //   而 curHour = now - now%HOUR_MS 是 **epoch 对齐** ⇒ 在**非整小时时区**
+        //   （如 Asia/Kolkata +5:30）两者错位半小时 ⇒ 「上一小时」可能落在今天起点之前
+        //   ⇒ 被正确地裁掉 ⇒ 期望值就错了 ⇒ 本地绿、CI 红的另一个来源。
+        //   ⇒ 做法：清零时刻取「当前本地小时 - 1」，「上一小时」= dayStart(now, rh)
+        //     ⇒ 它恒 ≥ 今天起点、且恒 ≠ 当前小时（本地整点 ≠ epoch 整点）⇒ 所有时区都成立。
+        int rh = (currentLocalHour(now) + 23) % 24;
+        long prevHour = ProdDay.dayStart(now, rh);
 
         Map<String, List<ProdHourly>> rows = new HashMap<>();
         rows.put("D1", List.of(row("D1", prevHour, 10d), row("D1", curHour, 5d)));
-        Map<String, DeviceEntity> devs = Map.of("D1", device("D1", 0));
+        Map<String, DeviceEntity> devs = Map.of("D1", device("D1", rh));
 
         ProdRollup r = rollupWith(rows, devs);
         putLiveBucket(r, "D1", curHour, 8d);
@@ -156,11 +172,19 @@ class ProdRollupTodayOutputTest {
     void liveValueAddedWhenNoCurrentHourRow() {
         long now = System.currentTimeMillis();
         long curHour = now - (now % HOUR_MS);
-        long prevHour = curHour - HOUR_MS;
+        // ⚠️⚠️ **「上一小时」必须用生产同口径（本地时区）构造，不能用 epoch 对齐**：
+        //   生产的「今天起点」是 ProdDay.dayStart(now, rh)（本地时区口径），
+        //   而 curHour = now - now%HOUR_MS 是 **epoch 对齐** ⇒ 在**非整小时时区**
+        //   （如 Asia/Kolkata +5:30）两者错位半小时 ⇒ 「上一小时」可能落在今天起点之前
+        //   ⇒ 被正确地裁掉 ⇒ 期望值就错了 ⇒ 本地绿、CI 红的另一个来源。
+        //   ⇒ 做法：清零时刻取「当前本地小时 - 1」，「上一小时」= dayStart(now, rh)
+        //     ⇒ 它恒 ≥ 今天起点、且恒 ≠ 当前小时（本地整点 ≠ epoch 整点）⇒ 所有时区都成立。
+        int rh = (currentLocalHour(now) + 23) % 24;
+        long prevHour = ProdDay.dayStart(now, rh);
 
         Map<String, List<ProdHourly>> rows = new HashMap<>();
         rows.put("D1", List.of(row("D1", prevHour, 10d)));   // 只有上一小时
-        Map<String, DeviceEntity> devs = Map.of("D1", device("D1", 0));
+        Map<String, DeviceEntity> devs = Map.of("D1", device("D1", rh));
 
         ProdRollup r = rollupWith(rows, devs);
         putLiveBucket(r, "D1", curHour, 7d);
@@ -179,29 +203,42 @@ class ProdRollupTodayOutputTest {
     @Test
     @DisplayName("契约⑤：跨天清零时刻（prodResetHour=8）⇒ 只算 8 点之后的那一天")
     void resetHourTruncatesEarlierRows() {
-        // 构造一个「昨天 20 点」与「今天 4 点」两行。
-        // 清零时刻 8 ⇒ 今天从今天 8 点开始算 ⇒ 「今天 4 点」那一行**不该**被计入。
+        // 构造一行「清零时刻之前」与一行「清零时刻之后」。
+        // 清零时刻 8 ⇒ 今天从今天 8 点开始算 ⇒ 「8 点之前」那一行**不该**被计入。
         long now = System.currentTimeMillis();
-        long curHour = now - (now % HOUR_MS);
-        long today8 = curHour - (now % HOUR_MS) - ((now / HOUR_MS) % 24 == 8 ? 0 : 0);
-        // 用相对当前小时构造，避免依赖具体时刻：
-        //   rowA = 5 小时前（可能落在昨天，也可能今天）
-        //   rowB = 1 小时前
-        // 断言：只有 hourStart >= dayStart(now, 8) 的行被计入。
-        long dayStart8 = ProdDay.dayStart(now, 8);
-        ProdHourly before = row("D1", dayStart8 - HOUR_MS, 100d);   // 8 点之前 ⇒ 不该算
-        ProdHourly after = row("D1", dayStart8, 3d);                  // 8 点之后 ⇒ 该算
+        // ⚠️⚠️ **清零时刻必须动态取「当前本地小时 - 1」，不能写死 8**（2026-11-07 实测踩到）：
+        //   写死 8 时，当**当前本地时间落在 [8:00, 9:00)**，
+        //   `dayStart(now, 8)`（本地今天 8:00）**恰好等于「当前小时起点」**
+        //   ⇒ 那一行会被生产代码判成「当前小时」⇒ 走的是「当前小时」分支而不是「已落库小时」分支
+        //   ⇒ 测试断言的口径就悄悄变了（本地绿、CI 红；实测 CI 用 UTC 时区在 08:17 跑 ⇒ 红了）。
+        //   ⇒ 修法：清零时刻取「当前本地小时 - 1」⇒ 起点**恒在当前小时之前** ⇒ 断言恒成立。
+        int curLocalHour = currentLocalHour(now);
+        int rh = (curLocalHour + 23) % 24;
+        long dayStart = ProdDay.dayStart(now, rh);
+        ProdHourly before = row("D1", dayStart - HOUR_MS, 100d);   // 起点之前 ⇒ 不该算
+        ProdHourly after = row("D1", dayStart, 3d);                  // 起点（≠当前小时）⇒ 该算
 
         Map<String, List<ProdHourly>> rows = new HashMap<>();
         rows.put("D1", List.of(before, after));
-        Map<String, DeviceEntity> devs = Map.of("D1", device("D1", 8));
+        Map<String, DeviceEntity> devs = Map.of("D1", device("D1", rh));
 
         ProdRollup r = rollupWith(rows, devs);
         double got = r.todayOutputOf("D1");
-        // 8 点之前那行由 repo 的「按 start..now 过滤」保证不参与；
+        // 起点之前那行由 repo 的「按 start..now 过滤」保证不参与；
         // 这里验证 start 传对了：把 100 那行也放进去时，repo 会按 start 过滤掉它。
         assertEquals(3d, got, 1e-9,
-                "清零时刻 8 ⇒ 只该算 8 点之后的行；8 点之前那行（100）不该被计入");
+                "清零时刻 " + rh + " ⇒ 只该算起点之后的行；起点之前那行（100）不该被计入");
+    }
+
+    /**
+     * 当前时刻落在**本地时区**的哪个小时（0~23）。
+     * <p>为什么要按本地时区算：生产代码的「统计日起点」用
+     * {@code ProdDay.dayStart(ts, resetHour)}，它是**本地时区**口径
+     * （{@code ZoneId.systemDefault()}）⇒ 测试必须用同一口径。
+     */
+    private static int currentLocalHour(long now) {
+        long localMidnight = ProdDay.dayStart(now, 0);
+        return (int) ((now - localMidnight) / HOUR_MS);
     }
 
     @Test

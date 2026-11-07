@@ -568,6 +568,65 @@ PY
   fi
 fi
 
+# ---------- 变异 8：测试里写死「清零时刻」⇒ 时区无关性检查必须红 ----------
+# ⚠️ 为什么需要这条（2026-11-07 CI run #17 红的真根因）：
+#   `ProdRollupTodaySnapshotTest` 写死了「清零 8 点」⇒ 当**当前本地时间落在 [8:00,9:00)**
+#   ⇒ `dayStart(now,8)` 恰好等于「当前小时起点」⇒ 那行被判成「当前小时」⇒ 测试必然红。
+#   ⇒ 症状「本地全绿、CI 全红」（CI 用 UTC 时区且在 08:17 跑 ⇒ 正好撞进坏窗口）。
+#   ⇒ 修法：清零时刻动态取「当前本地小时 - 1」+ 新增 `tools/verify-hour-independence.mjs`
+#      （穷举 28 个时区 ⇒ 本地小时 0~23 全覆盖）。
+# ⇒ **但「新加的检查项」自己也要证明有鉴别力**（绿灯最危险）：
+#   这里把测试改回写死 ⇒ 该检查**必须红** ⇒ 还原后**必须绿**。
+say "变异 8：测试里写死清零时刻 ⇒ 时区无关性检查必须红"
+TEST_FILE="$WORK/src/test/java/com/factory/hub/report/ProdRollupTodaySnapshotTest.java"
+if [ ! -f "$TEST_FILE" ]; then
+  line "✗" "时区无关性变异" "副本里找不到测试文件，变异无法进行"
+  FAIL=$((FAIL + 1))
+else
+  cp "$TEST_FILE" "$TEST_FILE.bak"
+  # 把「动态清零时刻」改回「写死 8」⇒ 依赖当前时刻的坏味道回来
+  # ⚠️ 锚点要用**整行**（那行后面有行尾注释）⇒ 只匹配前缀会替换不到
+  # ⚠️ 判据用「写死的 8 真的写进去了」+「动态那行真的没了」，
+  #   **不要**用「currentLocalHour(now) 次数减少」—— 那行用的是已算好的 curLocalHour 变量
+  python - "$TEST_FILE" <<'PY'
+import io, re, sys
+p = sys.argv[1]
+s = io.open(p, encoding='utf-8', newline='').read()
+pat = re.compile(r'^\s*int rh1 = \(curLocalHour \+ 23\) % 24;.*$', re.M)
+s2, n = pat.subn('        int rh1 = 8;', s)
+ok = (n == 1) and ('int rh1 = 8;' in s2) and ('int rh1 = (curLocalHour + 23) % 24;' not in s2)
+if not ok:
+    print('  注入失败：匹配到 %d 处；写死的 8 是否写入=%s；动态那行是否已消失=%s'
+          % (n, 'int rh1 = 8;' in s2, 'int rh1 = (curLocalHour + 23) % 24;' not in s2))
+    sys.exit(1)
+io.open(p, 'w', encoding='utf-8', newline='').write(s2)
+print('  已把动态清零时刻改回写死 8（匹配 %d 处）' % n)
+PY
+  if [ $? -ne 0 ]; then
+    line "✗" "时区无关性变异" "注入失败"
+    FAIL=$((FAIL + 1))
+  else
+    # ⚠️ 判据必须精确：**必须是时区无关性检查红**（不是别的项红）
+    if ( cd "$WORK" && MVN="${MVN:-mvn}" node tools/verify-hour-independence.mjs >/tmp/_cgs-hour.log 2>&1 ); then
+      line "✗" "时区无关性变异" "写死清零时刻后检查仍绿 ⇒ 这条检查没有鉴别力（装饰性的）"
+      FAIL=$((FAIL + 1))
+    else
+      line "✓" "时区无关性变异" "写死清零时刻 ⇒ 检查如期变红"
+      PASS=$((PASS + 1))
+      grep -aE "个时区失败|反向对照" /tmp/_cgs-hour.log | head -3 | sed 's/^/       /'
+    fi
+  fi
+  # 还原
+  mv "$TEST_FILE.bak" "$TEST_FILE"
+  if grep -q 'currentLocalHour(now)' "$TEST_FILE"; then
+    line "✓" "时区无关性还原" "已还原动态清零时刻"
+    PASS=$((PASS + 1))
+  else
+    line "✗" "时区无关性还原" "还原失败"
+    FAIL=$((FAIL + 1))
+  fi
+fi
+
 # 尽力清理副本（失败也无所谓：留着只占磁盘，下次运行会用新目录）
 rm -rf "$WORK" 2>/dev/null || true
 

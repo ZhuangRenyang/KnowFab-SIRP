@@ -222,10 +222,18 @@ class ProdRollupTodaySnapshotTest {
     void snapshotMissFallsBackToQuery() {
         long now = System.currentTimeMillis();
         long curHour = now - (now % HOUR_MS);
+        // ⚠️ 清零时刻取「当前本地小时 - 1」⇒ 保证「上一小时」仍在今天内
+        //   （写死 0 时，当当前本地时间落在 [0:00,1:00)，上一小时就是昨天 ⇒ 不该算
+        //     ⇒ 期望值就错了 ⇒ 本地绿、CI 红的另一个来源）
+        int rh = (currentLocalHour(now) + 23) % 24;
+        // ⚠️ 「上一小时」用**本地时区口径**（= 今天起点），不用 epoch 对齐的 curHour-HOUR_MS：
+        //   生产裁剪用的是 ProdDay.dayStart（本地时区），非整小时时区下两者错位
+        //   ⇒ epoch 对齐的「上一小时」可能落在今天起点之前 ⇒ 被正确裁掉 ⇒ 期望值就错了。
+        long prevHour = com.factory.hub.erp.ProdDay.dayStart(now, rh);
         Map<String, List<ProdHourly>> rows = new HashMap<>();
-        rows.put("D1", List.of(row("D1", curHour - HOUR_MS, 12d)));
+        rows.put("D1", List.of(row("D1", prevHour, 12d)));
         AtomicInteger q = new AtomicInteger();
-        ProdRollup r = rollupWith(List.of(device("D1", 0)), rows, q);
+        ProdRollup r = rollupWith(List.of(device("D1", rh)), rows, q);
 
         assertEquals(12d, r.todayOutputOf("D1"), 1e-9,
                 "快照里没有这台设备（新加的设备）⇒ 应回落查库，而不是返回 0");
@@ -236,26 +244,50 @@ class ProdRollupTodaySnapshotTest {
     @DisplayName("快照⑤：刷新时按各设备自己的清零时刻裁剪（prodResetHour 不同 ⇒ 起点不同）")
     void refreshRespectsPerDeviceResetHour() {
         long now = System.currentTimeMillis();
-        long dayStart8 = com.factory.hub.erp.ProdDay.dayStart(now, 8);
-        // D1 清零时刻 8 ⇒ dayStart8 之前那行不该算；D2 清零时刻 0 ⇒ 全部该算
+        // ⚠️⚠️ **清零时刻必须动态取「当前本地小时 - 1」，不能写死 8**（2026-11-07 实测踩到）：
+        //   写死 8 时，当**当前本地时间落在 [8:00, 9:00)**，则
+        //   `dayStart(now, 8)`（本地今天 8:00）**恰好等于「当前小时起点」**
+        //   ⇒ 生产代码按「这一行属于当前小时」处理 ⇒ 不进 closedSum
+        //   ⇒ 本测试断言「8 点之后那行该算 = 3」就**必然失败**。
+        //   ⇒ 症状是「本地全绿、CI 全红」：CI 用 **UTC 时区**且在 **08:17** 跑 ⇒ 正好撞进坏窗口。
+        //   ⇒ 修法：清零时刻取「当前本地小时 - 1」⇒ dayStart **恒在当前小时之前**
+        //   ⇒ 无论什么时候跑、无论什么时区，断言都成立。
+        int curLocalHour = currentLocalHour(now);
+        int rh1 = (curLocalHour + 23) % 24;   // D1：清零时刻 = 当前本地小时 - 1
+        int rh2 = (curLocalHour + 22) % 24;   // D2：再早一小时 ⇒ 起点更早 ⇒ 两行都该算
+        long dayStart1 = com.factory.hub.erp.ProdDay.dayStart(now, rh1);
+
+        // D1 起点之前那行不该算；D1 起点那一行该算（它不在当前小时里）
         Map<String, List<ProdHourly>> rows = new HashMap<>();
         rows.put("D1", List.of(
-                row("D1", dayStart8 - HOUR_MS, 100d),   // 8 点之前 ⇒ 不算
-                row("D1", dayStart8, 3d)));              // 8 点之后 ⇒ 算
+                row("D1", dayStart1 - HOUR_MS, 100d),   // D1 起点之前 ⇒ 不算
+                row("D1", dayStart1, 3d)));             // D1 起点（≠当前小时）⇒ 算
         rows.put("D2", List.of(
-                row("D2", dayStart8 - HOUR_MS, 100d),   // D2 起点更早 ⇒ 算
-                row("D2", dayStart8, 3d)));
+                row("D2", dayStart1 - HOUR_MS, 100d),   // D2 起点更早 ⇒ 算
+                row("D2", dayStart1, 3d)));             // 也在 D2 起点之后 ⇒ 算
 
         AtomicInteger q = new AtomicInteger();
-        ProdRollup r = rollupWith(List.of(device("D1", 8), device("D2", 0)), rows, q);
+        ProdRollup r = rollupWith(List.of(device("D1", rh1), device("D2", rh2)), rows, q);
         r.scan();
 
         // 读快照（D1 = 3，D2 = 103）
         Map<String, Double> snap = readSnapshot(r);
         assertEquals(3d, snap.get("D1"), 1e-9,
-                "D1（清零 8 点）只该算 8 点之后的行");
+                "D1（清零时刻 " + rh1 + " 点）只该算自己起点之后的行");
         assertEquals(103d, snap.get("D2"), 1e-9,
-                "D2（清零 0 点）该算全部两行");
+                "D2（清零时刻 " + rh2 + " 点）起点更早 ⇒ 该算全部两行");
+    }
+
+    /**
+     * 当前时刻落在**本地时区**的哪个小时（0~23）。
+     * <p>为什么要按本地时区算：生产代码的「统计日起点」用
+     * {@code ProdDay.dayStart(ts, resetHour)}，它是**本地时区**口径
+     * （{@code ZoneId.systemDefault()}）⇒ 测试必须用同一口径，否则算出来的
+     * 「今天几点」和生产的「今天几点」不是一回事。
+     */
+    private static int currentLocalHour(long now) {
+        long localMidnight = com.factory.hub.erp.ProdDay.dayStart(now, 0);
+        return (int) ((now - localMidnight) / HOUR_MS);
     }
 
     @Test
@@ -263,13 +295,21 @@ class ProdRollupTodaySnapshotTest {
     void refreshExcludesCurrentHour() {
         long now = System.currentTimeMillis();
         long curHour = now - (now % HOUR_MS);
+        // ⚠️ 清零时刻取「当前本地小时 - 1」⇒ 保证「上一小时」仍在今天内
+        //   （写死 0 时，当当前本地时间落在 [0:00,1:00)，上一小时就是昨天 ⇒ 不该算
+        //     ⇒ 期望值就错了 ⇒ 本地绿、CI 红的另一个来源）
+        int rh = (currentLocalHour(now) + 23) % 24;
+        // ⚠️ 「上一小时」用**本地时区口径**（= 今天起点），不用 epoch 对齐的 curHour-HOUR_MS：
+        //   生产裁剪用的是 ProdDay.dayStart（本地时区），非整小时时区下两者错位
+        //   ⇒ epoch 对齐的「上一小时」可能落在今天起点之前 ⇒ 被正确裁掉 ⇒ 期望值就错了。
+        long prevHour = com.factory.hub.erp.ProdDay.dayStart(now, rh);
         Map<String, List<ProdHourly>> rows = new HashMap<>();
         rows.put("D1", List.of(
-                row("D1", curHour - HOUR_MS, 10d),   // 上一小时 ⇒ 该算
-                row("D1", curHour, 99d)));             // 当前小时 ⇒ 不该算进快照
+                row("D1", prevHour, 10d),   // 上一小时 ⇒ 该算
+                row("D1", curHour, 99d)));   // 当前小时 ⇒ 不该算进快照
 
         AtomicInteger q = new AtomicInteger();
-        ProdRollup r = rollupWith(List.of(device("D1", 0)), rows, q);
+        ProdRollup r = rollupWith(List.of(device("D1", rh)), rows, q);
         r.scan();
 
         Map<String, Double> snap = readSnapshot(r);
