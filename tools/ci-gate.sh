@@ -279,6 +279,13 @@ if [ "$SKIP_FE" -eq 0 ]; then
   say "i18n 键完整性"
   if command -v node >/dev/null 2>&1; then
     check "i18n 键检查" "target/_ci-i18n.log" node scripts/check-i18n.mjs
+    # ⭐ i18n 语言范围（R5：界面只做中英双语）的**变异验证**：
+    #   上一行只证明「当前代码没越界」，不证明「**门禁真的能拦住越界**」。
+    #   这一行注入 6 个已知越界（含 1 个反向对照：合法改动必须仍绿），
+    #   要求每个都红、诊断指对、R5 违规条数正好 ⇒ 证明那道门禁有鉴别力。
+    #   ⚠️ 「绿灯不等于没问题」—— 没被变异打过的绿，只是「没人验证过它会不会亮」。
+    #   约 5 秒，在隔离副本里做，不碰工作树。
+    check "i18n 语言范围变异验证" "target/_ci-i18n-mutation.log" node scripts/mutation-check-i18n-scope.mjs
   else
     line "—" "i18n 键检查" "跳过（没有 node）"
   fi

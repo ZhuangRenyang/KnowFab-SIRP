@@ -50,7 +50,15 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const ROOT = path.resolve(__dirname, '..')
+/**
+ * 根目录可被 I18N_CHECK_ROOT 覆盖 —— 变异验证脚本用它把校验器指向隔离副本，
+ * **不碰真文件**。不覆盖时行为与从前完全一样。
+ * ⚠️ 副本必须复制「当前工作树」而不是 `git archive HEAD`：
+ *   HEAD 比工作区旧 ⇒ 变异跑的是旧代码 ⇒ 报出「已经修好的错误」（本项目栽过两次）。
+ */
+const ROOT = process.env.I18N_CHECK_ROOT
+  ? path.resolve(process.env.I18N_CHECK_ROOT)
+  : path.resolve(__dirname, '..')
 const SRC = path.join(ROOT, 'frontend', 'src')
 const LOCALE_DIR = path.join(SRC, 'locales')
 const ZH_FILE = path.join(LOCALE_DIR, 'zh-CN.ts')
@@ -218,7 +226,19 @@ const GLOBAL_RE = /i18n\.global\.t\(\s*['"]([A-Za-z0-9_.\-]+)['"]/g
 
 /** 加载 locale：用 data: URL import，拿到真实的键结构 */
 async function loadLocale(file) {
-  const src = fs.readFileSync(file, 'utf8')
+  let src
+  try {
+    src = fs.readFileSync(file, 'utf8')
+  } catch (e) {
+    // 读不到文件 ⇒ 说人话，而不是让整个脚本崩在英文 ENOENT 上。
+    // ⚠️ 这里**不能当成「没问题」**：崩掉虽然 exit 非 0（门禁照样红），
+    //   但诊断不可读 ⇒ 人不知道是「少了中英某一份」还是「文件被误删」。
+    throw new Error(
+      `读不到 locale 文件 ${path.relative(ROOT, file)}：${e.message}\n` +
+      `  ⇒ 若是 R5 的语言范围问题（少了 zh-CN / en-US），看本脚本输出的 R5 段；\n` +
+      `  ⇒ 若不是，说明文件被误删或路径不对。`
+    )
+  }
   const b64 = Buffer.from(src, 'utf8').toString('base64')
   const mod = await import(`data:text/javascript;base64,${b64}`)
   return mod.default
@@ -279,11 +299,121 @@ function collectCalls() {
 /** 以 . 或 _ 结尾 → 一定是拼接前缀，自动跳过 */
 const isDynamicPrefix = (k) => k.endsWith('.') || k.endsWith('_')
 
+/**
+ * ============ R5 护栏：界面语言只做中英双语 ============
+ * 规则见 docs/PROJECT-RULES.md 的 R5。
+ *
+ * 这条检查防的是「加了一份 locale 文件但没注册」——
+ * 历史上留过 ja-JP / ko-KR / es-ES / de-DE / ru-RU 五份半成品：
+ * 看着像支持五种语言，实际没注册就不进产物 ⇒ 永远没人用得上，
+ * 而后来人会以为「接着补全就行」（补全是 1977 键 × 5 种语言）⇒ 已删除。
+ *
+ * ⚠️ **「读不懂」必须单独报出，不能当成「没发现问题」**：
+ *   解析失败被当成「一切正常」正是本项目栽过最阴的一类坑（jdeps / 校验器改残那两次）。
+ *   所以下面每处解析都有「解析出 0 条 ⇒ 判解析失败」的判据，
+ *   绝不让「解析不出来」退化成「没发现问题」。
+ */
+const ALLOWED_LOCALE_FILES = ['en-US.ts', 'zh-CN.ts']
+const ALLOWED_LOCALE_CODES = ['en-US', 'zh-CN']
+
+function checkLocaleScope() {
+  const errors = []
+
+  // ---- 1. locales/ 目录只允许中英两份 ----
+  let files
+  try {
+    files = fs.readdirSync(LOCALE_DIR).filter((f) => f.endsWith('.ts')).sort()
+  } catch (e) {
+    errors.push(
+      `读不到 locales 目录（${path.relative(ROOT, LOCALE_DIR)}）：${e.message}` +
+      ` —— 这是检查自身失效，不等于「没问题」`
+    )
+    return { errors }
+  }
+  for (const f of files.filter((f) => !ALLOWED_LOCALE_FILES.includes(f))) {
+    errors.push(
+      `locales/ 下多出 ${f} —— R5 规定界面只做中英双语。` +
+      `新增第三种语言要先问用户（见 docs/PROJECT-RULES.md R5 的破例三条）`
+    )
+  }
+  for (const f of ALLOWED_LOCALE_FILES.filter((f) => !files.includes(f))) {
+    errors.push(`locales/ 下少了 ${f} —— 中英双语是底线，两份都必须存在`)
+  }
+
+  // ---- 2. i18n/index.ts 的 LOCALES 与 messages 恰好是这两种 ----
+  const idxRel = 'frontend/src/i18n/index.ts'
+  const idxFile = path.join(SRC, 'i18n', 'index.ts')
+  let text
+  try {
+    text = fs.readFileSync(idxFile, 'utf8')
+  } catch (e) {
+    errors.push(`读不到 ${idxRel}：${e.message} —— 这是检查自身失效，不等于「没问题」`)
+    return { errors }
+  }
+
+  // LOCALES 数组里的 { code: 'xx', ... }
+  const localeCodes = [...text.matchAll(/\{\s*code:\s*'([^']+)'/g)].map((m) => m[1])
+  if (localeCodes.length === 0) {
+    errors.push(
+      `从 ${idxRel} 里解析不出 LOCALES 的语言代码 —— 写法变了？` +
+      `解析失败不等于「没有多余语言」，请同步更新本检查`
+    )
+  } else {
+    for (const c of localeCodes.filter((c) => !ALLOWED_LOCALE_CODES.includes(c))) {
+      errors.push(
+        `LOCALES 注册了 ${c} —— R5 规定界面只做中英双语` +
+        `（另：注册了但 locales/ 里没有对应文件 = 用户切过去全是中文回退）`
+      )
+    }
+    for (const c of ALLOWED_LOCALE_CODES.filter((c) => !localeCodes.includes(c))) {
+      errors.push(`LOCALES 里没有 ${c} —— 中英双语是底线，切换器必须有两种`)
+    }
+  }
+
+  // messages 块 —— 真正打进产物的语言
+  const msgBlock = text.match(/messages:\s*\{([^}]*)\}/)
+  if (!msgBlock) {
+    errors.push(`从 ${idxRel} 里解析不出 messages 块 —— 写法变了？解析失败不等于「没问题」`)
+  } else {
+    const msgCodes = [...msgBlock[1].matchAll(/'([^']+)'\s*:/g)].map((m) => m[1])
+    if (msgCodes.length === 0) {
+      errors.push(`从 ${idxRel} 的 messages 块里解析不出语言代码 —— 解析失败不等于「没问题」`)
+    } else {
+      for (const c of msgCodes.filter((c) => !ALLOWED_LOCALE_CODES.includes(c))) {
+        errors.push(`messages 里打包了 ${c} —— R5 规定界面只做中英双语`)
+      }
+    }
+  }
+
+  return { errors }
+}
+
 async function main() {
   const quiet = process.argv.includes('--quiet')
 
-  const zh = flatten(await loadLocale(ZH_FILE))
-  const en = flatten(await loadLocale(EN_FILE))
+  // ---- R5：界面语言只做中英双语 ----
+  // ⚠️ 必须在加载 locale **之前**跑：文件缺失时后面根本读不到，
+  //    先给出「少了哪一份」这种能指对的诊断，而不是崩在 ENOENT 上。
+  const scope = checkLocaleScope()
+  const scopeFailed = scope.errors.length > 0
+
+  let zh, en
+  let loadError = null
+  try {
+    zh = flatten(await loadLocale(ZH_FILE))
+    en = flatten(await loadLocale(EN_FILE))
+  } catch (e) {
+    loadError = e.message
+  }
+  if (scopeFailed || loadError) {
+    if (scopeFailed) {
+      console.log(`\n=== 语言范围违反 R5（界面只做中英双语）===  ${scope.errors.length} 处`)
+      for (const err of scope.errors) console.log(`  ${err}`)
+    }
+    if (loadError) console.error(`\n检查脚本无法继续：${loadError}`)
+    process.exit(1)
+  }
+
   const { literal, concat } = collectCalls()
 
   // ---- 缺失：调用了但 zh 里没有 ----
