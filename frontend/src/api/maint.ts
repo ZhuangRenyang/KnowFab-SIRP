@@ -69,6 +69,15 @@ export interface MaintAnalyzeResult {
 
 export const maintApi = {
   /**
+   * 我的待办（DH-85）：派给当前登录人、且未完成的单（ANALYZED / IN_PROGRESS）。
+   *
+   * 后端直接用 `assignee + status` 查工单表，**不建待办表**——
+   * 同一个事实存两份迟早不同步（DH-80：库存两个来源同屏两个数，就是这么来的）。
+   * 所以这里拿到的就是工单本身，不是一份「待办副本」。
+   */
+  my: () => http.get<MaintOrder[]>('/api/erp/maint/my'),
+
+  /**
    * 指派负责人（DH-85）。
    * 传空字符串 = 取消指派。只有 ADMIN/MANAGER/LEADER 能调（后端 403 兜底）。
    */

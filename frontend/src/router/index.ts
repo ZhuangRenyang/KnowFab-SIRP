@@ -9,6 +9,8 @@ export const router = createRouter({
     { path: '/login', component: () => import('@/views/LoginView.vue'), meta: { public: true, title: '登录' } },
     { path: '/', component: () => import('@/views/MonitorView.vue'), meta: { title: '设备监控' } },
     { path: '/alarm', component: () => import('@/views/AlarmView.vue'), meta: { title: '报警' } },
+    // DH-85：维修待办。放在报警旁边——工单就是从报警来的，维修工看这两页就够
+    { path: '/maint/todo', component: () => import('@/views/MaintTodoView.vue'), meta: { title: '维修待办' } },
     { path: '/energy', component: () => import('@/views/EnergyView.vue'), meta: { title: '能耗分析' } },
     { path: '/report', component: () => import('@/views/ReportView.vue'), meta: { title: '报表' } },
     { path: '/digest', component: () => import('@/views/DigestView.vue'), meta: { title: 'AI 早报' } },

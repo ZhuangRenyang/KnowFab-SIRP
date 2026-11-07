@@ -22,7 +22,9 @@
           </el-tag>
           <span v-if="order.aiSource !== 'AI'" class="hint">{{ t('maint.localHint') }}</span>
           <span class="no">{{ order.orderNo }}</span>
-          <el-tag size="small" effect="plain">{{ order.statusText }}</el-tag>
+          <!-- 用 i18n 映射而不是后端给的 statusText：后端 statusText 是硬编码中文，
+               直接显示会让英文界面漏出中文（R5 铁律：界面只允许中英双语） -->
+          <el-tag size="small" effect="plain">{{ t('maint.st_' + order.status) }}</el-tag>
         </div>
         <pre class="text">{{ order.aiAdvice }}</pre>
       </div>

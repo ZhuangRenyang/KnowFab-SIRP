@@ -97,7 +97,7 @@ import {
   Monitor, Bell, Lightning, DataLine, Sunrise,
   OfficeBuilding, Box, Sell, ChatDotRound, Setting,
   Expand, Fold, Sunny, Moon, ArrowDown, User, Goods, ShoppingCart, Search, Money, TrendCharts, Tickets, Coin, Stopwatch,
-  Calendar
+  Calendar, Tools
 } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
@@ -160,7 +160,9 @@ interface NavItem { path: string; label: string; icon: any; disabled?: boolean; 
 const baseGroups = computed<{ title: string; items: NavItem[] }[]>(() => [
   { title: t('nav.groupMonitor'), items: [
     { path: '/', label: t('nav.monitor'), icon: Monitor },
-    { path: '/alarm', label: t('nav.alarm'), icon: Bell }
+    { path: '/alarm', label: t('nav.alarm'), icon: Bell },
+    // DH-85：派了工要有人看得见。放在报警旁边——维修工的工作流是「看报警 → 看我的待办」
+    { path: '/maint/todo', label: t('nav.maintTodo'), icon: Tools }
   ] },
   { title: t('nav.groupAnalysis'), items: [
     { path: '/energy', label: t('nav.energy'), icon: Lightning },
