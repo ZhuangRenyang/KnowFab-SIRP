@@ -1,7 +1,7 @@
 package com.factory.hub.report;
 
 import com.factory.hub.collect.SnapshotStore;
-import com.factory.hub.erp.ErpProdInboundService;
+import com.factory.hub.erp.stock.ErpProdInboundService;
 import com.factory.hub.erp.ProdDay;
 import com.factory.hub.model.DeviceEntity;
 import com.factory.hub.model.PointValue;

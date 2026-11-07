@@ -1,8 +1,8 @@
 package com.factory.hub.energy;
 
-import com.factory.hub.erp.ErpProdLine;
+import com.factory.hub.erp.production.ErpProdLine;
 import com.factory.hub.manual.ManualEntryService;
-import com.factory.hub.erp.ErpProdLineRepository;
+import com.factory.hub.erp.production.ErpProdLineRepository;
 import com.factory.hub.model.DeviceEntity;
 import com.factory.hub.report.ProdHourly;
 import com.factory.hub.report.ProdHourlyRepository;

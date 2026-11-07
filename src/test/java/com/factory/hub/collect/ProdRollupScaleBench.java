@@ -1,6 +1,6 @@
 package com.factory.hub.collect;
 
-import com.factory.hub.erp.ErpProdInboundService;
+import com.factory.hub.erp.stock.ErpProdInboundService;
 import com.factory.hub.model.DeviceEntity;
 import com.factory.hub.report.DevCounterStateRepository;
 import com.factory.hub.report.ProdHourly;

@@ -143,13 +143,18 @@ function transform(path) {
   s = kept.join('\n');
 
   // ④ 补跨包 import
-  //   把正文（去 import 行、去注释）里的 FQN 折叠掉，避免「用了全限定名」被误判成「用了短名」
-  const liveLines = s.split('\n').filter((l) => !/^\s*import\s/.test(l)).join('\n');
-  let probe = stripComments(liveLines);
-  probe = probe.replace(FQN_RE, '§');           // FQN 用法不产生短名需求
+  //   ⚠️⚠️ 踩过的坑：`import static com.factory.hub.erp.ErpQcBody.longOf;` 也含 FQN 前缀，
+  //   若用「整篇原文里有没有这个 FQN」判断「已用全限定名」，就会**误跳过补普通 import**
+  //   ⇒ 代码里写的是 `ErpQcBody.str(x)`（短名），只有 static import 单成员 ⇒ 编译报
+  //     「找不到符号：变量 ErpQcBody」。⇒ **判据必须只看非 import 行**。
+  const liveNoImport = s.split('\n').filter((l) => !/^\s*import\s/.test(l)).join('\n');
+  let probe = stripComments(liveNoImport);
+  probe = probe.replace(FQN_RE, '§');           // 正文里的 FQN 用法不产生短名需求
 
   const existing = new Set();
   for (const m of s.matchAll(/^import\s+(?:static\s+)?([\w.]+)/gm)) existing.add(m[1]);
+
+  const escapeRe = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
   const toAdd = [];
   for (const [c, pkg] of clsToPkg) {
@@ -158,13 +163,8 @@ function transform(path) {
     if (!new RegExp(`\\b${c}\\b`).test(probe)) continue; // 正文没用短名
     const fqn = `${pkg}.${c}`;
     if (existing.has(fqn)) continue;
-    // 已用全限定名引用过（probe 已折叠，这里再保险查一次原文）
-    if (s.includes(fqn + '.') || new RegExp(`\\b${fqn.replace(/\./g, '\\.')}\\b`).test(s)) {
-      // 原文里出现过该 FQN ⇒ 不需要 import（FQN 独立可用）
-      // 但仍可能同时用短名 ⇒ 保守起见只在「FQN 出现次数覆盖不到短名用法」时加
-      // 简化：FQN 出现过就跳过，避免冗余 import（编译不会因此失败）
-      continue;
-    }
+    // 正文（**不含 import 行**）里已用全限定名 ⇒ FQN 独立可用，不需要 import
+    if (new RegExp(`\\b${escapeRe(fqn)}\\b`).test(liveNoImport)) continue;
     toAdd.push(fqn);
   }
 

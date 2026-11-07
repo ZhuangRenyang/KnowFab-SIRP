@@ -1,14 +1,14 @@
 package com.factory.hub.ai;
 
 import com.factory.hub.alarm.AlarmService;
-import com.factory.hub.erp.ErpFinanceService;
-import com.factory.hub.erp.ErpReportService;
-import com.factory.hub.erp.ErpLineService;
-import com.factory.hub.erp.ErpPurchaseService;
-import com.factory.hub.erp.ErpSalesQueryService;
-import com.factory.hub.erp.ErpSalesService;
-import com.factory.hub.erp.ErpWorkOrderService;
-import com.factory.hub.erp.ErpCostService;
+import com.factory.hub.erp.analysis.ErpFinanceService;
+import com.factory.hub.erp.analysis.ErpReportService;
+import com.factory.hub.erp.production.ErpLineService;
+import com.factory.hub.erp.purchase.ErpPurchaseService;
+import com.factory.hub.erp.sales.ErpSalesQueryService;
+import com.factory.hub.erp.sales.ErpSalesService;
+import com.factory.hub.erp.production.ErpWorkOrderService;
+import com.factory.hub.erp.analysis.ErpCostService;
 import com.factory.hub.energy.EnergyService;
 import com.factory.hub.collect.SnapshotStore;
 import com.factory.hub.model.DeviceEntity;
@@ -81,7 +81,7 @@ public class AiChatService {
     // ---- DH-85：AI 的「动作层」 ----
     // 之前 12 个工具全是 query_*，AI 只能给建议。有了这两个，AI 才「会办事」。
     // 安全底线见 SPEC-DH85 §2.2/§2.3：权限不放大（用当前用户角色校验）、写操作必落审计。
-    private final com.factory.hub.erp.ErpMaintService maintService;
+    private final com.factory.hub.erp.production.ErpMaintService maintService;
     private final com.factory.hub.audit.AuditService audit;
     /**
      * 设备侧日报（OEE 在这里）。注意别和 {@link ErpReportService} 混了：
@@ -101,7 +101,7 @@ public class AiChatService {
                          ErpWorkOrderService workOrderService, ErpCostService costService,
                          EnergyService energyService,
                          com.factory.hub.report.ReportService deviceReportService,
-                         com.factory.hub.erp.ErpMaintService maintService,
+                         com.factory.hub.erp.production.ErpMaintService maintService,
                          com.factory.hub.audit.AuditService audit) {
         this.configStore = configStore;
         this.client = client;

@@ -38,11 +38,11 @@ public class OpenApiController {
     private final SnapshotStore store;
     private final AlarmEventRepository alarmRepo;
     private final AlarmCodeDict alarmDict;
-    private final com.factory.hub.erp.ErpLineService lineService;
+    private final com.factory.hub.erp.production.ErpLineService lineService;
 
     public OpenApiController(DeviceService deviceService, SnapshotStore store,
                              AlarmEventRepository alarmRepo, AlarmCodeDict alarmDict,
-                             com.factory.hub.erp.ErpLineService lineService) {
+                             com.factory.hub.erp.production.ErpLineService lineService) {
         this.deviceService = deviceService;
         this.store = store;
         this.alarmRepo = alarmRepo;

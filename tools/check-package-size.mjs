@@ -54,10 +54,12 @@ const BASELINE = {
   'driver/opcua': { direct: 3, total: 3, kinds: {} },
   'driver/sim': { direct: 1, total: 1, kinds: {} },
   energy: { direct: 13, total: 13, kinds: {"Service":2,"Controller":1,"Repository":1} },
-  erp: { direct: 68, total: 68, kinds: {"Service":14,"Controller":14,"Repository":16} },
+  // 2026-11-07 拆包完成：direct 68→13（根包只剩共享内核与契约），total 106（含 7 个子包）
+  // ⚠️ 这条基线必须与 `--print-baseline` 的实测值一致；拆包后忘了下调 = 护栏变成
+  //    「还能再塞 55 个文件才报」的空壳（架构师 advisory 点名的交接项）
+  erp: { direct: 13, total: 106, kinds: { Controller: 1, Repository: 3 } },
   manual: { direct: 5, total: 5, kinds: {"Controller":1,"Repository":1,"Service":1} },
   model: { direct: 4, total: 4, kinds: {} },
-  quality: { direct: 38, total: 38, kinds: {"Controller":7,"Service":10,"Repository":6} },
   repo: { direct: 2, total: 2, kinds: {"Repository":2} },
   report: { direct: 13, total: 13, kinds: {"Repository":2,"Controller":1,"Service":1} },
   screen: { direct: 4, total: 4, kinds: {"Controller":1,"Service":1} },

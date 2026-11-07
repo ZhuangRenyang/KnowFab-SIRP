@@ -36,7 +36,7 @@ public class EnergyService {
     private final DeviceService deviceService;
     private final ManualEntryService manualService;
     /** 产线上的 workshop 字段是用能单元（车间）的唯一来源——不新表，避免"两处维护车间" */
-    private final com.factory.hub.erp.ErpProdLineRepository lineRepo;
+    private final com.factory.hub.erp.production.ErpProdLineRepository lineRepo;
 
     /** 计量层级口径：有总表就只算总表（规则见 {@link MeterScope}） */
     private final MeterScope scope;
@@ -47,7 +47,7 @@ public class EnergyService {
                          SnapshotStore snapshot,
                          DeviceService deviceService,
                          ManualEntryService manualService,
-                         com.factory.hub.erp.ErpProdLineRepository lineRepo,
+                         com.factory.hub.erp.production.ErpProdLineRepository lineRepo,
                          MeterScope scope) {
         this.repo = repo;
         this.rollup = rollup;
@@ -275,8 +275,8 @@ public class EnergyService {
         // 这样：产线级没有表时，机床的电就是产线的电（对）；
         //         产线级有表时，机床的电已含在表里，不重复计（也对）。
         // 不能简单地全局取"只有表"，否则产线级的电会全变成 0。
-        Map<Long, com.factory.hub.erp.ErpProdLine> lineById = new HashMap<>();
-        for (com.factory.hub.erp.ErpProdLine l : lineRepo.findAll()) {
+        Map<Long, com.factory.hub.erp.production.ErpProdLine> lineById = new HashMap<>();
+        for (com.factory.hub.erp.production.ErpProdLine l : lineRepo.findAll()) {
             lineById.put(l.getId(), l);
         }
 
@@ -307,7 +307,7 @@ public class EnergyService {
             double cost = v == null ? 0d : v[1];
             double bf = v == null ? 0d : v[2];
             Long lineId = dev.getProdLineId();
-            com.factory.hub.erp.ErpProdLine line = lineId == null ? null : lineById.get(lineId);
+            com.factory.hub.erp.production.ErpProdLine line = lineId == null ? null : lineById.get(lineId);
             if (line == null) {
                 // 未分配组：组内有总表就只算总表
                 if (!countedUnassigned.contains(dev.getCode())) {
@@ -338,7 +338,7 @@ public class EnergyService {
             pw[3] += 1;
         }
         // 车间下的产线数量
-        for (com.factory.hub.erp.ErpProdLine l : lineById.values()) {
+        for (com.factory.hub.erp.production.ErpProdLine l : lineById.values()) {
             String ws = (l.getWorkshop() == null || l.getWorkshop().isBlank())
                     ? "未标注车间" : l.getWorkshop().trim();
             double[] pw = perWorkshop.get(ws);
@@ -363,7 +363,7 @@ public class EnergyService {
         for (Map.Entry<String, double[]> we : perWorkshop.entrySet()) {
             List<Map<String, Object>> lines = new ArrayList<>();
             for (Map.Entry<Long, double[]> le : perLine.entrySet()) {
-                com.factory.hub.erp.ErpProdLine l = lineById.get(le.getKey());
+                com.factory.hub.erp.production.ErpProdLine l = lineById.get(le.getKey());
                 if (l == null) {
                     continue;
                 }

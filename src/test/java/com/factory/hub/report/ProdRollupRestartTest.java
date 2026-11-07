@@ -1,7 +1,7 @@
 package com.factory.hub.report;
 
 import com.factory.hub.collect.SnapshotStore;
-import com.factory.hub.erp.ErpProdInboundService;
+import com.factory.hub.erp.stock.ErpProdInboundService;
 import com.factory.hub.model.PointValue;
 import com.factory.hub.service.DeviceService;
 import org.junit.jupiter.api.BeforeEach;

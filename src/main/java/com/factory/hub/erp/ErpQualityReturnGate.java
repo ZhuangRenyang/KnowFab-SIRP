@@ -7,7 +7,7 @@ import java.util.List;
  * 质量退货闸门——<b>ERP 层与质量域之间的契约</b>（QC-SPEC §3.5 / AC-13 / AC-14）。
  *
  * <p><b>为什么接口放在 erp 包里</b>：依赖方向必须单向。
- * 质量域（{@code com.factory.hub.quality}）依赖 ERP（{@code com.factory.hub.erp}），
+ * 质量域（{@code com.factory.hub.erp.quality.*}）依赖 ERP（{@code com.factory.hub.erp}），
  * 反过来就不行。所以 ERP 层只声明"我需要一个质量退货闸门"这个契约，
  * 由质量域提供实现，Spring 在运行时装配。ERP 代码里不会出现 {@code quality} 包的引用。
  *

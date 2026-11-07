@@ -58,12 +58,12 @@ public class ScreenService {
     private volatile Map<String, Object> cache;
     private volatile long cacheAt;
 
-    private final com.factory.hub.erp.ErpLineService lineService;
+    private final com.factory.hub.erp.production.ErpLineService lineService;
 
     public ScreenService(DeviceService deviceService, SnapshotStore snapshot,
                          ReportService reportService, AlarmEventRepository alarmRepo,
                          FaultAdvisor advisor, AlarmCodeDict alarmDict,
-                         com.factory.hub.erp.ErpLineService lineService,
+                         com.factory.hub.erp.production.ErpLineService lineService,
                          ProdRollup rollup) {
         this.deviceService = deviceService;
         this.snapshot = snapshot;
