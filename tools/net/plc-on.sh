@@ -137,8 +137,8 @@ cat <<EOF
     [Service]
     Type=oneshot
     RemainAfterExit=yes
-    ExecStart=$(pwd)/plc-on.sh -i $IFACE ${SEGMENTS[*]/#/-s }
-    ExecStop=$(pwd)/plc-off.sh -i $IFACE
+    ExecStart=/bin/bash $(pwd)/plc-on.sh -i $IFACE ${SEGMENTS[*]/#/-s }
+    ExecStop=/bin/bash $(pwd)/plc-off.sh -i $IFACE
 
     [Install]
     WantedBy=multi-user.target

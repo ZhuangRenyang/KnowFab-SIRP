@@ -52,8 +52,11 @@
 --------------------------------------------------------------------------
 【Linux：两个脚本（生产环境用这个）】
 --------------------------------------------------------------------------
-  tools/net/plc-on.sh    sudo ./plc-on.sh
-  tools/net/plc-off.sh   sudo ./plc-off.sh
+  tools/net/plc-on.sh    sudo bash plc-on.sh
+  tools/net/plc-off.sh   sudo bash plc-off.sh
+
+  用 `bash xxx.sh` 调用（不要直接 ./xxx.sh）：仓库里的 .sh 是 644，
+  发行包解压后才有可执行位，直接 ./ 会 Permission denied。
 
   ⚠️ Linux 的已知限制：手工加的 IP 别名在
      `systemctl restart NetworkManager` / `systemctl restart systemd-networkd`
@@ -74,9 +77,9 @@
 
   Linux：
 
-    sudo ./plc-on.sh -i eth0
-    sudo ./plc-on.sh -i eth0 -s 192.168.20.100/24 -s 192.168.30.100/24
-    sudo ./plc-on.sh -i eth0 -p 192.168.20.1
+    sudo bash plc-on.sh -i eth0
+    sudo bash plc-on.sh -i eth0 -s 192.168.20.100/24 -s 192.168.30.100/24
+    sudo bash plc-on.sh -i eth0 -p 192.168.20.1
 
   默认参数：
     PLC 地址     192.168.10.1     ps1 顶部 -PlcIp / sh 的 -p
