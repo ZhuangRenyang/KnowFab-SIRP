@@ -61,6 +61,21 @@
 
 **检查命令（看产物，不看 pom）**：
 
+> ✅ **先说清楚：这条门禁已经覆盖了，不用重复劳动。**
+> `tools/ci-gate.sh` 的「OPC UA 生产运行时类路径」那一步（`tools/verify-opcua-boot4.sh`）会：
+> - 自己算**生产运行时 classpath**（把 test / provided / system 作用域的依赖剔掉）
+> - 断言 `jaxb-api` 在里面、`sdk-server` 不在里面
+> - 还带**对照组**（把 jaxb-api 剔掉，验证这一步会红）
+>
+> 实测：把 pom 里 jaxb-api 改成 `<scope>test</scope>` ⇒ 门禁立刻红（14 秒），
+> 报错直接写「生产运行时类路径里没有 javax.xml.bind:jaxb-api —— ByteString 节点号会 NoClassDefFoundError」；
+> 还原后恢复绿（38 秒）。**所以升级时不需要额外加护栏，跑完整门禁即可。**
+>
+> ⚠️ 唯一的边界：`--skip-be` 时它会被跳过（它要跑 Maven）。
+> ⇒ **升级验收必须跑不带 `--skip-be` 的完整门禁**，只跑静态段覆盖不到这条。
+>
+> 下面的命令用于「门禁跑不了（缺 Maven）或想手工复核」的场合：
+
 ```bash
 # ① 实际调解后的版本（不是 pom 里声明的版本）
 /d/mywebss/maven-ext/apache-maven-3.9.9/bin/mvn.cmd -o dependency:tree \
