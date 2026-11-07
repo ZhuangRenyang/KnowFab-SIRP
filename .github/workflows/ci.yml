@@ -9,9 +9,14 @@
 #   ① 本地和 CI 跑同一份脚本，不会走偏；
 #   ② 可以注入已知错误来验证门禁真的会红（判据只有这一条）。
 #
-# 不需要数据库：测试全是纯单测，字典校验和 i18n 是零依赖 node 脚本。
-# 所以 CI 不起 MySQL 容器 —— 少一个环境变量就少一处「本地能跑、CI 跑不了」。
-#
+# ⚠️ **CI 现在会起 MySQL**（2026-11-07 起），与下面那段旧说明相反：
+#   原因：全仓 409 个用例都是纯 Mockito 单测（零 @SpringBootTest），
+#   **结构上证明不了 Spring 容器能起来**。而框架升级最容易坏的就是这一层
+#   （Bean 装配、@Entity 扫描、bean 名冲突、方言映射）—— 全在启动时才暴露。
+#   此前只能靠人记得跑 tools/verify-boot-smoke.sh ⇒ 人会忘，CI 不会。
+#   ⇒ 新增 ApplicationBootSmokeTest（@Tag("integration")）真起容器 + 真查一次库。
+#   它**不进门禁脚本**（门禁的定位是「不需要数据库」），而是作为 CI 的独立一步。
+#   本地仍可 `mvn clean test` 全绿（pom 里 excludedGroups=integration）。
 name: ci
 
 on:
@@ -38,7 +43,33 @@ concurrency:
 jobs:
   gate:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # 加了集成测试后预算变紧：门禁 152 秒 + 集成测试（起容器 + 重新编译 + 真启动）约 2 分钟
+    timeout-minutes: 30
+
+    # MySQL 8.4 —— 只服务集成测试（ApplicationBootSmokeTest）。
+    # 为什么用真 MySQL 而不是 H2/Testcontainers（详见测试类注释）：
+    #   · H2：项目 2026-10-27 已明确「H2 彻底移除，MySQL 是唯一目标库」，
+    #         且原生 SQL 用了 from_unixtime / date_format、实体用了 JSON 列 ⇒ 测 H2 等于测另一个库
+    #   · Testcontainers：要 Docker。CI 有、开发机不一定有（写这个测试的机器上就没有）
+    #   · 真 MySQL：CI 用 service、本地用已有 MySQL ⇒ 两边跑的是同一个数据库
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          # 库名必须含 test —— 测试类里有守卫，非 test/verify 库会直接拒绝运行
+          MYSQL_DATABASE: devicehub_test
+          MYSQL_USER: devicehub
+          MYSQL_PASSWORD: DeviceHub2026
+        ports:
+          - 3306:3306
+        # ⚠️ healthcheck 不能省：没有它，测试可能在 mysqld 还没 ready 时就开始连
+        #   ⇒ 表现为「偶发连接失败」⇒ 一个 flaky 的门禁比没有更糟（会让人习惯性重跑）
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
 
     steps:
       - uses: actions/checkout@v4
@@ -71,6 +102,38 @@ jobs:
           # CI 上用 setup-java 提供的 mvn（本地那套在 ../tools/ 下，CI 里没有）
           MVN: mvn
         run: bash tools/ci-gate.sh
+
+      # 集成测试：真起 Spring 容器 + 真连 MySQL + 真查一次库。
+      #
+      # 这一步的存在意义（不是「多跑点测试」）：
+      #   全仓 409 个用例是纯 Mockito，**证明不了容器能起来**。
+      #   框架升级时最容易坏的就是这一层，而它只在启动时暴露。
+      #   此前靠人记得跑 tools/verify-boot-smoke.sh ⇒ 人会忘。
+      #
+      # ⚠️ **不允许「没跑就算过」**：
+      #   · 用 -Pintegration（pom 里 exclude 掉 integration 组，profile 里反过来 include）
+      #   · 空值覆盖 `-DexcludedGroups=` 不生效 ⇒ 0 个测试但 exit 0（2026-11-07 实测踩到）
+      #   · 所以下面还断言「报告里确实有用例数」，防止「一个都没跑却绿」
+      #
+      # ⚠️ 用 -s tools/settings.xml（aliyun 镜像）：与门禁同一个理由，
+      #   冷缓存 runner 上直连 Maven 中央仓库只有 1-10 kB/s。
+      - name: 集成测试（真启动 + 真查库）
+        env:
+          MVN: mvn
+          TEST_DB_URL: jdbc:mysql://127.0.0.1:3306/devicehub_test?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+          TEST_DB_USER: devicehub
+          TEST_DB_PASSWORD: DeviceHub2026
+        run: |
+          set -o pipefail
+          mvn -B -s tools/settings.xml test -Pintegration | tee /tmp/it.log
+          # 断言真的跑了（不是「0 个测试也算过」）
+          RUN=$(grep -a "Tests run:" target/surefire-reports/*.txt 2>/dev/null \
+                | sed -n 's/.*Tests run: \([0-9]*\).*/\1/p' | awk '{s+=$1} END {print s+0}')
+          echo "集成测试实际执行用例数：$RUN"
+          if [ "$RUN" -lt 2 ]; then
+            echo "::error::集成测试用例数 $RUN < 2 —— 说明它没真的跑（可能被跳过/没被收集）"
+            exit 1
+          fi
 
       # 门禁失败时把关键日志贴出来，省得再点进每个 step 找。
       # 用 `if: always()`：只有失败时才贴，成功时不刷屏。

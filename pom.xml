@@ -126,6 +126,56 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
+            <!--
+              默认**排除** @Tag("integration") 的测试，只跑纯单测。
+
+              为什么必须排除（不是图快，是为了保住两个特性）：
+                ① 「mvn test 在没有任何数据库的机器上也全绿」——现在是 409 个纯 Mockito 用例，
+                   55 秒跑完。若不排除，集成测试会让它依赖 MySQL，本地没库就红。
+                ② 门禁的 surefire 基线是 **409 用例 / 51 报告**（tools/test-baseline.json）。
+                   不排除的话基线数会变，而基线是用来抓「测试类没被收集」的（只许增不许减）。
+                   ⇒ 把集成测试隔离在另一个分组里，两边的判据都保持干净。
+
+              要跑集成测试：
+                mvn test -Pintegration
+              （CI 就是这么跑的，见 .github/workflows/ci.yml）
+
+              ⚠️ **不要用 `-DexcludedGroups=` 传空值来覆盖**（2026-11-07 实测踩到）：
+                 Maven 会忽略空属性 ⇒ pom 里的 excludedGroups=integration 仍然生效，
+                 而 include 也是 integration ⇒ **一个测试都不跑，却 exit 0** ⇒ 假绿。
+                 必须用下面的 profile（`combine.self="override"`）。
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <excludedGroups>integration</excludedGroups>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <!--
+          集成测试专用 profile：mvn test -Pintegration
+          覆盖掉上面默认的 excludedGroups，改成「只跑 integration 组」。
+          `combine.self="override"` 是关键：没有它，Maven 会把 profile 配置与 base 配置
+          **合并** ⇒ excludedGroups 仍然是 integration ⇒ 又是 0 个测试。
+        -->
+        <profile>
+            <id>integration</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <excludedGroups combine.self="override">none</excludedGroups>
+                            <groups combine.self="override">integration</groups>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

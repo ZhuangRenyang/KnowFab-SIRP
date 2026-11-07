@@ -96,6 +96,27 @@ JAXB 换 jakarta、Netty 抬高、`spring.factories` 机制变化。
 
 ### H2 零 `@SpringBootTest` ⇒ 必须真启动
 
+> ✅ **CI 已自动覆盖这一条**（2026-11-07 起）：
+> `ApplicationBootSmokeTest`（`@Tag("integration")`）会真起 Spring 容器 + 真连 MySQL +
+> 真查一次库，作为 CI 的独立一步跑（`.github/workflows/ci.yml`）。
+> **容器起不来 ⇒ CI 直接红**，不再靠人记得。
+>
+> 它验证的是「Bean 装配 / `@Entity` 扫描 / Repository 扫描 / 方言映射」这一层 ——
+> 升级时这一层坏了，`mvn test` 照样全绿（纯 Mockito 测不到）。
+>
+> 本地怎么跑：
+> ```bash
+> # 默认 mvn test 不跑它（pom 里 excludedGroups=integration），基线仍是 409 用例 / 51 报告
+> mvn test -Pintegration          # ⚠️ 必须用 profile；`-DexcludedGroups=` 传空值不生效（会 0 个测试却 exit 0）
+> # 连哪个库：环境变量（本地默认 devicehub_verify；库名必须含 test 或 verify，否则测试直接拒绝运行）
+> TEST_DB_URL=... TEST_DB_USER=... TEST_DB_PASSWORD=... mvn test -Pintegration
+> ```
+>
+> ⚠️ **它验证不到迁移脚本**：空库上迁移的守卫（「表存在才建」）会走 `DO 0` 静默跳过
+> ⇒ 迁移仍要按 H3 单独验（全新空库 + 老库升级两条路径）。
+
+**手工复核用的完整启动冒烟**（覆盖更多端点，14 个，比集成测试宽）：
+
 ```bash
 bash tools/verify-boot-smoke.sh          # 启动 + 登录 + 14 个端点（覆盖全部 8 个包）
 ```
