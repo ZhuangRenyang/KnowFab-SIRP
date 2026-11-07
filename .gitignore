@@ -3,7 +3,12 @@ target/
 #   而门禁是「命令 > target/xxx.log」⇒ clean 把日志本身删了 ⇒ 门禁误判「假绿」。
 target-logs/
 data/
+# ---- 日志归置（规矩见 docs/PROJECT-RULES.md R6）----
+# 日志一律写进 logs/，仓库根不放日志。
+# `logs/` 忽略的是**整个目录** ⇒ 里面的内容（含 device-hub.log 与 *.gz 轮转包）一律不进库。
 logs/
+# 根目录日志的显式兜底：即便上面的 `*.log` 将来被改写，根目录的 *.log 仍进不了库。
+/*.log
 run.log
 *.log
 .idea/
