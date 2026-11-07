@@ -211,8 +211,15 @@ public final class CollectScaleBench {
             }
             byDevice.computeIfAbsent((int) r[0], k -> new ArrayList<>()).add(r);
         }
-        long[] allGaps = new long[Math.max(1, byDevice.size() * (ROUNDS_KEPT - 1))];
-        int gi = 0;
+        // ⚠️⚠️ **这里原来是个固定长度数组**（长度 = 设备数 × 39），
+        //   而 120 秒里每台设备产生 ~119 个间隔 ⇒ 总量需要 ~119000，数组只有 39000
+        //   ⇒ **后 672 台设备的间隔一个都没进统计**，分位数是前 328 台算出来的。
+        //   而且**它不报错**（`if (gi < allGaps.length)` 静默丢弃超出的部分）
+        //   ⇒ 报告里的 P95/P99 看着正常，实际只覆盖了 1/3 的设备。
+        //   ⇒ 现在改成动态扩容，并把「参与统计的设备数」打进报告 ——
+        //      **样本覆盖不全必须自己说出来，不能让读报告的人以为覆盖了全部。**
+        List<Long> gapList = new ArrayList<>();
+        int devicesWithGaps = 0;
         int noData = 0;
         long minRounds = Long.MAX_VALUE;
         long maxRounds = 0;
@@ -242,14 +249,12 @@ public final class CollectScaleBench {
             for (int k = 1; k < inWin.size(); k++) {
                 gaps[k - 1] = inWin.get(k)[1] - inWin.get(k - 1)[1];
             }
+            devicesWithGaps++;
             for (long g : gaps) {
-                if (gi < allGaps.length) {
-                    allGaps[gi++] = g;
-                }
+                gapList.add(g);
             }
         }
-        long[] gaps = Arrays.copyOf(allGaps, gi);
-        Arrays.sort(gaps);
+        long[] gaps = gapList.stream().mapToLong(Long::longValue).sorted().toArray();
         if (minRounds == Long.MAX_VALUE) {
             minRounds = 0;
         }
@@ -319,6 +324,8 @@ public final class CollectScaleBench {
                 minRounds, maxRounds, devices == 0 ? 0 : (double) sumRounds / devices, noData);
         out.printf(" 轮间隔(ms)            : P50=%.0f P95=%.0f P99=%.0f  (样本 %d)%n",
                 p50Gap, p95Gap, p99Gap, gaps.length);
+        out.printf(" **参与统计的设备数**    : %d / %d（没有间隔的设备 %d 台）%n",
+                devicesWithGaps, devices, devices - devicesWithGaps);
         out.printf(" 单轮 I/O 耗时(ms)     : P95=%.1f P99=%.1f%n", p95Io, p99Io);
         out.printf(" 线程占用(ms)          : P95=%.1f P99=%.1f（I/O + DB段，DB段含等锁）%n", p95Occ, p99Occ);
         out.printf(" **全局锁等待(ms)**      : P50=%.2f P99=%.2f%n", p50Wait, p99Wait);
@@ -404,6 +411,14 @@ public final class CollectScaleBench {
             failures.add("采集线程数 " + collectThreads + "（池 " + poolThreads
                     + "）⇒ 采集压根没在跑（**注意：线程数必须在 shutdown 之前数**，"
                     + "关掉池之后再数只会得到 0，那个 0 是个假绿）");
+        }
+        // ⚠️ 样本覆盖必须**逐台**看：总样本数够不代表每台都参与了
+        //   （固定长度数组那个 bug 就是「总数看着正常、后 2/3 的设备被静默丢弃」）。
+        if (devicesWithGaps < devices) {
+            toolBroken = true;
+            failures.add("只有 " + devicesWithGaps + " / " + devices
+                    + " 台设备的轮间隔进入了统计 ⇒ **分位数只覆盖了一部分设备**，"
+                    + "P95/P99 不可信（检查是不是有样本被静默截断）");
         }
         if (gaps.length < devices) {
             toolBroken = true;

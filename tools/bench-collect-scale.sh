@@ -39,8 +39,12 @@ done
 # 快速版只用于「脚本能跑通」的冒烟，**它的结果不能作为性能结论**。
 if [ "$QUICK" = "1" ]; then
   WARMUP=5; MEASURE=20
+  QUICK_NOTE="\n  ⚠️ **快速模式：预热/测量被缩短到 ${WARMUP}s/${MEASURE}s**"
+  QUICK_NOTE="${QUICK_NOTE}\n     ⇒ 错峰铺开还没完成、样本量也不够 ⇒ **这些数字不是性能结论**，"
+  QUICK_NOTE="${QUICK_NOTE}\n     只用来验证「脚本能跑通 / 工具没坏」。"
 else
   WARMUP=30; MEASURE=120
+  QUICK_NOTE=""
 fi
 
 say() { printf '%s\n' "$*"; }
@@ -48,6 +52,7 @@ say() { printf '%s\n' "$*"; }
 say "=========================================================="
 say " 采集规模压测 L1（场景矩阵）"
 say " 设备数=1000 池=32 目标周期=1000ms 预热=${WARMUP}s 测量=${MEASURE}s"
+printf '%b' "$QUICK_NOTE"
 say "=========================================================="
 
 # ---- 编译 + classpath ----
@@ -90,16 +95,20 @@ CP="target/classes;target/test-classes;$(cat "$CP_FILE")"
 #   S4 重负载         —— I/O 100ms
 #   S5 抖动           —— 30ms + 0~30ms 抖动，贴近真实网络
 #   S6 负向对照       —— 常量值驱动，**必须红**（验证 D-1 陷阱被护栏拦住）
-SCENARIOS="S1 S2 S3 S4 S5 S6"
+# S7 刻意带 DB 成本：S1~S5 的 DB 耗时都是 0 ⇒ **锁等待的判定分支在交付物里从不触发**
+#   （QA 复核指出：那条护栏写了但没被任何交付场景验证过 ⇒ 等于装饰性的）。
+#   ⇒ S7 让 todayOutputOf 真的花 1ms ⇒ 锁开始排队 ⇒ 验证 P99 锁等待的判据。
+SCENARIOS="S1 S2 S3 S4 S5 S6 S7 S3P"
 
 run_scene() {
   local name="$1"; shift
+  local threads="${BENCH_THREADS:-32}"
   if [ -n "$ONLY" ] && [ "$ONLY" != "$name" ]; then return 0; fi
   local log="$LOG_DIR/$name.log"
   say ""
   say "---- 场景 $name : $* ----"
   "$JAVA_HOME/bin/java" -cp "$CP" com.factory.hub.collect.CollectScaleBench \
-      --devices 1000 --threads 32 --poll-ms 1000 \
+      --devices 1000 --threads "$threads" --poll-ms 1000 \
       --warmup "$WARMUP" --measure "$MEASURE" "$@" > "$log" 2>&1
   local rc=$?
   grep -a -E "^( |\s*\*|\s*❌|\s*✅| 结论| 负向对照)" "$log" | grep -a -v "^10:" | head -40
@@ -114,6 +123,10 @@ run_scene S2 --io-ms 30                    || FAILED="$FAILED S2"
 run_scene S3 --io-ms 50                    || FAILED="$FAILED S3"
 run_scene S4 --io-ms 100                   || FAILED="$FAILED S4"
 run_scene S5 --io-ms 30 --jitter-ms 30     || FAILED="$FAILED S5"
+# S3'：与 S3 完全相同，只把池从 32 调到 64 ⇒ 验证「加线程」这条路径
+BENCH_THREADS=64 run_scene S3P --io-ms 50   || FAILED="$FAILED S3P"
+# S7：带 DB 成本（1ms/次）⇒ 让全局锁真的排队 ⇒ 验证锁等待的判据
+run_scene S7 --io-ms 0 --db-ms 1           || FAILED="$FAILED S7"
 
 # S6 是负向对照：**它必须红**（exit 2 表示护栏没生效），
 # 所以这里用 --expect-fail 让工具把「如期变红」记成成功。
@@ -138,6 +151,11 @@ if [ -n "$FAILED" ]; then
   exit 1
 fi
 say " ✅ 全部场景通过（日志在 $LOG_DIR/）"
+if [ "$QUICK" = "1" ]; then
+  say ""
+  say " ⚠️ **这是快速模式：上面的数字不是性能结论**，只证明脚本与工具能跑通。"
+  say "    要出结论请跑完整模式（预热 30s + 测量 120s）。"
+fi
 say ""
 say " ⚠️ 提醒：L1 通过**不等于**「1000 台够用」。"
 say "    L1 不测真实 PLC 网络抖动，也不测真实 MySQL 的并发上限。"
