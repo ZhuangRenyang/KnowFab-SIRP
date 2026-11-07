@@ -17,15 +17,15 @@ const TEST = 'src/test/java/com/factory/hub';
 
 // ---- 架构师定稿的映射表（main 106 个）----
 const PLAN = {
-  // 留 erp 根包的 4 个：跨子包公共契约 / 时间口径 / 事件
-  'erp.root': 'ErpQualityReleaseGate ErpQualityReturnGate ProdDay StockBillVoidedEvent',
-  'erp.basic': 'ErpBaseController ErpSku ErpSkuRepository ErpPartner ErpPartnerRepository ErpWarehouse ErpWarehouseRepository ErpWarehouseKindNotice',
+  'erp.root': 'ErpBom ErpBomRepository ErpBomService ErpBomController ErpPartner ErpPartnerRepository ErpWarehouse ErpWarehouseRepository ErpWarehouseKindNotice ErpQualityReleaseGate ErpQualityReturnGate ErpQcBody ProdDay StockBillVoidedEvent',
+  'erp.basic': 'ErpBaseController ErpSku ErpSkuRepository',
   'erp.stock': 'ErpStockService ErpStockController ErpStockBill ErpStockBillHdr ErpStockBillRepository ErpStockBillHdrRepository ErpStockBackfill ErpProdInboundService ErpInboundQty',
   'erp.sales': 'ErpSalesService ErpSalesController ErpSalesQueryService ErpSalesQueryController ErpSalesOrder ErpSalesOrderItem ErpSalesOrderRepository ErpSalesOrderItemRepository',
   'erp.purchase': 'ErpPurchaseService ErpPurchaseController ErpPurchaseOrder ErpPurchaseOrderItem ErpPurchaseOrderRepository ErpPurchaseOrderItemRepository ErpPayment ErpPaymentRepository',
   'erp.production': 'ErpWorkOrderService ErpWorkOrderController ErpWorkOrder ErpWorkOrderMaterial ErpWorkOrderOutput ErpWorkOrderRepository ErpWorkOrderMaterialRepository ErpWorkOrderOutputRepository ErpBackflushService ErpProdController ErpProdLine ErpProdLineRepository ErpLineService ErpLineController ErpScheduleService ErpScheduleController ErpMaintService ErpMaintController ErpMaintOrder ErpMaintOrderRepository',
-  'erp.analysis': 'ErpBom ErpBomRepository ErpBomService ErpBomController ErpCostService ErpCostController ErpFinanceService ErpFinanceController ErpReportService ErpReportController ErpReportExcel',
-  'erp.quality': 'ErpQcAqlPlan ErpQcAqlPlanRepository ErpAqlController ErpAqlLevelMap ErpAqlSeeder ErpAqlService ErpAqlStandardGrid ErpDefectSyncService ErpInspectionJudge ErpQcBody ErpQcChannelRule ErpQcDefect ErpQcDefectCode ErpQcDefectCodeController ErpQcDefectCodeRepository ErpQcDefectCodeService ErpQcDefectController ErpQcDefectQueryService ErpQcDefectRepository ErpQcDefectService ErpQcDeviceQty ErpQcDisposition ErpQcDispositionRepository ErpQcInspection ErpQcInspectionController ErpQcInspectionItem ErpQcInspectionItemRepository ErpQcInspectionRepository ErpQcInspectionService ErpQcInspectionView ErpQcReconController ErpQcReconService ErpQcReleaseController ErpQcReleaseService ErpQcReturnService ErpQualityStockAdapter ErpQcBoardController ErpQcBoardService',
+  'erp.analysis': 'ErpCostService ErpCostController ErpFinanceService ErpFinanceController ErpReportService ErpReportController ErpReportExcel',
+  'erp.quality.inspection': 'ErpQcAqlPlan ErpQcAqlPlanRepository ErpAqlController ErpAqlLevelMap ErpAqlSeeder ErpAqlService ErpAqlStandardGrid ErpDefectSyncService ErpInspectionJudge ErpQcChannelRule ErpQcDeviceQty ErpQcInspection ErpQcInspectionController ErpQcInspectionItem ErpQcInspectionItemRepository ErpQcInspectionRepository ErpQcInspectionService ErpQcInspectionView',
+  'erp.quality.defect': 'ErpQcDefect ErpQcDefectCode ErpQcDefectCodeController ErpQcDefectCodeRepository ErpQcDefectCodeService ErpQcDefectController ErpQcDefectQueryService ErpQcDefectRepository ErpQcDefectService ErpQcDisposition ErpQcDispositionRepository ErpQcReconController ErpQcReconService ErpQcReleaseController ErpQcReleaseService ErpQcReturnService ErpQcBoardController ErpQcBoardService ErpQualityStockAdapter',
 };
 
 const diskMain = new Set(readdirSync(join(SRC, 'erp')).filter((f) => f.endsWith('.java')).map((f) => f.replace('.java', '')));
