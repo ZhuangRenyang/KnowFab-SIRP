@@ -10,9 +10,16 @@ import zhCN from '../locales/zh-CN'
 import enUS from '../locales/en-US'
 
 /*
- * 语言范围：中英双语。
- * locales/ 下另有 ja-JP / ko-KR / es-ES / de-DE / ru-RU 五份翻译（导航与登录已齐），
- * 未在此注册，因此不会打进产物；需要时把对应 import 与 LOCALES 条目加回来即可。
+ * 语言范围：**只有中英双语**（规则 R5，见 docs/PROJECT-RULES.md）。
+ *
+ * ⚠️ 这不是「暂时只做了两种」，是**产品决定**：不新增第三种语言。
+ *   加一种语言不是加一份文件，是加一份 1977 键 × 持续维护；
+ *   漏翻译的键会回退成中文（fallbackLocale: 'zh-CN'）⇒ 界面中英混杂，比不支持更难排查。
+ *
+ * locales/ 下只允许存在 zh-CN.ts 与 en-US.ts。
+ * scripts/check-i18n.mjs 会断言这一点 ⇒ 新增第三份 locale 文件，门禁直接红。
+ *
+ * ⇒ **不要在这里加第三种语言**。要加先看 R5 的「什么时候可以破例」三条，并先问用户。
  */
 export interface LocaleOption {
   code: string

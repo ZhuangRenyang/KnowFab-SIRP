@@ -32,7 +32,13 @@ const ROOT = path.resolve(FE, '..')             // 仓库根
 const DIALOG = process.env.PORT_CHECK_DIALOG || path.join(FE, 'src/components/DeviceFormDialog.vue')
 const BACKEND_DEFAULTS = process.env.PORT_CHECK_BACKEND || path.join(ROOT, 'src/main/java/com/factory/hub/driver/ProtocolDefaults.java')
 const TEMPLATES_FILE = process.env.PORT_CHECK_TEMPLATES || path.join(FE, 'src/api/deviceTemplates.ts')
-const LOCALES = ['zh-CN', 'en-US', 'de-DE', 'es-ES', 'ja-JP', 'ko-KR', 'ru-RU']
+/**
+ * 界面语言范围：**只有中英双语**（规则 R5，见 docs/PROJECT-RULES.md）。
+ * ⚠️ 曾经这里是 7 种语言（zh/en/de/es/ja/ko/ru）—— 那是 R5 之前的多语言残留：
+ *   那五份 locale 只覆盖 56 个块里的 5 个、1977 键里的 101 个，从未注册进产物，
+ *   已按 R5 删除。⇒ 这里跟着收敛成中英两种，别再改回去。
+ */
+const LOCALES = ['zh-CN', 'en-US']
 
 let failed = 0
 const fail = (msg) => { console.error('  FAIL ' + msg); failed++ }
@@ -186,7 +192,7 @@ if (ElInputNumber) {
   }
 }
 
-console.log('\n== i18n 断言：7 语言 portPh 齐 ==')
+console.log('\n== i18n 断言：中英双语 portPh 齐 ==')
 for (const loc of LOCALES) {
   const file = path.join(FE, 'src/locales', loc + '.ts')
   const txt = fs.readFileSync(file, 'utf8')

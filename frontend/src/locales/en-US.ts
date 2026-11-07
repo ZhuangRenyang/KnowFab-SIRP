@@ -1,4 +1,8 @@
-/** English (en-US) */
+/**
+ * English (en-US)
+ * 界面只做中英双语（规则 R5，见 docs/PROJECT-RULES.md）—— 不新增第三种语言。
+ * 新增文案时先在 zh-CN.ts 加，再同步到这里；此处缺的键会自动回退中文。
+ */
 export default {
   common: {
     close: 'Close',
