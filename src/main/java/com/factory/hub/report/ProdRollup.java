@@ -629,7 +629,15 @@ public class ProdRollup {
         buckets.keySet().removeIf(k -> k.startsWith(code + "|"));
         states.remove(code);
         repo.deleteByDeviceCode(code);
-        // 设备被删了 ⇒ 快照里它的今日产量也作废（否则会一直推一个已删设备的产量）
+        // 设备被删了 ⇒ 快照里它的今日产量要摘掉（否则会一直推一个已删设备的产量）
+        // ⚠️ 只摘这一台，**不清空整个快照**：清空会让全部设备在下次 scan() 之前
+        //    退化成「每台查 2 次库」的老形态 ⇒ 瓶颈原样复现。
+        Map<String, TodayOut> cur = todayFromDb.get();
+        if (cur.containsKey(code)) {
+            Map<String, TodayOut> next = new HashMap<>(cur);
+            next.remove(code);
+            todayFromDb.set(Map.copyOf(next));
+        }
         invalidateTodaySnapshot();
         // DH-81 水位也要删：留着的话，同编码设备重建后新表读数若比旧水位大，
         // 差值会被当成"这一拍生产的"计进产量和入库单据（凭空多出一批货）。

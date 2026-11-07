@@ -3,6 +3,7 @@ package com.factory.hub.collect;
 import com.factory.hub.driver.DriverContext;
 import com.factory.hub.driver.DriverRegistry;
 import com.factory.hub.driver.ProtocolDriver;
+import com.factory.hub.erp.ProdDay;
 import com.factory.hub.model.DeviceEntity;
 import com.factory.hub.model.PointDef;
 import com.factory.hub.web.WsHandler;
@@ -163,7 +164,7 @@ public final class CollectDbScaleBench {
                  PreparedStatement p2 = c.prepareStatement(
                          "SELECT * FROM prod_hourly WHERE device_code = ? AND hour_start >= ? AND hour_start <= ?")) {
                 long now = System.currentTimeMillis();
-                long dayStart = now - (now % 86400000L);
+                long dayStart = ProdDay.dayStart(now, 0);   // ← 直接用生产函数，口径不可能漂
                 String code = "PERF-00000";
                 for (int i = 0; i < perCall.length; i++) {
                     long t0 = System.nanoTime();
@@ -197,145 +198,176 @@ public final class CollectDbScaleBench {
                         + " ⇒ 瓶颈是 ProdRollup 的 monitor，不是线程池", p50 * devices, pollMs));
             }
 
-            // ---------- 3. 并发压测：模拟 1000 台同时调 todayOutputOf ----------
-            out.println("[3/4] 并发压测：1000 线程同时抢同一把全局锁（真实 MySQL）...");
+            // ---------- 2b. **批量快照刷新成本**（改造后的关键新增成本）----------
+            // ⚠️ 这一项**不能省**：改造后 `todayOutputOf` 不查库了，但
+            //   `scan()` 每秒要**批量查一次**（1000 个 IN 参数 + 今日全部小时行）。
+            //   ⇒ 那一次查询的代价**跑在 scan() 的锁内** ⇒ 它就是新的锁占用来源。
+            //   ⇒ 不测它 ⇒ 报出来的「28ms」是乐观的 ⇒ 结论会骗人。
+            out.println();
+            out.println("[2b] 测批量快照刷新成本（= 改造后每秒一次的批量查询）...");
+            double[] batchCosts = new double[20];
+            try (Connection c = DriverManager.getConnection(jdbcUrl, user, pass)) {
+                StringBuilder codes = new StringBuilder();
+                for (int i = 0; i < devices; i++) {
+                    codes.append(i > 0 ? ",?" : "?");
+                }
+                String sql = "SELECT device_code, device_name, hour_start, output, backfill, defect,"
+                        + " run_sec, idle_sec, stop_sec, alarm_sec, unknown_sec"
+                        + " FROM prod_hourly WHERE hour_start >= ? AND hour_start <= ? AND device_code IN ("
+                        + codes + ")";
+                try (PreparedStatement ps = c.prepareStatement(sql)) {
+                    for (int k = 0; k < batchCosts.length; k++) {
+                        long now = System.currentTimeMillis();
+                        // ⚠️⚠️ **窗口必须与生产一致**：
+                        //   生产用 `ProdDay.dayStart(now, rh)`（rh=0 ⇒ **今天 0 点**）。
+                        //   若这里用「当前小时起点」⇒ 只查得到当前小时那一行（1000 行）
+                        //   ⇒ 批量成本会**乐观 20 倍**（真实是一天 24 行/台 = 24000 行）。
+                        long dayStart = ProdDay.dayStart(now, 0);   // ← 直接用生产函数，口径不可能漂
+                        ps.setLong(1, dayStart);
+                        ps.setLong(2, now);
+                        for (int i = 0; i < devices; i++) {
+                            ps.setString(3 + i, String.format("PERF-%05d", i));
+                        }
+                        long t0 = System.nanoTime();
+                        int rows = 0;
+                        try (ResultSet rs = ps.executeQuery()) {
+                            while (rs.next()) {
+                                // ⚠️ 第 1 列是 device_code（VARCHAR）⇒ 用 getLong 读它
+                                //    会让驱动去把 "PERF-00000" 解析成数字 ⇒ NumberFormatException
+                                rs.getString(1);
+                                rows++;
+                            }
+                        }
+                        batchCosts[k] = (System.nanoTime() - t0) / 1_000_000d;
+                        if (k == 0) {
+                            out.printf("  一次批量查询返回 %d 行（%d 台 × 今日 %d 小时）%n",
+                                    rows, devices, 24);
+                        }
+                    }
+                }
+            }
+            Arrays.sort(batchCosts);
+            double bP50 = batchCosts[batchCosts.length / 2];
+            double bP95 = batchCosts[(int) Math.ceil(0.95 * batchCosts.length) - 1];
+            out.printf("  批量刷新耗时(ms)     : P50=%.1f P95=%.1f  （每秒一次）%n", bP50, bP95);
+            out.printf("  ⇒ 它跑在 scan() 的锁内 ⇒ 锁占用率约 %.1f%%%n", bP50 * 100d / pollMs);
+            if (bP50 > pollMs * 0.5) {
+                failures.add(String.format("**批量刷新本身就很重**：P50=%.0fms（占周期 %.0f%%）"
+                        + " ⇒ 它成了新的锁占用来源 ⇒ 需要降低刷新频率或换更省的查询形态",
+                        bP50, bP50 * 100d / pollMs));
+            }
+
+            // ---------- 3. 并发压测：持锁 vs 无锁（真实 MySQL） ----------
+            //
+            // ⭐⭐ **双模式是这一轮最重要的补充**（QA 提的缺口）：
+            //   「持锁模式」= 改造前：synchronized(全局锁) { 查两次库 } ⇒ 全部串行
+            //   「无锁模式」= 改造后：每台各查各的 ⇒ **1000 个线程并发打 DB**
+            //   ⚠️ 改造前测出来的「连接池 10 个够用」是**同义反复**：
+            //      锁把并发串行化了 ⇒ 同时只有 1 条连接在用 ⇒ 池必然不耗尽。
+            //   ⇒ 只有「无锁模式」才能回答：去掉全局锁后，池 10 够不够？
             ConcurrentLinkedQueue<Long> waits = new ConcurrentLinkedQueue<>();
             ConcurrentLinkedQueue<Long> costs = new ConcurrentLinkedQueue<>();
             AtomicLong totalCalls = new AtomicLong();
-            AtomicBoolean broken = new AtomicBoolean(false);
             AtomicInteger poolWaits = new AtomicInteger();
             AtomicInteger poolTimeouts = new AtomicInteger();
+            List<Long> roundTimes = new ArrayList<>();
 
-            // ⚠️ **连接池建模**（方法论关键）：
-            //   每次查询都新建一个 JDBC 连接 ⇒ 测的是 TCP+认证握手（~5-20ms），
-            //   而**不是** Hikari 的行为（Hikari 复用连接，借还几乎免费）。
-            //   ⇒ 那会把「池借用」误测成「握手开销」，得出「1000 台不行」的错误结论。
-            //   ⇒ 这里用**有界连接池 + 借用/归还**模拟 Hikari：
-            //      池大小 = --pool（默认 10，与 application.yml 的 maximum-pool-size 一致）。
-            //   ⇒ 顺带能检出**池耗尽**（借不到连接 ⇒ 超时 ⇒ 计数）。
+            // ⚠️ **两种模式共用同一个池** ⇒ 才有可比性
+            //   （各自建池的话，池的初始状态/连接数差异会混进对比里）
             ArrayBlockingQueue<Connection> pool = new ArrayBlockingQueue<>(poolSize);
             for (int i = 0; i < poolSize; i++) {
                 pool.add(DriverManager.getConnection(jdbcUrl, user, pass));
             }
 
-            for (int round = 0; round < rounds; round++) {
-                CountDownLatch start = new CountDownLatch(1);
-                CountDownLatch done = new CountDownLatch(devices);
-                AtomicInteger errors = new AtomicInteger();
-                for (int i = 0; i < devices; i++) {
-                    final int idx = i;
-                    Thread t = new Thread(() -> {
-                        try {
-                            start.await();
-                            long t0 = System.nanoTime();
-                            // ⚠️ 这一段就是 todayOutputOf 的真实形状：
-                            //   synchronized(全局锁) { 查两次库 }
-                            //   真实 ProdRollup 的方法级 synchronized ⇒ 全部串行。
-                            synchronized (GLOBAL_MONITOR) {
-                                long waited = System.nanoTime() - t0;
-                                waits.add(waited);
-                                // 从池里借一个连接（模拟 Hikari 的借用/归还）
-                                Connection conn = null;
-                                try {
-                                    conn = pool.poll(5, java.util.concurrent.TimeUnit.SECONDS);
-                                } catch (InterruptedException ie) {
-                                    Thread.currentThread().interrupt();
-                                }
-                                if (conn == null) {
-                                    // ⚠️ 借不到 = 池耗尽。这在生产里表现为
-                                    //    "Connection is not available, request timed out after 10000ms"
-                                    poolTimeouts.incrementAndGet();
-                                    broken.set(true);
+            // 三种形态并排对比（**这才是有意义的对比**）：
+            //   0 = 持锁 + 每台查库      = 改造前
+            //   1 = 无锁 + 每台查库      = 「只去锁、没批量」的假设形态
+            //   2 = 无锁 + 批量快照      = **改造后的真实形态**（1 次批量查询 + 1000 次内存读）
+            for (int mode = 0; mode <= 2; mode++) {
+                final int m = mode;
+                final boolean useLock = m == 0;
+                out.println();
+                out.println(" ---- " + (m == 0 ? "模式0 持锁+每台查库（改造前）"
+                        : m == 1 ? "模式1 无锁+每台查库（只去锁的假设形态）"
+                        : "模式2 无锁+批量快照（改造后的真实形态）") + " ----");
+                for (int round = 0; round < rounds; round++) {
+                    CountDownLatch startGate = new CountDownLatch(1);
+                    CountDownLatch done = new CountDownLatch(devices);
+                    AtomicInteger errors = new AtomicInteger();
+                    for (int i = 0; i < devices; i++) {
+                        final int idx = i;
+                        Thread t = new Thread(() -> {
+                            try {
+                                startGate.await();
+                                long t0 = System.nanoTime();
+                                if (m == 2) {
+                                    // 模式2（改造后）：读已发布的快照 ⇒ **不查库**
+                                    //   （快照由「每秒一次批量查询」产生 ⇒ 那一次的代价单列）
+                                    waits.add(System.nanoTime() - t0);
                                     costs.add(System.nanoTime() - t0);
                                     totalCalls.incrementAndGet();
-                                    return;
-                                }
-                                poolWaits.incrementAndGet();
-                                try {
-                                    try (PreparedStatement p1 = conn.prepareStatement(
-                                            "SELECT code FROM device WHERE code = ?");
-                                         PreparedStatement p2 = conn.prepareStatement(
-                                                 "SELECT * FROM prod_hourly WHERE device_code = ? AND hour_start >= ? AND hour_start <= ?")) {
-                                        long now = System.currentTimeMillis();
-                                        long dayStart = now - (now % 86400000L);
-                                        p1.setString(1, String.format("PERF-%05d", idx));
-                                        try (ResultSet rs = p1.executeQuery()) {
-                                            while (rs.next()) {
-                                                rs.getString(1);
-                                            }
-                                        }
-                                        p2.setString(1, String.format("PERF-%05d", idx));
-                                        p2.setLong(2, dayStart);
-                                        p2.setLong(3, now);
-                                        try (ResultSet rs = p2.executeQuery()) {
-                                            while (rs.next()) {
-                                                rs.getLong(1);
-                                            }
-                                        }
+                                } else if (useLock) {
+                                    // 模式0（改造前）：synchronized(全局锁) { 查两次库 }
+                                    synchronized (GLOBAL_MONITOR) {
+                                        waits.add(System.nanoTime() - t0);
+                                        runTwoQueries(idx, jdbcUrl, user, pass, pool, poolWaits,
+                                                poolTimeouts, costs, totalCalls, t0);
                                     }
-                                } finally {
-                                    pool.offer(conn);
+                                } else {
+                                    // 模式1：直接查库 ⇒ 1000 线程并发打 DB ⇒ 考验连接池
+                                    waits.add(System.nanoTime() - t0);
+                                    runTwoQueries(idx, jdbcUrl, user, pass, pool, poolWaits,
+                                            poolTimeouts, costs, totalCalls, t0);
                                 }
-                                costs.add(System.nanoTime() - t0);
-                                totalCalls.incrementAndGet();
+                            } catch (Exception e) {
+                                errors.incrementAndGet();
+                            } finally {
+                                done.countDown();
                             }
-                        } catch (Exception e) {
-                            errors.incrementAndGet();
-                            broken.set(true);
-                        } finally {
-                            done.countDown();
-                        }
-                    }, "perf-" + i);
-                    t.setDaemon(true);
-                    t.start();
-                }
-                long rt0 = System.currentTimeMillis();
-                start.countDown();
-                done.await();
-                long roundMs = System.currentTimeMillis() - rt0;
-                out.printf("  第 %d 轮: %d 台并发，耗时 %d ms（目标周期 %d ms）%s%n",
-                        round + 1, devices, roundMs, pollMs,
-                        roundMs > pollMs ? "  <-- **超期**" : "");
-                if (roundMs > pollMs) {
-                    failures.add("第 " + (round + 1) + " 轮并发耗时 " + roundMs + "ms 超过目标周期 " + pollMs + "ms");
-                }
-                if (errors.get() > 0) {
-                    toolBroken = true;
-                    failures.add("第 " + (round + 1) + " 轮有 " + errors.get() + " 个查询出错（工具/DB 有问题）");
+                        }, "perf-" + m + "-" + i);
+                        t.setDaemon(true);
+                        t.start();
+                    }
+                    long rt0 = System.currentTimeMillis();
+                    startGate.countDown();
+                    done.await();
+                    long roundMs = System.currentTimeMillis() - rt0;
+                    roundTimes.add(roundMs);
+                    out.printf("  第 %d 轮: %d 台并发，耗时 %d ms（目标周期 %d ms）%s%n",
+                            round + 1, devices, roundMs, pollMs,
+                            roundMs > pollMs ? "  <-- **超期**" : "");
+                    if (errors.get() > 0) {
+                        toolBroken = true;
+                        failures.add("第 " + (round + 1) + " 轮有 " + errors.get() + " 个查询出错（工具/DB 有问题）");
+                    }
                 }
             }
 
             long[] w = waits.stream().mapToLong(Long::longValue).sorted().toArray();
             long[] cs = costs.stream().mapToLong(Long::longValue).sorted().toArray();
-            double w50 = pct(w, 50) / 1_000_000d;
-            double w95 = pct(w, 95) / 1_000_000d;
-            double w99 = pct(w, 99) / 1_000_000d;
             out.println();
             out.println("---------------- 观测 ----------------");
-            out.printf(" 全局锁等待(ms)     : P50=%.1f P95=%.1f P99=%.1f%n", w50, w95, w99);
+            out.printf(" 等待/排队(ms)       : P50=%.1f P95=%.1f P99=%.1f%n",
+                    pct(w, 50) / 1_000_000d, pct(w, 95) / 1_000_000d, pct(w, 99) / 1_000_000d);
             out.printf(" 单次调用总耗时(ms) : P50=%.1f P95=%.1f P99=%.1f%n",
                     pct(cs, 50) / 1_000_000d, pct(cs, 95) / 1_000_000d, pct(cs, 99) / 1_000_000d);
-            out.printf(" 总调用次数         : %d%n", totalCalls.get());
-            out.printf(" 连接池             : 大小=%d 借用=%d **借不到(池耗尽)=%d**%n",
-                    poolSize, poolWaits.get(), poolTimeouts.get());
-            out.printf(" 目标周期           : %d ms%n", pollMs);
+            out.printf(" 连接池             : 借出 %d 次，**借不到(耗尽)=%d 次**%n",
+                    poolWaits.get(), poolTimeouts.get());
+            out.printf(" 轮耗时(ms)         : %s%n", roundTimes);
             out.println();
 
-            // 判定：锁等待 P99 <= 50ms（与 L1 口径一致）
-            if (totalCalls.get() < devices * rounds * 0.99) {
-                toolBroken = true;
-                failures.add("调用次数 " + totalCalls.get() + " < 期望的 " + (devices * rounds)
-                        + " ⇒ 有查询没跑完，工具不可信");
-            }
             if (poolTimeouts.get() > 0) {
                 failures.add("**连接池耗尽**：有 " + poolTimeouts.get() + " 次借不到连接（池大小 " + poolSize
                         + "）⇒ 生产上会表现为 Connection is not available, request timed out");
             }
-            if (w99 > 50d) {
-                failures.add(String.format("**全局锁等待 P99 = %.1fms > 50ms** ⇒ 瓶颈是 ProdRollup 的 monitor", w99));
+            for (long rt : roundTimes) {
+                if (rt > pollMs) {
+                    failures.add("有一轮并发耗时 " + rt + "ms 超过目标周期 " + pollMs + "ms");
+                }
             }
 
         } catch (Exception e) {
+            // 压测本身崩了 ⇒ 本次数据不可用（不能当成「性能不达标」，那是两回事）
             toolBroken = true;
             failures.add("压测过程异常: " + e);
             e.printStackTrace();
@@ -398,10 +430,22 @@ public final class CollectDbScaleBench {
                     d.setInt(9, 0);
                     d.executeUpdate();
                     // 每台 24 行（今天已过的 24 个小时）
-                    for (int h = 23; h >= 0; h--) {
+                    // ⚠️⚠️ **小时行必须落在「今天之内」**（不是从当前小时往前 23 小时）：
+                    //   查询窗口是 [今天0点, now] ⇒ 若行落在昨天，
+                    //   窗口里就只有「当前小时」这一行 ⇒ 批量查询只返回 1000 行
+                    //   ⇒ **测出来的批量成本会乐观 20 倍**（真实运行一天后每台 24 行）。
+                    //   ⇒ 这里按「今天已经过了几个小时」来铺，铺出真实的一天的量。
+                    // ⚠️ 行数按**生产窗口**铺（ProdDay.dayStart(now,0) 到 now），
+                    //   否则批量查询的行数与生产不符 ⇒ 成本被低估。
+                    long prodDayStart = ProdDay.dayStart(now, 0);
+                    int rowsPerDevice = Math.max(1,
+                            (int) ((now - prodDayStart) / 3600000L) + 1);
+                    for (int h = rowsPerDevice - 1; h >= 0; h--) {
                         p.setString(1, code);
                         p.setString(2, code);
-                        p.setLong(3, curHour - h * 3600000L);
+                        // 落在今天之内（用自然小时对齐，避免跨天边界）
+                        // 落在「生产窗口」内：从 prodDayStart 起的第 h 个小时
+                        p.setLong(3, prodDayStart + h * 3600000L);
                         p.setDouble(4, 1800);
                         p.setDouble(5, 120);
                         p.setDouble(6, 60);
@@ -455,6 +499,71 @@ public final class CollectDbScaleBench {
             }
         }
         return def;
+    }
+
+
+    /**
+     * 一次「todayOutputOf」形状的查询：两次查库 + 连接池借用/归还。
+     * <p>⚠️ **连接池建模**（方法论关键）：
+     * 每次查询都新建一个 JDBC 连接 ⇒ 测的是 TCP+认证握手（~5-20ms），
+     * 而**不是** Hikari 的行为（Hikari 复用连接，借还几乎免费）。
+     * ⇒ 那会把「池借用」误测成「握手开销」，得出「1000 台不行」的错误结论。
+     * ⇒ 这里用**有界连接池 + 借用/归还**模拟 Hikari，池大小与 application.yml 的
+     * {@code maximum-pool-size} 一致 ⇒ 顺带能检出**池耗尽**。
+     */
+    private static void runTwoQueries(int idx, String jdbcUrl, String user, String pass,
+                                      ArrayBlockingQueue<Connection> pool,
+                                      AtomicInteger poolWaits, AtomicInteger poolTimeouts,
+                                      ConcurrentLinkedQueue<Long> costs, AtomicLong totalCalls,
+                                      long startedAt) {
+        Connection conn = null;
+        try {
+            conn = pool.poll(5, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+        }
+        if (conn == null) {
+            // 借不到 = 池耗尽。生产里表现为
+            // "Connection is not available, request timed out after 10000ms"
+            poolTimeouts.incrementAndGet();
+            costs.add(System.nanoTime() - startedAt);
+            totalCalls.incrementAndGet();
+            return;
+        }
+        poolWaits.incrementAndGet();
+        try {
+            try (PreparedStatement p1 = conn.prepareStatement(
+                    "SELECT code FROM device WHERE code = ?");
+                 PreparedStatement p2 = conn.prepareStatement(
+                         "SELECT * FROM prod_hourly WHERE device_code = ? AND hour_start >= ? AND hour_start <= ?")) {
+                long now = System.currentTimeMillis();
+                // ⚠️ 窗口与生产一致：ProdDay.dayStart(now, rh=0) = 今天 0 点
+                long dayStart = ProdDay.dayStart(now, 0);   // ← 直接用生产函数，口径不可能漂
+                p1.setString(1, String.format("PERF-%05d", idx));
+                try (ResultSet rs = p1.executeQuery()) {
+                    while (rs.next()) {
+                        rs.getString(1);
+                    }
+                }
+                p2.setString(1, String.format("PERF-%05d", idx));
+                p2.setLong(2, dayStart);
+                p2.setLong(3, now);
+                try (ResultSet rs = p2.executeQuery()) {
+                    while (rs.next()) {
+                        rs.getLong(1);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // 查询出错：计数交给调用方处理
+            throw new IllegalStateException(e);
+        } finally {
+            if (conn != null) {
+                pool.offer(conn);
+            }
+            costs.add(System.nanoTime() - startedAt);
+            totalCalls.incrementAndGet();
+        }
     }
 
     private CollectDbScaleBench() {

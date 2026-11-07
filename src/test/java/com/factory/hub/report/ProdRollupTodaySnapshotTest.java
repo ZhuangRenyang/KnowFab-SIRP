@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -277,6 +278,66 @@ class ProdRollupTodaySnapshotTest {
     }
 
     /** 读快照里每台设备的 closedSum（[0]） */
+    @Test
+    @DisplayName("快照⑦：写库后快照**不清空**（否则 flush 后 1 秒内全体退化成每台查库）")
+    void invalidateDoesNotClearSnapshot() throws Exception {
+        long now = System.currentTimeMillis();
+        long curHour = now - (now % 3_600_000L);
+        AtomicInteger q = new AtomicInteger();
+        ProdRollup r = rollupWith(List.of(device("D1", 0)), new HashMap<>(), q);
+        putSnapshot(r, Map.of("D1", new double[]{100d, 0d, 0d}));
+
+        // 调 invalidate（写库后触发）
+        java.lang.reflect.Method inv = ProdRollup.class.getDeclaredMethod("invalidateTodaySnapshot");
+        inv.setAccessible(true);
+        inv.invoke(r);
+
+        Map<String, double[]> snap = readSnapshotRaw(r);
+        assertTrue(snap.containsKey("D1"),
+                "**写库后快照被清空了** ⇒ 下一次 scan() 之前所有 todayOutputOf 都会走"
+                        + "「查库兜底」⇒ 1000 台瞬间回到「每台查 2 次库」的老形态 ⇒ 瓶颈原样复现。"
+                        + "正确做法：只标 dirty（等下一拍重建），期间继续用旧快照"
+                        + "（旧快照最多旧 1 秒，而 DB 数据本身 60 秒才变一次 ⇒ 不会比 DB 更旧）");
+        assertEquals(100d, snap.get("D1")[0], 1e-9, "快照值本身不该被改");
+    }
+
+    @Test
+    @DisplayName("快照⑧：删设备只摘掉**那一台**，其余设备不受影响")
+    void purgeRemovesOnlyThatDevice() throws Exception {
+        AtomicInteger q = new AtomicInteger();
+        ProdRollup r = rollupWith(List.of(device("D1", 0), device("D2", 0)), new HashMap<>(), q);
+        putSnapshot(r, Map.of("D1", new double[]{100d, 0d, 0d}, "D2", new double[]{200d, 0d, 0d}));
+
+        r.purgeByCode("D1");
+
+        Map<String, double[]> snap = readSnapshotRaw(r);
+        assertFalse(snap.containsKey("D1"),
+                "被删的设备不该还在快照里（否则会一直推一个已删设备的产量）");
+        assertTrue(snap.containsKey("D2"),
+                "**其余设备被连带清掉了** ⇒ 它们会在下次 scan() 前退化成查库路径 ⇒ 1000 台集体退化");
+    }
+
+    /** 读快照的原始内容（key → [closedSum, curHourDb, hasCurHour]） */
+    @SuppressWarnings("unchecked")
+    private static Map<String, double[]> readSnapshotRaw(ProdRollup rollup) {
+        try {
+            java.lang.reflect.Field f = ProdRollup.class.getDeclaredField("todayFromDb");
+            f.setAccessible(true);
+            Map<String, Object> raw = (Map<String, Object>) ((java.util.concurrent.atomic.AtomicReference<?>) f.get(rollup)).get();
+            Map<String, double[]> out = new java.util.HashMap<>();
+            for (Map.Entry<String, Object> e : raw.entrySet()) {
+                double[] v = new double[3];
+                java.lang.reflect.Field cs = e.getValue().getClass().getDeclaredField("closedSum");
+                cs.setAccessible(true);
+                v[0] = (Double) cs.get(e.getValue());
+                out.put(e.getKey(), v);
+            }
+            return out;
+        } catch (Exception e) {
+            throw new IllegalStateException("读快照失败", e);
+        }
+    }
+
     @SuppressWarnings("unchecked")
     private static Map<String, Double> readSnapshot(ProdRollup rollup) {
         try {
