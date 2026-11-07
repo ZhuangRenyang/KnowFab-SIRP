@@ -947,6 +947,69 @@ else
   line "—" "动态前缀展开变异" "跳过（--skip-fe 未启用）"
 fi
 
+# ---------- 变异 15：造一个 301 行的新文件 ⇒ 「单文件行数护栏」必须红 ----------
+# 验的是「只拦新增」这个口径真的成立（存量 46 个豁免、新增一个就报）。
+#
+# ⚠️ 判据必须精确到「这一项失败」，不能只看「门禁红了」：
+#   探针放在 com/factory/hub/ 根下 ⇒ **同时会让包结构护栏红**
+#   （(root) 直属文件数 2 → 3，超基线）⇒ 若只判「红没红」，这条变异在
+#   「行数护栏被删掉」时依然会通过（被包结构护栏的红顶过去）⇒ 假验证。
+#   ⇒ 用 `✗ 单文件行数护栏` 精确定位。
+#
+# 探针刻意**不放进 erp 域**：放进去会同时改变守恒数（132），把另一条护栏也搅进来。
+say "变异 15：造一个 301 行新文件 ⇒ 单文件行数护栏必须红"
+PROBE_FILE="$WORK/src/main/java/com/factory/hub/ZzProbeNewFile.java"
+python - "$PROBE_FILE" <<'PY'
+import io, sys
+p = sys.argv[1]
+lines = ['package com.factory.hub;', '', '/** 临时探针：验证行数护栏有鉴别力（自检会删掉）*/', 'public class ZzProbeNewFile {']
+while len(lines) < 300:
+    lines.append('    // padding')
+lines.append('}')
+io.open(p, 'w', encoding='utf-8', newline='\n').write('\n'.join(lines) + '\n')
+PY
+if [ ! -f "$PROBE_FILE" ]; then
+  line "✗" "行数护栏变异" "探针文件没造出来，变异无法进行"
+  FAIL=$((FAIL + 1))
+else
+  # 断言注入真的生效：行数必须是 301（不是 300，也不受 CRLF 影响）
+  PROBE_LINES=$(awk 'END{print NR}' "$PROBE_FILE")
+  if [ "$PROBE_LINES" -ne 301 ]; then
+    line "✗" "行数护栏变异" "探针行数是 $PROBE_LINES，期望 301 ⇒ 注入没生效"
+    FAIL=$((FAIL + 1))
+  else
+    if ( cd "$WORK" && bash tools/ci-gate.sh --only-pkg ) >/tmp/_cgs.log 2>&1; then
+      line "✗" "301 行新文件 → 必须红" "门禁没有变红 —— 行数护栏没有鉴别力（装饰性的）"
+      FAIL=$((FAIL + 1))
+    else
+      if grep -aqE "✗[[:space:]]*单文件行数护栏" /tmp/_cgs.log; then
+        line "✓" "301 行新文件 → 必须红" "变红了，且红的正是「单文件行数护栏」这一项"
+        PASS=$((PASS + 1))
+        grep -aE "ZzProbeNewFile|单文件行数护栏" /tmp/_cgs.log | head -3 | sed 's/^/       /'
+      else
+        line "✗" "301 行新文件 → 必须红" "红了，但红的不是「单文件行数护栏」—— 判据不精确（可能被包结构护栏顶过去了）"
+        grep -aE "✓|✗|失败" /tmp/_cgs.log | head -8 | sed 's/^/       /'
+        FAIL=$((FAIL + 1))
+      fi
+    fi
+  fi
+  rm -f "$PROBE_FILE"
+  # 断言还原干净（否则下一条变异会被这个探针带偏）
+  if [ -f "$PROBE_FILE" ]; then
+    line "✗" "行数护栏还原" "探针文件删不掉"
+    FAIL=$((FAIL + 1))
+  else
+    if ( cd "$WORK" && bash tools/ci-gate.sh --only-pkg ) >/tmp/_cgs.log 2>&1; then
+      line "✓" "行数护栏还原后 → 必须绿" "恢复全绿"
+      PASS=$((PASS + 1))
+    else
+      line "✗" "行数护栏还原后 → 必须绿" "还原后仍然红"
+      tail -12 /tmp/_cgs.log | sed 's/^/       /'
+      FAIL=$((FAIL + 1))
+    fi
+  fi
+fi
+
 # ---------- 静态断言 1：拆包验收脚本的期望总数默认值不得为 null ----------
 # 为什么这条**只能静态抓**：把默认值改回 null ⇒ 不传参数时守恒检查静默跳过，
 #   但脚本**照样打印「✓」** ⇒ 门禁照样绿 ⇒ **运行时没有任何现象能暴露它**。

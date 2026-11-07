@@ -45,7 +45,14 @@ const PKG_ROOT = 'com.factory.hub';
 /** erp 域 = erp 包 + quality 包（quality 整个就是 erp 域的质量子域，100% Erp* 命名） */
 const DOMAIN_PREFIXES = [`${PKG_ROOT}.erp`, `${PKG_ROOT}.quality`];
 
-/** erp 域的文件总数期望值（main 106 + test 26 = 132）—— **实测值，不是估计** */
+/**
+ * erp 域的文件数基线（拆包完成时实测：main 106 + test 26 = 132）。
+ * <p>
+ * ⚠️ 语义（2026-11-07 演进）：拆包**期间**要求精确相等（防丢 + 防多）；
+ * 拆包**完成后**改为「**不小于**基线」—— 因为正常开发会往这个域里加类/加测试，
+ * 精确相等会让每次合法新增都红一次（红多了就没人看红了）。
+ * 代价是「多出一份同名文件」不再被总数抓到 ⇒ 用下面的**同名类查重**补回来。
+ */
 const EXPECT_TOTAL_DEFAULT = 132;
 
 const args = process.argv.slice(2);
@@ -178,13 +185,47 @@ const problems = [];
   const main = countDomain(SRC);
   const test = countDomain(TEST);
   const total = main + test;
-  if (total !== EXPECT_TOTAL) {
+
+  // ⚠️ 2026-11-07 语义调整：拆包**期间**要求精确相等（防丢 + 防多），
+  //   拆包**完成后**改为「不小于基线」——因为正常开发会往 erp 域里加类/加测试，
+  //   精确相等会让每次合法新增都红一次（红多了就没人看红了）。
+  //   代价是「多出一份同名文件」不再被总数抓到 ⇒ 用下面这条**更精确**的判据补回来：
+  //   按**简单类名**查重。拆包时我确实撞过 `ErpWorkOrderController` 在旧位置和新位置
+  //   各存一份（落盘中断导致），当时是靠总数 107≠106 发现的。
+  if (total < EXPECT_TOTAL) {
     problems.push(
-      `erp 域文件总数不守恒：期望 ${EXPECT_TOTAL}（main+test），实际 ${total}（main ${main} + test ${test}）`
-      + ` ⇒ 拆包过程中**丢文件或多出文件**了`
+      `erp 域文件数比基线少：基线 ${EXPECT_TOTAL}（main+test），实际 ${total}（main ${main} + test ${test}）`
+      + ` ⇒ 有类被删掉或漏搬了（若是有意删除，请同步下调 tools/verify-package-split.mjs 的 EXPECT_TOTAL_DEFAULT）`
     );
+  } else if (total > EXPECT_TOTAL) {
+    console.log(`✓ erp 域文件数 ${total}（main ${main} + test ${test}）：比基线 ${EXPECT_TOTAL} 多 ${total - EXPECT_TOTAL} 个（新增属正常）`);
   } else {
-    console.log(`✓ erp 域文件总数守恒：${total}（main ${main} + test ${test}）`);
+    console.log(`✓ erp 域文件数守恒：${total}（main ${main} + test ${test}）`);
+  }
+
+  // 同名类查重：同一个简单类名在（main + test）里出现 ≥2 次
+  //   ⇒ 落盘中断/搬包中断会留下「旧位置一份 + 新位置一份」，编译可能过（不同包），
+  //     但 Spring 里若两个同名 @Service 被扫到就是 ConflictingBeanDefinitionException，
+  //     而且**总数可能仍然对**（拆包时总数曾变成 107≠106 才被发现，换个场景就抓不到）。
+  const bySimpleName = new Map();
+  for (const [root, side] of [[SRC, 'main'], [TEST, 'test']]) {
+    for (const p of walk(root)) {
+      const rel = relative(root, p).replace(/\\/g, '/');
+      const fq = rel.replace(/\.java$/, '').replace(/\//g, '.');
+      if (!DOMAIN_PREFIXES.some((pre) => fq === pre || fq.startsWith(pre + '.'))) continue;
+      const simple = rel.slice(rel.lastIndexOf('/') + 1).replace(/\.java$/, '');
+      if (!bySimpleName.has(simple)) bySimpleName.set(simple, []);
+      bySimpleName.get(simple).push(`${side}:${rel}`);
+    }
+  }
+  for (const [simple, places] of bySimpleName) {
+    if (places.length > 1) {
+      problems.push(
+        `同名类出现 ${places.length} 次：${simple}`
+        + ` ⇒ ${places.join('  |  ')}`
+        + ` ⇒ 多半是搬包中断留下的残留（旧位置一份、新位置一份）`
+      );
+    }
   }
 }
 
