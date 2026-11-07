@@ -125,13 +125,22 @@ jobs:
           TEST_DB_PASSWORD: DeviceHub2026
         run: |
           set -o pipefail
-          mvn -B -s tools/settings.xml test -Pintegration | tee /tmp/it.log
-          # 断言真的跑了（不是「0 个测试也算过」）
-          RUN=$(grep -a "Tests run:" target/surefire-reports/*.txt 2>/dev/null \
-                | sed -n 's/.*Tests run: \([0-9]*\).*/\1/p' | awk '{s+=$1} END {print s+0}')
-          echo "集成测试实际执行用例数：$RUN"
-          if [ "$RUN" -lt 2 ]; then
-            echo "::error::集成测试用例数 $RUN < 2 —— 说明它没真的跑（可能被跳过/没被收集）"
+          mvn -B -s tools/settings.xml test -Pintegration
+
+          # ⚠️⚠️ **只统计集成测试自己的报告**。
+          #   门禁那一步跑的是 `mvn clean test`，已经生成了 51 个纯单测报告、409 个用例。
+          #   如果这里数「所有报告的总用例数」，那么**即使集成测试一条都没跑**，
+          #   总数也 >= 409 ⇒ 断言被旧报告满足 ⇒ **假绿**。
+          #   （2026-11-07 自查发现：第一版写的就是 `总数 >= 2`，正好踩这个坑。）
+          REPORT=target/surefire-reports/com.factory.hub.ApplicationBootSmokeTest.txt
+          if [ ! -f "$REPORT" ]; then
+            echo "::error::集成测试报告不存在 —— 说明它没被收集或没跑（不能算通过）"
+            exit 1
+          fi
+          RUN=$(sed -n 's/.*Tests run: \([0-9]*\).*/\1/p' "$REPORT" | head -1)
+          echo "集成测试实际执行用例数：${RUN:-0}（期望 2）"
+          if [ "${RUN:-0}" -lt 2 ]; then
+            echo "::error::集成测试用例数 ${RUN:-0} < 2 —— 它没真的跑"
             exit 1
           fi
 
