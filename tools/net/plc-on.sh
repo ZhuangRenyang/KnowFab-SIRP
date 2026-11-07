@@ -32,21 +32,34 @@ usage() {
   -i IFACE        网卡名（默认 eth0）
   -s SEGMENT      网段别名，形如 192.168.10.100/24（可多次）
   -p PLC_IP       用于 ping 验证的 PLC 地址（可多次）
+  -r NET          静态路由的目标网段，形如 192.168.0.0/16（可多次，与 -g 一一对应）
+  -g GW           静态路由的下一跳网关 IP（可多次，与 -r 一一对应）
   -m METRIC       默认路由 metric，默认 9000（越大越不优先，保证 WiFi 优先）
   -h              本帮助
 默认会加 192.168.10.100/24 并验证 192.168.10.1
+
+⭐ 网段很多（几十上百个）时用 -r/-g，而不是 -s：
+  -s 是**给本机加一个该网段的地址**，一条网段一个地址 ⇒ 几十条就很难维护；
+  -r 是**加一条路由**，一条可以覆盖一整片网段（192.168.0.0/16 = 256 个 /24），
+    而且**设备表里的 IP 不用改**（仍然是设备的真实地址）。
+  ⇒ 前提：网关必须做**三层路由**（不是 NAT）。NAT 是一台设备一个映射，
+    上千台配不过来；路由是按网段转发。
 EOF
 }
 
 SEGMENTS=()
 PLC_IPS=()
+ROUTES=()
+GATEWAYS=()
 METRIC=9000
 
-while getopts "i:s:p:m:h" opt; do
+while getopts "i:s:p:r:g:m:h" opt; do
   case "$opt" in
     i) IFACE="$OPTARG" ;;
     s) SEGMENTS+=("$OPTARG") ;;
     p) PLC_IPS+=("$OPTARG") ;;
+    r) ROUTES+=("$OPTARG") ;;
+    g) GATEWAYS+=("$OPTARG") ;;
     m) METRIC="$OPTARG" ;;
     h) usage; exit 0 ;;
     *) usage; exit 1 ;;
@@ -57,8 +70,14 @@ done
 #   早先的写法是「默认段 + 用户传的 -s」**叠加** ⇒ 用户只想加 192.168.20.100/24，
 #   结果脚本**顺手把默认的 192.168.10.100/24 也加了** —— 多出一个没要求的地址。
 #   ⇒ 现在：传了 -s 就完全以 -s 为准，没传才用默认。
-if [ ${#SEGMENTS[@]} -eq 0 ]; then SEGMENTS=("192.168.10.100/24"); fi
+# ⚠️ 但 -r（静态路由）一旦传了，就**不再加默认别名** —— 两套机制别混着来，
+#   否则本机凭空多一个没人要的地址。
+if [ ${#SEGMENTS[@]} -eq 0 ] && [ ${#ROUTES[@]} -eq 0 ]; then SEGMENTS=("192.168.10.100/24"); fi
 if [ ${#PLC_IPS[@]} -eq 0 ]; then PLC_IPS=("192.168.10.1"); fi
+if [ ${#ROUTES[@]} -ne ${#GATEWAYS[@]} ]; then
+  echo "失败：-r（网段）与 -g（网关）必须成对，数量要一样（现在 ${#ROUTES[@]} vs ${#GATEWAYS[@]}）"
+  usage; exit 1
+fi
 
 [ "$(id -u)" -eq 0 ] || { echo "失败：需要 root（sudo）"; exit 1; }
 command -v ip >/dev/null 2>&1 || { echo "失败：找不到 ip 命令（iproute2）"; exit 1; }
@@ -72,7 +91,7 @@ ip -4 addr show dev "$IFACE" | sed 's/^/    /'
 say ""
 
 # ---- 1) 追加别名（不动主 IP、不带网关）----
-say "[1/3] 追加 PLC 网段别名（保留主 IP，不带网关）..."
+say "[1] 追加 PLC 网段别名（保留主 IP，不带网关）..."
 added=0
 for seg in "${SEGMENTS[@]}"; do
   if ! [[ "$seg" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/[0-9]{1,2}$ ]]; then
@@ -90,16 +109,58 @@ for seg in "${SEGMENTS[@]}"; do
 done
 [ "$added" -eq 0 ] && say "    没有需要新增的别名（已是最新）"
 
+# ---- 1b) 静态路由（网段很多时用这个）----
+# ⚠️ **别名 vs 路由，别混**：
+#   别名 = 给本机**加一个该网段的地址**，一条网段一个地址 ⇒ 几十条就难维护；
+#   路由 = **加一条转发规则**，一条可覆盖一整片（192.168.0.0/16 = 256 个 /24），
+#          而且**设备表里的 IP 不用改**（仍然是设备的真实地址）。
+# ⇒ 网段几十上百个 ⇒ 必须用路由，别用别名堆。
+if [ ${#ROUTES[@]} -gt 0 ]; then
+  say "[1b] 加静态路由（网段很多时用这个；设备表不用改 IP）..."
+  ridx=0
+  for net in "${ROUTES[@]}"; do
+    gw="${GATEWAYS[$ridx]}"
+    ridx=$((ridx + 1))
+    if ! [[ "$net" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/[0-9]{1,2}$ ]]; then
+      echo "失败：路由网段格式不对 '$net'（应形如 192.168.0.0/16）"; exit 1
+    fi
+    if ip -4 route show "$net" 2>/dev/null | grep -q "via $gw"; then
+      say "    $net via $gw 已存在，跳过"
+      continue
+    fi
+    # ⚠️ 网关不可达 ⇒ ip 会报 "Nexthop has invalid gateway"，
+    #   看起来像「路由写错了」，实际是「**网关本机够不着**」⇒ 翻译成人话。
+    if ! ip route get "$gw" >/dev/null 2>&1; then
+      echo "失败：网关 $gw 本机不可达 —— 这条路由加不上。"
+      echo "      下一跳必须先能到达：要么它在本机某个直连网段里，"
+      echo "      要么先用 -s 给本机加一条到它的直连地址。"
+      exit 1
+    fi
+    if ip -4 route add "$net" via "$gw" dev "$IFACE" 2>/dev/null; then
+      say "    已加 $net via $gw dev $IFACE"
+    else
+      echo "失败：加路由 $net via $gw 失败（网关 $gw 不可达？或已有冲突路由）"
+      exit 1
+    fi
+  done
+fi
+
 # ---- 2) 记录清单（plc-off 靠它精确回滚）----
-say "[2/3] 记录别名清单..."
+say "[2] 记录清单..."
 touch "$ALIAS_FILE"
 for seg in "${SEGMENTS[@]}"; do
   grep -qxF "$IFACE|$seg" "$ALIAS_FILE" || echo "$IFACE|$seg" >> "$ALIAS_FILE"
 done
+ridx=0
+for net in "${ROUTES[@]}"; do
+  gw="${GATEWAYS[$ridx]}"
+  ridx=$((ridx + 1))
+  grep -qxF "$IFACE|route|$net|$gw" "$ALIAS_FILE" || echo "$IFACE|route|$net|$gw" >> "$ALIAS_FILE"
+done
 say "    清单：$ALIAS_FILE（$(wc -l < "$ALIAS_FILE") 条）"
 
 # ---- 3) 默认路由 metric 调高（WiFi 优先）+ 验证 ----
-say "[3/3] 把 $IFACE 的默认路由 metric 调到 $METRIC（保证 WiFi 优先上网）..."
+say "[3] 把 $IFACE 的默认路由 metric 调到 $METRIC（保证 WiFi 优先上网）..."
 GW="$(ip route show dev "$IFACE" default 2>/dev/null | awk 'NR==1{print $3}')"
 if [ -n "$GW" ]; then
   ip route replace default via "$GW" dev "$IFACE" metric "$METRIC"
@@ -113,7 +174,7 @@ for ip_addr in "${PLC_IPS[@]}"; do
   if ping -c 2 -W 2 "$ip_addr" >/dev/null 2>&1; then
     say "    $ip_addr 可以 ping 通"
   else
-    say "    $ip_addr ping 不通 —— 检查：网线是否插在 PLC 上 / PLC 是否上电 / 本机有没有该网段的别名"
+    say "    $ip_addr ping 不通 —— 检查：网线是否插在 PLC 上 / PLC 是否上电 / 本机有没有该网段的地址或路由"
   fi
 done
 
@@ -124,7 +185,11 @@ say ""
 say "默认路由："
 ip route show default | sed 's/^/    /'
 say ""
+say "静态路由（PLC 网段）："
+ip route show dev "$IFACE" 2>/dev/null | grep -v "^default" | grep -v "proto dhcp" | sed 's/^/    /'
+say ""
 say "要点：**主 IP 没动过**，加设备/加网段时再跑一次本脚本即可（幂等）。"
+say "      网段很多时用 -r/-g 加路由（一条覆盖一片），别用 -s 堆别名。"
 say ""
 say "⚠️ Linux 上手工别名在重启网络服务后可能被清掉。要长期生效，请做成 oneshot 服务："
 cat <<EOF

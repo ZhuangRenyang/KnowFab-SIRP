@@ -53,19 +53,36 @@ if ($entries.Count -eq 0) {
 }
 
 # ---- 2) 删别名（只删清单里记的，不误删你手配的 IP）----
-Say '[2/3] 删除别名...' 'Cyan'
+Say '[2/3] 删除别名与静态路由...' 'Cyan'
 $removed = 0
 foreach ($e in $entries) {
   $parts = $e -split '\|'
   if ($parts.Count -lt 2) { continue }
   $nicName = $parts[0]
-  $seg = $parts[1]
-  $sp = $seg -split '/'
-  $addr = $sp[0]
+  $rest = $parts[1]
   if ($nicName -ne $name) {
-    Say ("      {0} 不属于本网卡，跳过" -f $seg) 'DarkGray'
+    Say ("      {0} 不属于本网卡，跳过" -f $rest) 'DarkGray'
     continue
   }
+  if ($parts.Count -ge 4 -and $parts[1] -eq 'route') {
+    # 静态路由（清单里记成 nic|route|网段|网关）
+    $net = $parts[2]
+    $gw  = $parts[3]
+    $rt = Get-NetRoute -DestinationPrefix $net -InterfaceAlias $name -ErrorAction SilentlyContinue |
+          Where-Object { $_.NextHop -eq $gw }
+    if (-not $rt) {
+      Say ("      路由 {0} via {1} 本来就不在，无需删" -f $net, $gw) 'DarkGray'
+      continue
+    }
+    Remove-NetRoute -DestinationPrefix $net -NextHop $gw -InterfaceAlias $name -Confirm:$false -ErrorAction SilentlyContinue
+    $removed++
+    Say ("      已删除路由 {0} via {1}" -f $net, $gw) 'Green'
+    continue
+  }
+  # IP 别名
+  $seg = $rest
+  $sp = $seg -split '/'
+  $addr = $sp[0]
   $exists = Get-NetIPAddress -InterfaceAlias $name -AddressFamily IPv4 -ErrorAction SilentlyContinue |
             Where-Object { $_.IPAddress -eq $addr }
   if (-not $exists) {
@@ -76,7 +93,7 @@ foreach ($e in $entries) {
   $removed++
   Say ("      已删除 {0}" -f $addr) 'Green'
 }
-Say ("      共删除 {0} 个别名" -f $removed) 'Green'
+Say ("      共删除 {0} 项（别名 + 路由）" -f $removed) 'Green'
 
 # 清掉清单里属于本网卡、且已删掉的记录
 $keep = @()

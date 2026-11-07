@@ -45,28 +45,46 @@ else
 fi
 
 # ---- 2) 删别名 ----
-say "[2/2] 删除别名（只删清单里记的，不误删你手配的 IP）..."
+say "[2/2] 删除别名与静态路由（只删清单里记的，不误删你手配的 IP / 自己加的路由）..."
 removed=0
 kept=()
 for e in "${ENTRIES[@]:-}"; do
   [ -z "$e" ] && continue
   nic="${e%%|*}"
-  seg="${e#*|}"
+  rest="${e#*|}"
   if [ "$nic" != "$IFACE" ]; then
     kept+=("$e")
-    say "    $seg 不属于本网卡，跳过"
+    say "    $rest 不属于本网卡，跳过"
     continue
   fi
-  addr="${seg%%/*}"
-  if ip -4 addr show dev "$IFACE" | grep -qE "inet ${addr}/"; then
-    ip addr del "$seg" dev "$IFACE"
-    removed=$((removed + 1))
-    say "    已删除 $addr"
-  else
-    say "    $addr 本来就不在，无需删"
-  fi
+  case "$rest" in
+    route\|*)
+      # 静态路由（清单里记成 nic|route|网段|网关）
+      net="$(printf '%s' "$rest" | cut -d'|' -f2)"
+      gw="$(printf '%s' "$rest" | cut -d'|' -f3)"
+      if ip -4 route show "$net" 2>/dev/null | grep -q "via $gw"; then
+        ip -4 route del "$net" via "$gw" dev "$IFACE" 2>/dev/null
+        removed=$((removed + 1))
+        say "    已删除路由 $net via $gw"
+      else
+        say "    路由 $net via $gw 本来就不在，无需删"
+      fi
+      ;;
+    *)
+      # IP 别名
+      seg="$rest"
+      addr="${seg%%/*}"
+      if ip -4 addr show dev "$IFACE" | grep -qE "inet ${addr}/"; then
+        ip addr del "$seg" dev "$IFACE"
+        removed=$((removed + 1))
+        say "    已删除 $addr"
+      else
+        say "    $addr 本来就不在，无需删"
+      fi
+      ;;
+  esac
 done
-say "    共删除 $removed 个别名"
+say "    共删除 $removed 项（别名 + 路由）"
 
 # 更新清单（去掉本网卡的记录）
 if [ -f "$ALIAS_FILE" ]; then

@@ -127,8 +127,11 @@ if ($localIfaces.Count -eq 0) {
         W ("  目标 {0,-16} -> 本机有该网段的地址（{1}）=> 路由可达" -f $t, $hit.Net) 'Green'
       } else {
         W ("  目标 {0,-16} -> **本机没有该网段的地址** => 直连不通" -f $t) 'Yellow'
-        W ("      处理：跑 plc-on.bat 追加该网段的别名（可一次配多个网段）") 'Yellow'
-        W ("      例：plc-on.bat 会加 {0}/24；换网段就再跑一次，不用改本机主 IP" -f ($t -replace '\.\d+$', '.100')) 'Yellow'
+        W ("      稳妥做法 A（网段少）：给本机加该网段的别名") 'Yellow'
+        W ("        plc-on.bat -s {0}/24" -f ($t -replace '\.\d+$', '.100')) 'Yellow'
+        W ("      稳妥做法 B（网段几十上百个）：加静态路由（一条覆盖一片，设备表也不用改 IP）") 'Yellow'
+        W ("        plc-on.bat -r 192.168.0.0/16 -g <网关IP>") 'Yellow'
+        W ("        前提：网关做的是三层路由（不是 NAT —— NAT 是一台设备一个映射，上千台配不过来）") 'Yellow'
       }
     }
   } else {

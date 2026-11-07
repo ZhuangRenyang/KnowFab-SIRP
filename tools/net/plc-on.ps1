@@ -37,6 +37,10 @@ param(
   [string[]]$ExtraSegments = @(),
   # 额外的 PLC IP（用于验证，形如 192.168.20.1）
   [string[]]$ExtraPlcIps   = @(),
+  # 静态路由的目标网段（可多个，形如 192.168.0.0/16）—— 网段很多时用这个
+  [string[]]$Routes        = @(),
+  # 静态路由的下一跳网关（与 -Routes 一一对应）
+  [string[]]$Gateways      = @(),
   [int]   $Metric = 9000,
   # 别名清单文件（plc-off 靠它精确回滚）
   [string]$AliasFile = (Join-Path $PSScriptRoot '.plc-aliases')
@@ -89,7 +93,7 @@ $segments = @()
 #   早先的写法是「默认段 + 用户传的 -ExtraSegments」**叠加** ⇒ 用户只想加 192.168.20.100/24，
 #   结果脚本**顺手把默认的 192.168.10.100/24 也加了** —— 多出一个没要求的地址。
 #   ⇒ 现在：传了就以传的为准，没传才用默认。
-if ($PSBoundParameters.ContainsKey('Ip') -or (Expand-List $ExtraSegments).Count -eq 0) {
+if ($routeNets.Count -eq 0 -and ($PSBoundParameters.ContainsKey('Ip') -or (Expand-List $ExtraSegments).Count -eq 0)) {
   $segments += ("{0}/{1}" -f $Ip, $Prefix)
 }
 $segments += Expand-List $ExtraSegments
@@ -106,8 +110,19 @@ if ($PSBoundParameters.ContainsKey('PlcIp') -or (Expand-List $ExtraPlcIps).Count
 $plcIps += Expand-List $ExtraPlcIps
 $plcIps = $plcIps | Where-Object { $_ } | Select-Object -Unique
 
+# ⭐ 静态路由：网段很多（几十上百个）时用这个，而不是堆别名。
+#   别名 = 给本机加一个该网段的地址，一条网段一个 ⇒ 几十条就难维护；
+#   路由 = 加一条转发规则，一条可覆盖一整片（192.168.0.0/16 = 256 个 /24），
+#          而且**设备表里的 IP 不用改**（仍然是设备的真实地址）。
+#   前提：网关必须做**三层路由**（不是 NAT）—— NAT 是一台设备一个映射，上千台配不过来。
+$routeNets = Expand-List $Routes
+$routeGws  = Expand-List $Gateways
+if ($routeNets.Count -ne $routeGws.Count) {
+  Die ("-Routes（网段）与 -Gateways（网关）必须成对，数量要一样（现在 {0} vs {1}）" -f $routeNets.Count, $routeGws.Count)
+}
+
 # ---- 1) 追加别名（不动现有地址、不关 DHCP）----
-Say '[1/4] 追加 PLC 网段别名（保留主 IP 与 DHCP）...' 'Cyan'
+Say '[1] 追加 PLC 网段别名（保留主 IP 与 DHCP）...' 'Cyan'
 $existing = @(Get-NetIPAddress -InterfaceAlias $name -AddressFamily IPv4 -ErrorAction SilentlyContinue |
               Select-Object -ExpandProperty IPAddress)
 $added = @()
@@ -127,8 +142,38 @@ foreach ($seg in $segments) {
 }
 if ($added.Count -eq 0) { Say '      没有需要新增的别名（已是最新）' 'DarkGray' }
 
+# ---- 1b) 静态路由（网段很多时用这个）----
+if ($routeNets.Count -gt 0) {
+  Say '[1b] 加静态路由（网段很多时用这个；设备表不用改 IP）...' 'Cyan'
+  for ($i = 0; $i -lt $routeNets.Count; $i++) {
+    $net = $routeNets[$i]
+    $gw  = $routeGws[$i]
+    if ($net -notmatch '^\d+\.\d+\.\d+\.\d+/\d{1,2}$') {
+      Die "路由网段格式不对：'$net'（应形如 192.168.0.0/16）"
+    }
+    $exists = Get-NetRoute -DestinationPrefix $net -InterfaceAlias $name -ErrorAction SilentlyContinue |
+              Where-Object { $_.NextHop -eq $gw }
+    if ($exists) {
+      Say ("      {0} via {1} 已存在，跳过" -f $net, $gw) 'DarkGray'
+      continue
+    }
+    # ⚠️ 网关不可达 ⇒ Windows 也会拒绝添加，错误长得像「路由写错了」，
+    #   实际是「**网关本机够不着**」⇒ 这里先检查并翻译成人话。
+    $gwRoute = Find-NetRoute -RemoteIPAddress $gw -ErrorAction SilentlyContinue
+    if (-not $gwRoute) {
+      Die ("网关 {0} 本机不可达 —— 这条路由加不上。`n      下一跳必须先能到达：要么它在本机某个直连网段里，要么先用 -ExtraSegments 给本机加一条到它的直连地址。" -f $gw)
+    }
+    try {
+      New-NetRoute -DestinationPrefix $net -NextHop $gw -InterfaceAlias $name -RouteMetric 1 -ErrorAction Stop | Out-Null
+      Say ("      已加 {0} via {1} dev {2}" -f $net, $gw, $name) 'Green'
+    } catch {
+      Die ("加路由 {0} via {1} 失败：{2}" -f $net, $gw, $_.Exception.Message)
+    }
+  }
+}
+
 # ---- 2) 记录别名清单（plc-off 靠它精确回滚）----
-Say '[2/4] 记录别名清单...' 'Cyan'
+Say '[2] 记录别名清单...' 'Cyan'
 $existingLines = @()
 if (Test-Path $AliasFile) {
   $existingLines = @(Get-Content $AliasFile -ErrorAction SilentlyContinue | Where-Object { $_.Trim() })
@@ -139,11 +184,15 @@ foreach ($seg in $segments) {
   $entry = "$name|$seg"
   if (-not $existingLines.Contains($entry)) { [void]$lines.Add($entry) }
 }
+for ($i = 0; $i -lt $routeNets.Count; $i++) {
+  $entry = "$name|route|$($routeNets[$i])|$($routeGws[$i])"
+  if (-not $existingLines.Contains($entry)) { [void]$lines.Add($entry) }
+}
 Set-Content -Path $AliasFile -Value $lines -Encoding UTF8
 Say ("      清单：{0}（{1} 条）" -f $AliasFile, $lines.Count) 'Green'
 
 # ---- 3) 跃点 + 关共享绑定 ----
-Say '[3/4] 跃点设为 9000（WiFi 优先上网）+ 关闭共享相关绑定...' 'Cyan'
+Say '[3] 跃点设为 9000（WiFi 优先上网）+ 关闭共享相关绑定...' 'Cyan'
 Set-NetIPInterface -InterfaceAlias $name -AddressFamily IPv4 -InterfaceMetric $Metric
 Say ("      跃点 = {0}" -f $Metric) 'Green'
 foreach ($cid in @('ms_server', 'ms_msclient')) {
@@ -157,7 +206,7 @@ foreach ($cid in @('ms_server', 'ms_msclient')) {
 }
 
 # ---- 4) 验证 ----
-Say '[4/4] 验证各 PLC 是否可达...' 'Cyan'
+Say '[4] 验证各 PLC 是否可达...' 'Cyan'
 Start-Sleep -Seconds 2
 foreach ($ip in $plcIps) {
   $ok = Test-Connection -ComputerName $ip -Count 2 -Quiet -ErrorAction SilentlyContinue
