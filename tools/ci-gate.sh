@@ -60,6 +60,7 @@ fi
 SKIP_BE=0
 SKIP_FE=0
 ONLY_OPCUA=0
+ONLY_PKG=0
 LIST_ONLY=0
 
 for a in "$@"; do
@@ -67,9 +68,10 @@ for a in "$@"; do
     --skip-be) SKIP_BE=1 ;;
     --skip-fe) SKIP_FE=1 ;;
     --only-opcua) ONLY_OPCUA=1 ;;
+    --only-pkg) ONLY_PKG=1 ;;
     --list-checks) LIST_ONLY=1 ;;
     -h|--help) sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-    *) echo "未知参数：$a（--skip-be / --skip-fe / --only-opcua / --list-checks / -h）" >&2; exit 2 ;;
+    *) echo "未知参数：$a（--skip-be / --skip-fe / --only-opcua / --only-pkg / --list-checks / -h）" >&2; exit 2 ;;
   esac
 done
 
@@ -90,7 +92,11 @@ if [ "$LIST_ONLY" -eq 0 ]; then
       exit 2
     fi
   done
+  # ⚠️ `--only-pkg` **不需要 Maven**：那两项是纯静态检查（node + 读文件），
+  #   跑它时 maven 一次都用不上 ⇒ 不该被「缺 Maven」挡住
+  #   （否则开发机上没配 mvn 时，连这条最便宜的护栏都跑不了）。
   if { [ "$SKIP_BE" -eq 0 ] || [ "$ONLY_OPCUA" -eq 1 ]; } \
+     && [ "$ONLY_PKG" -eq 0 ] \
      && ! command -v "$MVN" >/dev/null 2>&1 && [ ! -f "$MVN" ] && [ ! -x "$MVN" ]; then
     echo "缺少 Maven（$MVN）—— 用 MVN=/path/to/mvn 指定（Windows 上可用 mvn.cmd 的绝对路径）" >&2
     exit 2
@@ -210,6 +216,65 @@ if [ "$ONLY_OPCUA" -eq 1 ]; then
   fi
   exit 0
 fi
+
+# ---------- 包结构护栏（防「拆完又长回去」）----------
+# ⚠️ 刻意放在后端块**外面**（与上面两项同一个理由）：纯静态检查，不编译、不需要数据库
+#   ⇒ 自检用 --skip-be 跑时它仍执行 ⇒ 否则「门禁还活着」没人能证明。
+#
+# 拦什么：① `erp` 域的包结构重新膨胀 ② 拆分过程中漏改 import / 残留旧全限定名
+#   背景：2026-11-07 拆包前 `com.factory.hub.erp` 有 68 个文件零子包（占后端 27.5%），
+#   且 `quality` 包 38 个文件**全部是 Erp\* 命名**（它本质是 erp 域的质量子域）
+#   ⇒ erp 域真实规模 106 main + 26 test = 132 个文件，溢出在两个包里。
+#   ⇒ 拆完后如果不加护栏，**3 个月后它会长回去** ⇒ 「拆了等于没拆」。
+#
+# ⚠️ 两项都做过**双向验证**（正向绿 / 反向红）：
+#   check-package-size：给 erp 加 3 个假文件 ⇒ 立刻红「直属 71 > 基线 68」
+#   verify-package-split：注入悬空 import + 把类移到子包 ⇒ 立刻红（且给出正确新名）
+#   ⇒ 证明它们**不是装饰性的**。
+#
+# ⚠️ **为什么要抽成函数**（与 run_opcua_check 同一个理由，运维 2026-11-07）：
+#   主干与 `--only-pkg` 旁路**必须调同一处** ⇒ 否则两处逻辑会漂：
+#   旁路有、主干没有 ⇒ 自检里出现一条绿色的「✓ 摘除检测」，
+#   但它红的是旁路，跟主干被删毫无关系 ⇒ **证明不了它想证明那件事的变异是误导**。
+run_pkg_guard() {
+  if command -v node >/dev/null 2>&1; then
+    mkdir -p "$ROOT/target-logs"
+    check "包结构护栏" "target-logs/_ci-package-size.log" \
+      node tools/check-package-size.mjs
+    check "拆包完整性核对" "target-logs/_ci-package-split.log" \
+      node tools/verify-package-split.mjs
+  else
+    line "—" "包结构护栏" "跳过（没有 node）"
+  fi
+}
+
+# ---------- 只跑「包结构护栏」这一步 ----------
+# 为什么要有这个模式（与 --only-opcua 同一个理由）：
+#   ① **自检需要它**。自检要验「删掉挂载点 / 删掉脚本文件 / 加假文件 ⇒ 门禁会红」，
+#      每次都跑完整静态段要 ~28 秒（其中「校验器变异验证」一项就占 22 秒）
+#      ⇒ 4 条新变异就是 2 分钟 ⇒ **一个跑得慢的自检会被人跳过**。
+#      有了 --only-pkg，每条新变异 ~1 秒。
+#   ② **判据要精确**：只跑这两项 ⇒ 门禁红时唯一可能红的就是它 ⇒
+#      不必再用 grep 去分辨「红的是哪一项」。
+#   ⚠️ 它**不需要** maven、不需要数据库 ⇒ 比 --only-opcua 还便宜。
+if [ "$ONLY_PKG" -eq 1 ]; then
+  say "包结构护栏"
+  run_pkg_guard
+  say "汇总"
+  echo "  通过 $OK / 失败 $FAIL / 总耗时 $((SECONDS - START)) 秒"
+  if [ "$FAIL" -gt 0 ]; then
+    echo
+    echo "  ⇒ 门禁不可信，必须先修" >&2
+    exit 1
+  fi
+  exit 0
+fi
+
+# ⚠️ 主干**不在这里**调用 run_pkg_guard ——
+#   它的调用点在**后端块外面**的「包结构护栏」那段（见下方），
+#   与「报警码字典」「端口字面量」「压测报告数字核对」同区。
+#   （之前这里也调了一次 ⇒ 两项检查跑了两遍 ⇒ --list-checks 清单里出现重复项
+#     ⇒ 「清单与执行同源」被破坏。已修正。）
 
 # ================= 后端 =================
 if [ "$SKIP_BE" -eq 0 ]; then
@@ -360,15 +425,7 @@ fi
 #   verify-package-split：注入悬空 import + 把类移到子包 ⇒ 立刻红（且给出正确新名）
 #   ⇒ 证明它们**不是装饰性的**。
 say "包结构护栏"
-if command -v node >/dev/null 2>&1; then
-  mkdir -p "$ROOT/target-logs"
-  check "包结构护栏" "target-logs/_ci-package-size.log" \
-    node tools/check-package-size.mjs
-  check "拆包完整性核对" "target-logs/_ci-package-split.log" \
-    node tools/verify-package-split.mjs
-else
-  line "—" "包结构护栏" "跳过（没有 node）"
-fi
+run_pkg_guard
 
 # ================= 前端 =================
 if [ "$SKIP_FE" -eq 0 ]; then

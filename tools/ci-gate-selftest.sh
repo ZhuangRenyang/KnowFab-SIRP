@@ -627,6 +627,301 @@ PY
   fi
 fi
 
+# ======================================================================
+# 拆包护栏：新增的两项检查也必须有「删了会响」的证据（2026-11-07，运维）
+#
+# 为什么这组必须有：
+#   「包结构护栏」「拆包完整性核对」是新加的两项，而自检的常态断言
+#   **只查了「OPC UA 生产类路径」和「端口字面量检查」两个名字**
+#   ⇒ 把整个「包结构护栏」块删掉，自检照样全绿 ⇒ 又是运维专家那个盲区。
+#   ⇒ 这组补的就是：**新检查项也要有鉴别力证据**，否则它们只是装饰。
+#
+# ⚠️ 判据一律要精确：红的必须是**指定的那一项**，不能是「门禁红了就算」
+#   （变异 6 的教训：名字比范围大，就是误导）。
+#   ⇒ 全部用 `--only-pkg`（只跑这两项，~1 秒）⇒ 门禁红时唯一可能红的就是它。
+# ======================================================================
+
+# ---------- 清单断言的小工具 ----------
+#   为什么不复用 expect_check_list：它把名字写死成 OPC UA / 端口字面量，
+#   而这里要断言的是**具体某一项**在不在。
+expect_list_has() {
+  local want="$1"; shift
+  local note="$1"; shift
+  local out
+  out="$( cd "$WORK" && bash tools/ci-gate.sh --list-checks 2>&1 )"
+  if echo "$out" | grep -qF "$want"; then
+    line "✓" "检查项清单" "含「$want」：$note"
+    PASS=$((PASS + 1)); return 0
+  fi
+  line "✗" "检查项清单" "清单里缺少「$want」—— $note"
+  FAIL=$((FAIL + 1)); return 1
+}
+
+expect_list_lacks() {
+  local want="$1"; shift
+  local note="$1"; shift
+  local out
+  out="$( cd "$WORK" && bash tools/ci-gate.sh --list-checks 2>&1 )"
+  if echo "$out" | grep -qF "$want"; then
+    line "✗" "检查项清单" "清单里仍有「$want」—— 常态断言没有鉴别力：$note"
+    FAIL=$((FAIL + 1)); return 1
+  fi
+  line "✓" "检查项清单" "按预期：清单里已没有「$want」：$note"
+  PASS=$((PASS + 1)); return 0
+}
+
+# ---------- 常态断言（补）：新加的两项必须在清单里 ----------
+say "常态断言：新加的两项护栏必须在检查项清单里"
+expect_list_has "包结构护栏" "新增的包结构护栏必须登记进 --list-checks"
+expect_list_has "拆包完整性核对" "新增的拆包完整性核对必须登记进 --list-checks"
+
+# ---------- 变异 9：删掉 ci-gate.sh 主干上的「包结构护栏」挂载点 ----------
+# 验的是「它真挂在主干上」，**不是**「脚本文件不在时会不会红」（那是变异 10/11）。
+# 判据用「清单里还有没有这一项」：检查块被删了 ⇒ 它根本不会跑 ⇒ 谈不上红不红。
+say "变异 9：删掉 ci-gate.sh 主干上的「包结构护栏」挂载点（验它真挂在主干上）"
+GATE2="$WORK/tools/ci-gate.sh"
+if [ ! -f "$GATE2" ]; then
+  line "✗" "包结构护栏挂载点变异" "副本里找不到 tools/ci-gate.sh，变异无法进行"
+  FAIL=$((FAIL + 1))
+else
+  cp "$GATE2" "$GATE2.bak2"
+  python - "$GATE2" <<'PY'
+import io, re, sys
+p = sys.argv[1]
+s = io.open(p, encoding='utf-8', newline='').read()
+# 只删**主干上那一个调用点**。
+#
+# ⚠️ 为什么用「行首无缩进」来定位（而不是「say 后面一路吃到 fi」）：
+#   `say "包结构护栏"` 在主干是**顶格**的，而 --only-pkg 旁路里是**缩进两格**的
+#   ⇒ `^say "包结构护栏"` 只匹配主干那一个。
+#   （第一版写的是 `^say ... .*?^fi` ⇒ 非贪婪吃到了**前端段**的第一个 ^fi
+#     ⇒ 把整个前端块一起删了、脚本被改残 ⇒ 变异本身成了破坏。
+#     ⇒ **变异注入必须精确到「删哪一块」，不能「顺手删到下一个 fi」。**）
+pat = re.compile(r'^say "包结构护栏"\nrun_pkg_guard\n', re.M)
+s2, n = pat.subn('', s)
+if n != 1:
+    print('  注入失败：匹配到 %d 处（应为 1 处）' % n)
+    sys.exit(1)
+# 断言注入真的生效（不信脚本自己说成功）：顶格的调用点不该在了
+if re.search(r'^say "包结构护栏"\nrun_pkg_guard\n', s2, re.M):
+    print('  注入没生效（顶格调用点还在）')
+    sys.exit(1)
+# 旁路（缩进两格）必须**完好** —— 删旁路等于测错了对象
+if '  run_pkg_guard' not in s2:
+    print('  注入把 --only-pkg 旁路也删了 ⇒ 测错了对象')
+    sys.exit(1)
+io.open(p, 'w', encoding='utf-8', newline='').write(s2)
+print('  已删掉主干上那一个调用点（--only-pkg 旁路完好）')
+PY
+  if [ $? -ne 0 ]; then
+    line "✗" "包结构护栏挂载点变异" "注入失败"
+    FAIL=$((FAIL + 1))
+  else
+    expect_list_lacks "包结构护栏" "挂载点被删 ⇒ 清单里必须不再有「包结构护栏」"
+    expect_list_lacks "拆包完整性核对" "挂载点被删 ⇒ 清单里必须不再有「拆包完整性核对」"
+  fi
+  # 还原
+  mv "$GATE2.bak2" "$GATE2"
+  if grep -q 'check "包结构护栏"' "$GATE2"; then
+    expect_list_has "包结构护栏" "还原后清单必须恢复"
+  else
+    line "✗" "包结构护栏挂载点还原" "还原失败"
+    FAIL=$((FAIL + 1))
+  fi
+fi
+
+# ---------- 变异 10：check-package-size.mjs 不在 ⇒ 「包结构护栏」必须红 ----------
+say "变异 10：check-package-size.mjs 不在 ⇒ 包结构护栏必须红"
+PS="$WORK/tools/check-package-size.mjs"
+if [ ! -f "$PS" ]; then
+  line "✗" "包结构护栏摘除变异" "副本里找不到 tools/check-package-size.mjs，变异无法进行"
+  FAIL=$((FAIL + 1))
+else
+  cp "$PS" "$PS.bak"
+  rm -f "$PS"
+  if ( cd "$WORK" && bash tools/ci-gate.sh --only-pkg ) >/tmp/_cgs.log 2>&1; then
+    line "✗" "包结构护栏摘除 → 必须红" "门禁没有变红 —— 这道检查已经不在门禁链路上了（假绿）"
+    FAIL=$((FAIL + 1))
+  else
+    if grep -aq "包结构护栏" /tmp/_cgs.log; then
+      line "✓" "包结构护栏摘除 → 必须红" "变红了，且红的正是「包结构护栏」这一项"
+      PASS=$((PASS + 1))
+      grep -aE "包结构护栏|拆包完整性核对" /tmp/_cgs.log | head -4 | sed 's/^/       /'
+    else
+      line "✗" "包结构护栏摘除 → 必须红" "红了，但红的不是「包结构护栏」这一项 —— 判据不精确"
+      grep -aE "✓|✗|失败" /tmp/_cgs.log | head -8 | sed 's/^/       /'
+      FAIL=$((FAIL + 1))
+    fi
+  fi
+  mv "$PS.bak" "$PS"
+  if [ ! -f "$PS" ]; then
+    line "✗" "包结构护栏还原" "还原失败（文件没了）"
+    FAIL=$((FAIL + 1))
+  fi
+fi
+
+# ---------- 变异 11：verify-package-split.mjs 不在 ⇒ 「拆包完整性核对」必须红 ----------
+say "变异 11：verify-package-split.mjs 不在 ⇒ 拆包完整性核对必须红"
+VPS="$WORK/tools/verify-package-split.mjs"
+if [ ! -f "$VPS" ]; then
+  line "✗" "拆包完整性摘除变异" "副本里找不到 tools/verify-package-split.mjs，变异无法进行"
+  FAIL=$((FAIL + 1))
+else
+  cp "$VPS" "$VPS.bak"
+  rm -f "$VPS"
+  if ( cd "$WORK" && bash tools/ci-gate.sh --only-pkg ) >/tmp/_cgs.log 2>&1; then
+    line "✗" "拆包完整性摘除 → 必须红" "门禁没有变红 —— 这道检查已经不在门禁链路上了（假绿）"
+    FAIL=$((FAIL + 1))
+  else
+    if grep -aq "拆包完整性核对" /tmp/_cgs.log; then
+      line "✓" "拆包完整性摘除 → 必须红" "变红了，且红的正是「拆包完整性核对」这一项"
+      PASS=$((PASS + 1))
+      grep -aE "拆包完整性核对|包结构护栏" /tmp/_cgs.log | head -4 | sed 's/^/       /'
+    else
+      line "✗" "拆包完整性摘除 → 必须红" "红了，但红的不是「拆包完整性核对」这一项 —— 判据不精确"
+      grep -aE "✓|✗|失败" /tmp/_cgs.log | head -8 | sed 's/^/       /'
+      FAIL=$((FAIL + 1))
+    fi
+  fi
+  mv "$VPS.bak" "$VPS"
+  if [ ! -f "$VPS" ]; then
+    line "✗" "拆包完整性还原" "还原失败（文件没了）"
+    FAIL=$((FAIL + 1))
+  fi
+fi
+
+# ---------- 变异 12：给 erp 加 3 个假文件 ⇒ 「包结构护栏」必须红 ----------
+# 验的是「它真的拦得住文件堆回一个包里」（脚本头注释里承诺的那件事）。
+say "变异 12：给 erp 加 3 个假文件 ⇒ 包结构护栏必须红"
+FAKE_DIR="$WORK/src/main/java/com/factory/hub/erp"
+if [ ! -d "$FAKE_DIR" ]; then
+  line "✗" "erp 造假文件变异" "副本里找不到 erp 目录，变异无法进行"
+  FAIL=$((FAIL + 1))
+else
+  for i in 1 2 3; do
+    printf 'package com.factory.hub.erp;\npublic class FakeProbe%s {}\n' "$i" > "$FAKE_DIR/FakeProbe$i.java"
+  done
+  if ( cd "$WORK" && bash tools/ci-gate.sh --only-pkg ) >/tmp/_cgs.log 2>&1; then
+    line "✗" "erp 造假文件 → 必须红" "门禁没有变红 —— 包结构护栏没有鉴别力（装饰性的）"
+    FAIL=$((FAIL + 1))
+  else
+    if grep -aq "包结构护栏" /tmp/_cgs.log; then
+      line "✓" "erp 造假文件 → 必须红" "变红了，且红的正是「包结构护栏」这一项"
+      PASS=$((PASS + 1))
+      grep -aE "直属文件数|包结构护栏" /tmp/_cgs.log | head -4 | sed 's/^/       /'
+    else
+      line "✗" "erp 造假文件 → 必须红" "红了，但红的不是「包结构护栏」这一项 —— 判据不精确"
+      grep -aE "✓|✗|失败" /tmp/_cgs.log | head -8 | sed 's/^/       /'
+      FAIL=$((FAIL + 1))
+    fi
+  fi
+  rm -f "$FAKE_DIR"/FakeProbe*.java
+fi
+
+# ---------- 变异 13：把 erp 域的一个文件挪出域外 ⇒ 「拆包完整性核对」必须红 ----------
+# 验的是「守恒检查真的在数文件」（不是只查 import 悬空）。
+say "变异 13：把 erp 域的一个文件挪出域外 ⇒ 守恒检查必须红"
+MOVE_SRC="$WORK/src/main/java/com/factory/hub/erp/ErpWorkOrder.java"
+MOVE_DST_DIR="$WORK/src/main/java/com/factory/hub/zzprobe"
+if [ ! -f "$MOVE_SRC" ]; then
+  line "✗" "守恒变异" "副本里找不到 ErpWorkOrder.java，变异无法进行"
+  FAIL=$((FAIL + 1))
+else
+  mkdir -p "$MOVE_DST_DIR"
+  mv "$MOVE_SRC" "$MOVE_DST_DIR/ErpWorkOrder.java"
+  if ( cd "$WORK" && bash tools/ci-gate.sh --only-pkg ) >/tmp/_cgs.log 2>&1; then
+    line "✗" "守恒变异 → 必须红" "门禁没有变红 —— 守恒检查没有鉴别力（装饰性的）"
+    FAIL=$((FAIL + 1))
+  else
+    if grep -aq "拆包完整性核对" /tmp/_cgs.log; then
+      line "✓" "守恒变异 → 必须红" "变红了，且红的正是「拆包完整性核对」这一项"
+      PASS=$((PASS + 1))
+      grep -aE "守恒|拆包完整性核对" /tmp/_cgs.log | head -4 | sed 's/^/       /'
+    else
+      line "✗" "守恒变异 → 必须红" "红了，但红的不是「拆包完整性核对」这一项 —— 判据不精确"
+      grep -aE "✓|✗|失败" /tmp/_cgs.log | head -8 | sed 's/^/       /'
+      FAIL=$((FAIL + 1))
+    fi
+  fi
+  mv "$MOVE_DST_DIR/ErpWorkOrder.java" "$MOVE_SRC"
+  rmdir "$MOVE_DST_DIR" 2>/dev/null || true
+fi
+
+# ---------- 静态断言 1：拆包验收脚本的期望总数默认值不得为 null ----------
+# 为什么这条**只能静态抓**：把默认值改回 null ⇒ 不传参数时守恒检查静默跳过，
+#   但脚本**照样打印「✓」** ⇒ 门禁照样绿 ⇒ **运行时没有任何现象能暴露它**。
+say "静态断言 1：拆包验收脚本的期望总数默认值不得为 null"
+SPLIT_MJS="$WORK/tools/verify-package-split.mjs"
+if [ ! -f "$SPLIT_MJS" ]; then
+  line "✗" "静态断言" "副本里找不到 tools/verify-package-split.mjs"
+  FAIL=$((FAIL + 1))
+elif grep -E 'EXPECT_TOTAL[[:space:]]*=' "$SPLIT_MJS" | grep -vE '^[[:space:]]*//' | grep -qE ':[[:space:]]*null'; then
+  line "✗" "静态断言" "期望总数默认值仍是 null ⇒ 不传参数时守恒检查会静默跳过（永远绿的护栏）"
+  FAIL=$((FAIL + 1))
+else
+  line "✓" "静态断言" "期望总数默认值不是 null"
+  PASS=$((PASS + 1))
+fi
+
+# ---------- 静态断言 2：端口字面量白名单的每条 file 路径必须仍然存在 ----------
+# 为什么需要（架构师 2026-11-07 提出，运维认可）：
+#   白名单是**按相对路径索引**的 ⇒ 有人把 driver/modbus/ModbusTcpDriver.java
+#   挪个目录 ⇒ 那条豁免**静默失效** ⇒ 该文件里的 502 不再被豁免 ⇒ 门禁红，
+#   而红的原因**不指向真正的问题**（看起来像「代码里多了个硬编码端口」）。
+#   ⇒ 这条断言把「白名单路径失效」变成一条**指名道姓**的报错。
+# ⚠️ 本条**不改**白名单逻辑，只加断言 ⇒ 风险极低。
+say "静态断言 2：端口字面量白名单的每条 file 路径必须仍然存在"
+if ! python - "$WORK" <<'PY'
+import io, os, re, sys
+root = sys.argv[1]
+src = os.path.join(root, 'src', 'main', 'java')
+p = os.path.join(root, 'scripts', 'check-protocol-port-literals.mjs')
+if not os.path.exists(p):
+    print('  找不到 scripts/check-protocol-port-literals.mjs')
+    sys.exit(2)
+s = io.open(p, encoding='utf-8', newline='').read()
+paths = re.findall(r"file:\s*'([^']+)'", s)
+# ⚠️⚠️ **0 条必须报错，不能当通过**（2026-11-07 运维实测差点栽在这）：
+#   「一条解析不到任何东西的断言」= 空转 = **永远绿**。
+#   ⇒ 万一有人改了白名单的写法（换引号、换字段名、抽成常量），
+#     这条断言会「0 条路径全部存在」⇒ 绿 ⇒ 但它**什么都没检查**。
+#   ⇒ 解析不到东西 = 断言失效 = 必须红。
+if not paths:
+    print('  白名单里一条 file 都没解析到 ⇒ 断言空转（写法可能变了）')
+    sys.exit(1)
+missing = [x for x in paths if not os.path.exists(os.path.join(src, x))]
+if missing:
+    print('  白名单路径失效（文件已被移动）：')
+    for m in missing:
+        print('    - %s' % m)
+    sys.exit(1)
+print('  %d 条白名单路径全部存在' % len(paths))
+PY
+then
+  line "✗" "静态断言" "端口白名单里有路径已失效（文件被移动）—— 门禁会因「豁免失效」而误报"
+  FAIL=$((FAIL + 1))
+else
+  line "✓" "静态断言" "端口白名单路径全部有效"
+  PASS=$((PASS + 1))
+fi
+
+# ---------- 静态断言 3：CI 的 artifact 上传路径必须包含 target-logs/ ----------
+# 为什么需要：门禁有 4 份日志写在 target-logs/（后端单测 + 压测核对 + 两个新护栏）。
+#   若 ci.yml 只上传 target/ ⇒ 这些日志 CI 失败时**不会被上传** ⇒
+#   「CI 红了但查不出为什么」—— 而这正是 ::error:: 机制当初要解决的那类问题。
+say "静态断言 3：CI 的 artifact 上传路径必须包含 target-logs/"
+CI_YML="$WORK/.github/workflows/ci.yml"
+if [ ! -f "$CI_YML" ]; then
+  line "✗" "静态断言" "副本里找不到 .github/workflows/ci.yml"
+  FAIL=$((FAIL + 1))
+elif grep -q 'target-logs/_ci-\*\.log' "$CI_YML"; then
+  line "✓" "静态断言" "target-logs/ 下的门禁日志 CI 失败时会被上传"
+  PASS=$((PASS + 1))
+else
+  line "✗" "静态断言" "ci.yml 没上传 target-logs/_ci-*.log ⇒ 门禁红了拿不到日志（CI 红了查不出为什么）"
+  FAIL=$((FAIL + 1))
+fi
+
 # 尽力清理副本（失败也无所谓：留着只占磁盘，下次运行会用新目录）
 rm -rf "$WORK" 2>/dev/null || true
 

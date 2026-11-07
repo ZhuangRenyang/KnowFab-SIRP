@@ -421,6 +421,7 @@ there).
 | [docs/COMPETITORS.md](docs/COMPETITORS.md) | Competitor comparison and talk tracks *(Chinese)* |
 | [docs/DEMO.md](docs/DEMO.md) | Demo guide: seeding data and a recommended tour *(Chinese)* |
 | [docs/RELEASE.md](docs/RELEASE.md) | Release process: tag → upload release assets → clients upgrade via *Check for updates* *(Chinese)* |
+| [docs/ERP-SPLIT-RUNBOOK.md](docs/ERP-SPLIT-RUNBOOK.md) | ERP god-package split runbook *(Chinese)*: the 6-batch execution order, per-batch acceptance, tag/rollback mechanics, and the baseline step that must not be skipped afterwards |
 | [tools/verify-release.sh](tools/verify-release.sh) | Release verification *(shell)*: pushes the published package through the real customer upgrade path — signature check, migration on an old database, jar swap, tamper rejection, rollback — on a throwaway database, never on yours |
 
 ## Community (中文交流群)
