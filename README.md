@@ -422,6 +422,7 @@ there).
 | [docs/DEMO.md](docs/DEMO.md) | Demo guide: seeding data and a recommended tour *(Chinese)* |
 | [docs/RELEASE.md](docs/RELEASE.md) | Release process: tag → upload release assets → clients upgrade via *Check for updates* *(Chinese)* |
 | [docs/ERP-SPLIT-RUNBOOK.md](docs/ERP-SPLIT-RUNBOOK.md) | ERP god-package split runbook *(Chinese)*: the 6-batch execution order, per-batch acceptance, tag/rollback mechanics, and the baseline step that must not be skipped afterwards |
+| [docs/UPGRADE-RUNBOOK.md](docs/UPGRADE-RUNBOOK.md) | Framework upgrade runbook *(Chinese)*: when to upgrade at all, the four high-risk surfaces (Boot BOM shifting milo/POI transitive deps, no `@SpringBootTest` so `mvn test` proves nothing about the container, migrations that skip silently, the client upgrade chain), the six-phase order, and the verification commands |
 | [tools/verify-release.sh](tools/verify-release.sh) | Release verification *(shell)*: pushes the published package through the real customer upgrade path — signature check, migration on an old database, jar swap, tamper rejection, rollback — on a throwaway database, never on yours |
 
 ## Community (中文交流群)
