@@ -3,6 +3,7 @@ package com.factory.hub.driver.modbus;
 import com.factory.hub.driver.DriverContext;
 import com.factory.hub.driver.DriverFactory;
 import com.factory.hub.driver.ProtocolDriver;
+import com.factory.hub.driver.SourceAddress;
 import org.springframework.stereotype.Component;
 
 import java.io.EOFException;
@@ -54,6 +55,10 @@ public class ModbusTcpDriver extends AbstractModbusDriver {
         // 端口没填（ctx 里是 0）就用 Modbus TCP 的标准端口 502。
         // 「默认端口是多少」是协议知识，所以由驱动自己定义 ——
         // 全局写死一个数的话，换个协议就要去改那个数（OPC UA 之前就是这么漏的）。
+        // ⭐ 绑本机源地址（可选）：指定这台设备走本机哪个 IP 出去。
+        //   留空就不 bind，交给系统路由表决定（绝大多数情况这样就对）。
+        //   ⚠️ bind 必须在 connect 之前。
+        SourceAddress.bind(s, ctx.getSourceAddress());
         s.connect(new InetSocketAddress(ctx.getHost(), resolvePort(ctx)), ctx.getTimeoutMs());
         s.setSoTimeout(ctx.getTimeoutMs());
         s.setTcpNoDelay(true);

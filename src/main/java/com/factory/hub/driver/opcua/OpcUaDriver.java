@@ -3,6 +3,7 @@ package com.factory.hub.driver.opcua;
 import com.factory.hub.driver.DriverContext;
 import com.factory.hub.driver.DriverFactory;
 import com.factory.hub.driver.ProtocolDriver;
+import com.factory.hub.driver.SourceAddress;
 import com.factory.hub.model.PointDef;
 import org.eclipse.milo.opcua.sdk.client.OpcUaClient;
 import org.eclipse.milo.opcua.sdk.client.api.config.OpcUaClientConfig;
@@ -65,6 +66,13 @@ public class OpcUaDriver implements ProtocolDriver {
 
     @Override
     public void connect(DriverContext ctx) throws Exception {
+        // ⚠️ OPC UA **不支持指定本机源地址**：底层 milo 的客户端配置
+        //   （UaStackClientConfigBuilder）没有暴露本地地址设置项。
+        //   ⇒ 用户填了「本机源地址」时**明确报出来**，不能静默忽略 ——
+        //     静默忽略 = 用户以为生效了、实际没生效 ⇒ 现场排查成本极高。
+        //   ⇒ 真要精确指定源地址，用 Modbus 协议，或给本机加 IP 别名
+        //     （tools/net/plc-on）让路由表自己选。
+        SourceAddress.rejectUnsupported("OPC UA", ctx.getSourceAddress());
         // 主机地址先消毒再拼 URL：客户常把 host 填成 "192.168.1.10/UA"、"192.168.1.10:4840"、
         // "opc.tcp://192.168.1.10"，直接拼会得到非法 URL，
         // 而报错（Bad_TcpEndpointUrlInvalid）长得像「网络不通」，实际是「地址填错了」，现场极难定位。

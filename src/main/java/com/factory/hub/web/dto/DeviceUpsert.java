@@ -40,6 +40,13 @@ public record DeviceUpsert(
         /* 主计数器口径 TOTAL / GOOD：决定入库量要不要减不良数，配错会多算或少算库存 */
         String counterMode,
         /* 是否总表（进线计量点）：参与需量与基本电费的全厂口径 */
-        Boolean isMeter
+        Boolean isMeter,
+        /*
+         * 本机源地址（可选）：指定这台设备用本机的哪个 IP 出去。
+         * 留空 = 交给系统路由表自动选（绝大多数情况这样就对）。
+         * ⚠️ 只对 Modbus 生效；OPC UA 填了会明确报错（底层 milo 不支持）。
+         * ⚠️ 多网段不需要填这个字段 —— 给本机加 IP 别名即可（tools/net/plc-on）。
+         */
+        String sourceAddress
 ) {
 }

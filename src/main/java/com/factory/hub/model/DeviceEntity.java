@@ -50,6 +50,27 @@ public class DeviceEntity {
     @Column(name = "port")
     private Integer port;
 
+    /**
+     * 本机源地址（可选）：指定这台设备用<b>本机的哪个 IP</b>出去。
+     * <p>
+     * <b>null / 空 = 交给系统路由表决定</b>（绝大多数情况这样就对）。
+     * <p>
+     * <b>什么时候才需要填</b>：本机挂了<b>两条同网段的物理链路</b>
+     * （两条网线各接一条产线，或一台 PLC 双网卡）时，源地址由路由表挑，
+     * 可能挑错那条链路 ⇒ 这时把「该走哪条链路」的 IP 填进来，驱动 bind 到它。
+     * <p>
+     * <b>为什么不默认填、也不自动填</b>：
+     * 填一个本机不存在的地址，connect 会直接失败
+     * （<code>Cannot assign requested address</code>），比留空更难排查。
+     * <p>
+     * <b>⚠️ 多网段本身不需要这个字段</b>：本机缺某个网段的地址时，
+     * 正确做法是<b>给本机加 IP 别名</b>（tools/net/plc-on），
+     * 加完之后路由表自己会挑对源地址 ⇒ 这个字段仍然留空。
+     * 本机 IP 的数量 = <b>网段数量</b>，不是设备数量。
+     */
+    @Column(name = "source_address", length = 64)
+    private String sourceAddress;
+
     @Column(name = "serial_port", length = 32)
     private String serialPort = "COM3";
 
@@ -250,6 +271,15 @@ public class DeviceEntity {
 
     public void setPort(Integer port) {
         this.port = port;
+    }
+
+    /** 本机源地址（可选，null = 交给系统路由表决定） */
+    public String getSourceAddress() {
+        return sourceAddress;
+    }
+
+    public void setSourceAddress(String sourceAddress) {
+        this.sourceAddress = sourceAddress;
     }
 
     public String getSerialPort() {

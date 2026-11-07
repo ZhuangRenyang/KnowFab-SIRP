@@ -25,6 +25,18 @@ public class DriverContext {
     private int unitId = 1;
     /** 单次读写超时，毫秒。现场经验：不要超过 1000，否则一台设备卡住会拖慢整轮 */
     private int timeoutMs = 800;
+    /**
+     * 本机源地址（可选）：指定这台设备用<b>本机的哪个 IP</b>出去。
+     * <p>
+     * <b>null / 空 = 交给系统路由表决定</b>（绝大多数情况这样就对）。
+     * 只有<b>同一台机器挂了多条同网段物理链路</b>、需要精确指定走哪条时才填。
+     * <p>
+     * ⚠️ <b>支持程度因协议而异</b>：
+     * Modbus TCP / RTU-over-TCP 用 {@link java.net.Socket}，<b>可以</b> bind；
+     * OPC UA 走 milo，其 {@code UaStackClientConfigBuilder} <b>没有</b> setLocalAddress
+     * ⇒ <b>填了也不生效</b>，驱动会明确报出来（不静默忽略）。
+     */
+    private String sourceAddress;
 
     public String getHost() {
         return host;
@@ -32,6 +44,14 @@ public class DriverContext {
 
     public void setHost(String host) {
         this.host = host;
+    }
+
+    public String getSourceAddress() {
+        return sourceAddress;
+    }
+
+    public void setSourceAddress(String sourceAddress) {
+        this.sourceAddress = sourceAddress;
     }
 
     public String getCode() {

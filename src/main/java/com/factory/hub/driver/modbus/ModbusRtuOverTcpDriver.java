@@ -3,6 +3,7 @@ package com.factory.hub.driver.modbus;
 import com.factory.hub.driver.DriverContext;
 import com.factory.hub.driver.DriverFactory;
 import com.factory.hub.driver.ProtocolDriver;
+import com.factory.hub.driver.SourceAddress;
 import org.springframework.stereotype.Component;
 
 import java.io.EOFException;
@@ -65,6 +66,8 @@ public class ModbusRtuOverTcpDriver extends AbstractModbusDriver {
         disconnect();
         Socket s = new Socket();
         // 端口没填（ctx 里是 0）就用 Modbus over TCP 的标准端口 502
+        // ⭐ 绑本机源地址（可选）：指定这台设备走本机哪个 IP 出去（留空=交给路由表）
+        SourceAddress.bind(s, ctx.getSourceAddress());
         s.connect(new InetSocketAddress(ctx.getHost(), resolvePort(ctx)), ctx.getTimeoutMs());
         s.setSoTimeout(ctx.getTimeoutMs());
         s.setTcpNoDelay(true);      // 关掉 Nagle，否则小帧会被攒着发，白白多几十毫秒

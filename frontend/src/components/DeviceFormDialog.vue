@@ -44,6 +44,13 @@
       </div>
       <div v-if="isNet" class="frow">
         <el-form-item :label="t('devForm.host')"><el-input v-model="f.host" :placeholder="t('devForm.hostPh')" /></el-form-item>
+        <!-- 本机源地址（可选）：指定这台设备用本机的哪个 IP 出去。
+             留空 = 交给系统路由表自动选（绝大多数情况这样就对）。
+             多网段不需要填这个 —— 给本机加 IP 别名即可（tools/net/plc-on）。
+             只对 Modbus 生效；OPC UA 填了会明确报错（底层库不支持）。 -->
+        <el-form-item :label="t('devForm.sourceAddress')">
+          <el-input v-model="f.sourceAddress" :placeholder="t('devForm.sourceAddressPh')" />
+        </el-form-item>
         <el-form-item :label="t('devForm.port')">
           <el-input-number v-model="f.port" :min="1" :max="65535" :placeholder="t('devForm.portPh', { port: protoDefaultPort })" />
         </el-form-item>
@@ -216,7 +223,7 @@ function goDiscovery() {
 
 const f = reactive({
   code: '', name: '', location: '', pollIntervalMs: 1000,
-  protocol: 'modbus-tcp', host: '', port: null as number | null,
+  protocol: 'modbus-tcp', host: '', port: null as number | null, sourceAddress: '',
   serialPort: 'COM3', baudRate: 9600, dataBits: 8, stopBits: 1, parity: 0,
   unitId: 1, unitId2: 1, timeoutMs: 800,
   apiKey: '', apiKeyEnabled: true, servoBrand: '',
@@ -390,7 +397,7 @@ function applyTpl(key: string) {
 function resetDefaults() {
   Object.assign(f, {
     code: '', name: '', location: '', pollIntervalMs: 1000,
-    protocol: 'modbus-tcp', host: '', port: null,
+    protocol: 'modbus-tcp', host: '', port: null, sourceAddress: '',
     serialPort: 'COM3', baudRate: 9600, dataBits: 8, stopBits: 1, parity: 0,
     unitId: 1, unitId2: 1, timeoutMs: 800, apiKey: '', apiKeyEnabled: true, servoBrand: '',
     pointsText: JSON.stringify(TPL.machine, null, 2),
@@ -430,6 +437,7 @@ watch(visible, async (v) => {
     code: c.code || '', name: c.name || '', location: c.location || '',
     pollIntervalMs: c.pollIntervalMs || 1000,
     protocol: c.protocol || 'modbus-tcp', host: c.host || '', port: normPort(c.port),
+    sourceAddress: c.sourceAddress || '',
     serialPort: c.serialPort || 'COM3', baudRate: c.baudRate || 9600,
     dataBits: c.dataBits || 8, stopBits: c.stopBits || 1, parity: c.parity == null ? 0 : c.parity,
     unitId: c.unitId || 1, unitId2: c.unitId || 1,
@@ -492,6 +500,8 @@ async function save() {
        后端 apply() 判 `port == null || port <= 0` ⇒ 0 与 null 等价，都按协议给默认端口
        （Modbus 502 / OPC UA 4840，口径在后端 ProtocolDefaults 一处）。 */
     port: Number(f.port) || 0,
+    // 本机源地址（可选）：留空提交 null —— 后端把空串也当 null 处理
+    sourceAddress: f.sourceAddress.trim() || null,
     serialPort: f.serialPort.trim(),
     baudRate: Number(f.baudRate),
     dataBits: Number(f.dataBits),

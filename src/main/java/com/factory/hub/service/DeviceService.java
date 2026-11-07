@@ -88,6 +88,10 @@ public class DeviceService {
         ctx.setParity(d.getParity() == null ? 0 : d.getParity());
         ctx.setUnitId(d.getUnitId() == null ? 1 : d.getUnitId());
         ctx.setTimeoutMs(d.getTimeoutMs());
+        // 本机源地址（可选）：留空 = 交给系统路由表决定（绝大多数情况这样就对）。
+        // 空串当 null 处理，免得「表单里清空」变成一个真的空地址去 bind（必然失败）。
+        String src = d.getSourceAddress();
+        ctx.setSourceAddress(src == null || src.trim().isEmpty() ? null : src.trim());
         return ctx;
     }
 

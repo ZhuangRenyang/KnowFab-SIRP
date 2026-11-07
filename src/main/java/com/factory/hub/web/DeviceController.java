@@ -428,6 +428,11 @@ public class DeviceController {
         String protocol = req.protocol() == null ? "modbus-tcp" : req.protocol();
         d.setProtocol(protocol);
         d.setHost(req.host());
+        // 本机源地址（可选）：留空 = 交给系统路由表自动选。
+        // ⚠️ 空串当 null 处理 —— 表单里清空会提交空串，若原样存下来，
+        //    驱动会拿空串去 bind，必然失败。
+        String srcAddr = req.sourceAddress();
+        d.setSourceAddress(srcAddr == null || srcAddr.trim().isEmpty() ? null : srcAddr.trim());
         // 端口：默认端口是协议知识（Modbus 502 / OPC UA 4840），只由 ProtocolDefaults 定义一处。
         // 这里不写死任何一个协议的值 —— 写死 502 会让「新建 OPC UA 设备不填端口」
         // 变成连 502，必然连不上。三种情况：
