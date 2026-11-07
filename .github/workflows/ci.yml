@@ -71,8 +71,13 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ci-logs
+          # ⚠️ **不能写 `frontend/../target/...`**：GitHub 的 artifact pattern
+          #   **禁止 `..` 相对路径** ⇒ 整步会直接失败（annotation:
+          #   "Invalid pattern ... Relative pathing '.' and '..' is not allowed"）
+          #   ⇒ 门禁失败时**日志反而传不上来**，等于让失败变成「查不出原因」。
+          #   ⇒ 门禁的前端段虽然 cd 到 frontend/，但日志路径写的是 `../target/...`
+          #   ⇒ 实际仍落在**仓库根的 target/** ⇒ 只写这一条就够。
           path: |
             target/_ci-*.log
-            frontend/../target/_ci-*.log
           retention-days: 7
           if-no-files-found: ignore
