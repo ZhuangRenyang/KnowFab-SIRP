@@ -42,4 +42,34 @@ public final class ProdDay {
     public static LocalDate bizDate(long ts, int resetHour) {
         return Instant.ofEpochMilli(ts).atZone(ZONE).minusHours(resetHour).toLocalDate();
     }
+
+    /**
+     * 该时刻所属**本地整点**的起始毫秒（按时区对齐，不是 epoch 对齐）。
+     * <p>
+     * <b>为什么不能用 {@code ts - ts % 3600000}</b>：那是 <b>UTC</b> 的整点，
+     * 在整小时偏移的时区（如中国 +8）恰好等于本地整点，所以一直没暴露；
+     * 但在 <b>非整小时偏移</b>的时区（印度 +5:30、尼泊尔 +5:45、澳洲中部 +9:30）
+     * 会比本地整点<b>偏早 30（或 45/30）分钟</b> ⇒ 小时报表的钟点标签错位，
+     * 而且统计日边界（本地 00:00）与小时桶边界（本地 xx:30）不是同一套网格
+     * ⇒ 跨日界那一小时整桶归到某一天。
+     * <p>
+     * 与 {@link #dayStart} 的关系：两者都按**本地时区**对齐，网格一致。
+     */
+    public static long hourStart(long ts) {
+        return hourStart(ts, ZONE);
+    }
+
+    /**
+     * 同上，**时区可注入**。
+     * <p>
+     * ⚠️ 这个重载是为测试存在的：{@link #hourStart(long)} 用系统时区，
+     * 在有 DST 或整小时偏移的机器上，「epoch 对齐」和「本地对齐」结果相同
+     * ⇒ 那种机器上**永远测不出**非整小时时区的错位
+     * ⇒ 必须能指定时区（用 {@code Asia/Kolkata} +5:30 来证明）。
+     */
+    public static long hourStart(long ts, ZoneId zone) {
+        return Instant.ofEpochMilli(ts).atZone(zone)
+                .truncatedTo(java.time.temporal.ChronoUnit.HOURS)
+                .toInstant().toEpochMilli();
+    }
 }

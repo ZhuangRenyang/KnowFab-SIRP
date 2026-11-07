@@ -5,7 +5,7 @@ import com.factory.hub.driver.DriverRegistry;
 import com.factory.hub.driver.ProtocolDriver;
 import com.factory.hub.model.DeviceEntity;
 import com.factory.hub.model.PointDef;
-import com.factory.hub.web.WsHandler;
+import com.factory.hub.service.Broadcaster;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -65,7 +65,7 @@ class CollectSchedulerFairnessTest {
         when(registry.create(anyString())).thenReturn(drv);
 
         SnapshotStore store = new SnapshotStore();
-        WsHandler ws = mock(WsHandler.class);
+        Broadcaster ws = mock(Broadcaster.class);
         com.factory.hub.report.ProdRollup rollup = mock(com.factory.hub.report.ProdRollup.class);
 
         scheduler = new CollectScheduler(deviceService, registry, store, ws, new ObjectMapper(), rollup, poolSize);

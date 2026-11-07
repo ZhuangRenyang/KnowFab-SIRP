@@ -6,7 +6,7 @@ import com.factory.hub.driver.ProtocolDriver;
 import com.factory.hub.model.DeviceEntity;
 import com.factory.hub.model.PointDef;
 import com.factory.hub.service.DeviceService;
-import com.factory.hub.web.WsHandler;
+import com.factory.hub.service.Broadcaster;
 import tools.jackson.databind.ObjectMapper;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
@@ -42,7 +42,7 @@ public class CollectScheduler {
     private final DeviceService deviceService;
     private final DriverRegistry driverRegistry;
     private final SnapshotStore store;
-    private final WsHandler wsHandler;
+    private final Broadcaster wsHandler;
     private final ObjectMapper mapper;
     private final com.factory.hub.report.ProdRollup rollup;
 
@@ -112,7 +112,7 @@ public class CollectScheduler {
     public CollectScheduler(DeviceService deviceService,
                             DriverRegistry driverRegistry,
                             SnapshotStore store,
-                            WsHandler wsHandler,
+                            Broadcaster wsHandler,
                             ObjectMapper mapper,
                             com.factory.hub.report.ProdRollup rollup,
                             @Value("${collect.threads:32}") int poolSize

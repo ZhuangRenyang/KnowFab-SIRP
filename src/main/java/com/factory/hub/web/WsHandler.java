@@ -1,5 +1,6 @@
 package com.factory.hub.web;
 
+import com.factory.hub.service.Broadcaster;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -16,9 +17,12 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>
  * 用裸 WebSocket 而不是 STOMP：前端不用装任何库，十来行原生 JS 就能接，
  * 客户现场就算断网重连也好处理。
+ * <p>
+ * <b>它实现 {@link Broadcaster}</b>：业务层依赖那个契约（在 {@code service} 包），
+ * 不认识本类 —— 否则就是业务层反向依赖 Web 层。
  */
 @Component
-public class WsHandler extends TextWebSocketHandler {
+public class WsHandler extends TextWebSocketHandler implements Broadcaster {
 
     private static final Logger log = LoggerFactory.getLogger(WsHandler.class);
 

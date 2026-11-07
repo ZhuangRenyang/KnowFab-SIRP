@@ -40,7 +40,7 @@ const MAX_FILES_PER_PKG = 40;   // 单个包**含子包**的文件数上限
 //      将来它悄悄长回 68 也不报」⇒ **等于把护栏废掉**。
 //      ⇒ 拆包完成后**必须人工把基线改成新的实测值**（运维会做）。
 const BASELINE = {
-  '(root)': { direct: 2, total: 247, kinds: {"Controller":1} },
+  '(root)': { direct: 2, total: 248, kinds: {"Controller":1} },
   ai: { direct: 13, total: 13, kinds: {"Controller":2,"Repository":2,"Service":2} },
   alarm: { direct: 14, total: 14, kinds: {"Controller":1,"Repository":1,"Service":1} },
   audit: { direct: 5, total: 5, kinds: {"Controller":1,"Repository":1,"Service":1} },
@@ -63,7 +63,8 @@ const BASELINE = {
   repo: { direct: 2, total: 2, kinds: {"Repository":2} },
   report: { direct: 13, total: 13, kinds: {"Repository":2,"Controller":1,"Service":1} },
   screen: { direct: 4, total: 4, kinds: {"Controller":1,"Service":1} },
-  service: { direct: 1, total: 1, kinds: {"Service":1} },
+  // 2026-11-07：新增 service/Broadcaster.java（推送契约，解业务层反向依赖 web 层）⇒ 1→2
+  service: { direct: 2, total: 2, kinds: {"Service":1} },
   system: { direct: 14, total: 14, kinds: {"Controller":4,"Service":3,"Repository":1} },
   web: { direct: 3, total: 6, kinds: {"Controller":2} },
   'web/dto': { direct: 3, total: 3, kinds: {} },

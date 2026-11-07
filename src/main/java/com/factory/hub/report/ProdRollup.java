@@ -339,7 +339,7 @@ public class ProdRollup {
         //   ② 跨了小时 —— 「当前小时」那部分的含义变了
         //   其它时候**直接返回**，一次库都不查。
         long nowMs = System.currentTimeMillis();
-        long nowHour = nowMs - (nowMs % HOUR_MS);
+        long nowHour = ProdDay.hourStart(nowMs);
         if (!todaySnapshotDirty && todaySnapshotHour == nowHour) {
             return;
         }
@@ -350,7 +350,7 @@ public class ProdRollup {
                 return;
             }
             long now = System.currentTimeMillis();
-            long curHour = now - (now % HOUR_MS);
+            long curHour = ProdDay.hourStart(now);
 
             // 每台设备的「今日起点」不同（prodResetHour），批量查询只能用一个统一窗口
             // ⇒ 取所有设备里最早的那个起点，保证一行都不漏；各设备再用自己的起点裁剪。
@@ -564,7 +564,7 @@ public class ProdRollup {
      */
     public double todayOutputOf(String code) {
         long now = System.currentTimeMillis();
-        long curHour = now - (now % HOUR_MS);
+        long curHour = ProdDay.hourStart(now);
 
         Map<String, TodayOut> snap = todayFromDb.get();
         TodayOut t = snap.get(code);
@@ -652,8 +652,7 @@ public class ProdRollup {
         if (buckets.isEmpty()) {
             return;
         }
-        long currentHour = System.currentTimeMillis();
-        currentHour -= currentHour % HOUR_MS;
+        long currentHour = ProdDay.hourStart(System.currentTimeMillis());
 
         Map<Long, Map<String, ProdHourly>> byHour = new HashMap<>();
         for (Map.Entry<String, ProdHourly> e : buckets.entrySet()) {
@@ -721,7 +720,7 @@ public class ProdRollup {
 
     /** 取某个时刻所属小时、某台设备的累计对象，没有就建一个 */
     private ProdHourly bucket(String deviceCode, long ts) {
-        long hour = ts - (ts % HOUR_MS);
+        long hour = ProdDay.hourStart(ts);
         String key = deviceCode + "|" + hour;
         ProdHourly p = buckets.get(key);
         if (p != null) {
@@ -755,7 +754,7 @@ public class ProdRollup {
      * 调用方回退到数据库行。
      */
     public double liveOutput(String deviceCode, long hourStart) {
-        long hour = hourStart - (hourStart % HOUR_MS);
+        long hour = ProdDay.hourStart(hourStart);
         ProdHourly p = buckets.get(deviceCode + "|" + hour);
         return p == null ? Double.NaN : p.getOutput();
     }
@@ -776,7 +775,7 @@ public class ProdRollup {
      * 返回 {@code NaN} 表示这一小时还没有任何采样（设备没接/刚启动），调用方自行兜底。
      */
     public double liveRunSec(String deviceCode, long hourStart) {
-        long hour = hourStart - (hourStart % HOUR_MS);
+        long hour = ProdDay.hourStart(hourStart);
         ProdHourly p = buckets.get(deviceCode + "|" + hour);
         return p == null ? Double.NaN : p.getRunSec();
     }
@@ -803,7 +802,7 @@ public class ProdRollup {
             return out;
         }
         List<ProdHourly> rows = repo.findByHourStartBetween(now - 48L * HOUR_MS, now);
-        long curHour = now - (now % HOUR_MS);
+        long curHour = ProdDay.hourStart(now);
         Set<String> curHourRows = new HashSet<>();
         for (ProdHourly p : rows) {
             Integer rh = reset.get(p.getDeviceCode());

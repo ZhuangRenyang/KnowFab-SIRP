@@ -3,7 +3,7 @@ package com.factory.hub.alarm;
 import com.factory.hub.collect.SnapshotStore;
 import com.factory.hub.service.DeviceService;
 import com.factory.hub.system.SettingStore;
-import com.factory.hub.web.WsHandler;
+import com.factory.hub.service.Broadcaster;
 import tools.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -49,7 +49,7 @@ class AlarmEngineRestoreTest {
         DeviceService deviceService = mock(DeviceService.class);
         AlarmNotifier notifier = mock(AlarmNotifier.class);
         SettingStore settings = mock(SettingStore.class);
-        WsHandler ws = mock(WsHandler.class);
+        Broadcaster ws = mock(Broadcaster.class);
 
         when(settings.getInt(SettingStore.ALARM_STORM)).thenReturn(8);
         when(settings.getInt(SettingStore.ALARM_RETAIN_DAYS)).thenReturn(180);

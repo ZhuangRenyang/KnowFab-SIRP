@@ -6,7 +6,6 @@ import com.factory.hub.driver.ProtocolDriver;
 import com.factory.hub.erp.ProdDay;
 import com.factory.hub.model.DeviceEntity;
 import com.factory.hub.model.PointDef;
-import com.factory.hub.web.WsHandler;
 import tools.jackson.databind.ObjectMapper;
 
 import java.io.PrintStream;

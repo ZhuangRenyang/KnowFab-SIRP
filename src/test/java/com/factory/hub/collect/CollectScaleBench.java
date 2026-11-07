@@ -5,7 +5,7 @@ import com.factory.hub.driver.DriverRegistry;
 import com.factory.hub.driver.ProtocolDriver;
 import com.factory.hub.model.DeviceEntity;
 import com.factory.hub.model.PointDef;
-import com.factory.hub.web.WsHandler;
+import com.factory.hub.service.Broadcaster;
 import tools.jackson.databind.ObjectMapper;
 
 import java.io.PrintStream;
@@ -121,7 +121,7 @@ public final class CollectScaleBench {
         });
 
         SnapshotStore store = new SnapshotStore();
-        WsHandler ws = mock(WsHandler.class);
+        Broadcaster ws = mock(Broadcaster.class);
 
         // ---------------- ProdRollup 替身 ----------------
         // ⚠️ 用 Mockito 的 mock 会让方法**失去 synchronized 语义**（Mockito 生成的 override 没有

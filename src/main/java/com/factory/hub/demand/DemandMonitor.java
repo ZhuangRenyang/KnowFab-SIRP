@@ -5,7 +5,7 @@ import com.factory.hub.alarm.AlarmEventRepository;
 import com.factory.hub.alarm.AlarmNotifier;
 import com.factory.hub.alarm.AlarmRule;
 import com.factory.hub.alarm.SystemAlarms;
-import com.factory.hub.web.WsHandler;
+import com.factory.hub.service.Broadcaster;
 import tools.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -52,12 +52,12 @@ public class DemandMonitor {
     private final DemandStore demandStore;
     private final AlarmEventRepository alarmRepo;
     private final AlarmNotifier notifier;
-    private final WsHandler ws;
+    private final Broadcaster ws;
     private final ObjectMapper mapper;
 
     public DemandMonitor(DemandService demandService, DemandStore demandStore,
                          AlarmEventRepository alarmRepo, AlarmNotifier notifier,
-                         WsHandler ws, ObjectMapper mapper) {
+                         Broadcaster ws, ObjectMapper mapper) {
         this.demandService = demandService;
         this.demandStore = demandStore;
         this.alarmRepo = alarmRepo;

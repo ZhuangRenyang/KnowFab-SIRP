@@ -1010,6 +1010,68 @@ else
   fi
 fi
 
+# ---------- 变异 16：业务层加回反向 import ⇒ 「依赖方向护栏」必须红 ----------
+# 验的是「这债不会再长回去」（2026-11-07 修好 4 处 alarm/collect/demand → web.WsHandler 之后）。
+# ⚠️ 判据精确到「✗ 依赖方向护栏」：加一行 import 不会影响别的结构检查，
+#   但仍用精确判据 —— 一条只判「红没红」的变异，在护栏被删掉时会被别的红顶过去。
+say "变异 16：业务层加回 import com.factory.hub.web.WsHandler ⇒ 依赖方向护栏必须红"
+LAYER_FILE="$WORK/src/main/java/com/factory/hub/alarm/AlarmEngine.java"
+if [ ! -f "$LAYER_FILE" ]; then
+  line "✗" "依赖方向变异" "副本里找不到 alarm/AlarmEngine.java"
+  FAIL=$((FAIL + 1))
+else
+  cp "$LAYER_FILE" "$LAYER_FILE.bak"
+  python - "$LAYER_FILE" <<'PY'
+import io, sys, re
+p = sys.argv[1]
+s = io.open(p, encoding='utf-8', newline='').read()
+anchor = 'import com.factory.hub.service.Broadcaster;'
+if s.count(anchor) != 1:
+    print('  锚点 Broadcaster import 出现次数不是 1，变异失败')
+    sys.exit(1)
+s = s.replace(anchor, anchor + '\nimport com.factory.hub.web.WsHandler;')
+io.open(p, 'w', encoding='utf-8', newline='').write(s)
+print('  已在 AlarmEngine 加回反向 import')
+PY
+  # 断言注入生效（计数：原来 0 处 web.WsHandler import，注入后 1 处）
+  INJECTED=$(grep -c "^import com\.factory\.hub\.web\.WsHandler;" "$LAYER_FILE")
+  if [ "$INJECTED" -ne 1 ]; then
+    line "✗" "依赖方向变异" "注入没生效（web.WsHandler import 数 $INJECTED，期望 1）"
+    FAIL=$((FAIL + 1))
+    mv "$LAYER_FILE.bak" "$LAYER_FILE"
+  else
+    if ( cd "$WORK" && bash tools/ci-gate.sh --only-pkg ) >/tmp/_cgs.log 2>&1; then
+      line "✗" "反向 import → 必须红" "门禁没有变红 —— 依赖方向护栏没有鉴别力（装饰性的）"
+      FAIL=$((FAIL + 1))
+    else
+      if grep -aqE "✗[[:space:]]*依赖方向护栏" /tmp/_cgs.log; then
+        line "✓" "反向 import → 必须红" "变红了，且红的正是「依赖方向护栏」这一项"
+        PASS=$((PASS + 1))
+        grep -aE "反向依赖 Web 层|依赖方向护栏" /tmp/_cgs.log | head -3 | sed 's/^/       /'
+      else
+        line "✗" "反向 import → 必须红" "红了，但红的不是「依赖方向护栏」—— 判据不精确"
+        grep -aE "✓|✗|失败" /tmp/_cgs.log | head -8 | sed 's/^/       /'
+        FAIL=$((FAIL + 1))
+      fi
+    fi
+    mv "$LAYER_FILE.bak" "$LAYER_FILE"
+    RESTORED=$(grep -c "^import com\.factory\.hub\.web\.WsHandler;" "$LAYER_FILE")
+    if [ "$RESTORED" -ne 0 ]; then
+      line "✗" "依赖方向还原" "还原后仍有反向 import（$RESTORED 处）"
+      FAIL=$((FAIL + 1))
+    else
+      if ( cd "$WORK" && bash tools/ci-gate.sh --only-pkg ) >/tmp/_cgs.log 2>&1; then
+        line "✓" "依赖方向还原后 → 必须绿" "恢复全绿"
+        PASS=$((PASS + 1))
+      else
+        line "✗" "依赖方向还原后 → 必须绿" "还原后仍然红"
+        tail -12 /tmp/_cgs.log | sed 's/^/       /'
+        FAIL=$((FAIL + 1))
+      fi
+    fi
+  fi
+fi
+
 # ---------- 静态断言 1：拆包验收脚本的期望总数默认值不得为 null ----------
 # 为什么这条**只能静态抓**：把默认值改回 null ⇒ 不传参数时守恒检查静默跳过，
 #   但脚本**照样打印「✓」** ⇒ 门禁照样绿 ⇒ **运行时没有任何现象能暴露它**。

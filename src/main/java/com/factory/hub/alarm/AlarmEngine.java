@@ -5,7 +5,7 @@ import com.factory.hub.system.SettingStore;
 import com.factory.hub.model.DeviceEntity;
 import com.factory.hub.model.PointValue;
 import com.factory.hub.service.DeviceService;
-import com.factory.hub.web.WsHandler;
+import com.factory.hub.service.Broadcaster;
 import tools.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -57,7 +57,7 @@ public class AlarmEngine {
     private final SnapshotStore snapshot;
     private final DeviceService deviceService;
     private final AlarmNotifier notifier;
-    private final WsHandler ws;
+    private final Broadcaster ws;
     private final ObjectMapper mapper;
 
     /** 启动后多久内不评估。给采集线程一点时间把第一轮数据采回来 */
@@ -143,7 +143,7 @@ public class AlarmEngine {
 
     public AlarmEngine(AlarmRuleStore ruleStore, AlarmEventRepository repo, SnapshotStore snapshot,
                        DeviceService deviceService,
-                       AlarmNotifier notifier, WsHandler ws, ObjectMapper mapper,
+                       AlarmNotifier notifier, Broadcaster ws, ObjectMapper mapper,
                        SettingStore settings) {
         this.ruleStore = ruleStore;
         this.repo = repo;

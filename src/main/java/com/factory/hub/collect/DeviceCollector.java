@@ -5,7 +5,7 @@ import com.factory.hub.driver.ProtocolDriver;
 import com.factory.hub.model.DeviceEntity;
 import com.factory.hub.model.PointDef;
 import com.factory.hub.model.PointValue;
-import com.factory.hub.web.WsHandler;
+import com.factory.hub.service.Broadcaster;
 import tools.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,7 +36,7 @@ public class DeviceCollector implements Runnable {
     private final ProtocolDriver driver;
     private final DriverContext ctx;
     private final SnapshotStore store;
-    private final WsHandler ws;
+    private final Broadcaster ws;
     private final ObjectMapper mapper;
     private final com.factory.hub.report.ProdRollup rollup;
 
@@ -53,7 +53,7 @@ public class DeviceCollector implements Runnable {
                            ProtocolDriver driver,
                            DriverContext ctx,
                            SnapshotStore store,
-                           WsHandler ws,
+                           Broadcaster ws,
                            ObjectMapper mapper,
                            com.factory.hub.report.ProdRollup rollup) {
         this.device = device;

@@ -5,7 +5,7 @@ import com.factory.hub.model.DeviceEntity;
 import com.factory.hub.model.PointValue;
 import com.factory.hub.service.DeviceService;
 import com.factory.hub.system.SettingStore;
-import com.factory.hub.web.WsHandler;
+import com.factory.hub.service.Broadcaster;
 import tools.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -57,7 +57,7 @@ class AlarmEngineTierSwitchTest {
         deviceService = mock(DeviceService.class);
         notifier = mock(AlarmNotifier.class);
         settings = mock(SettingStore.class);
-        WsHandler ws = mock(WsHandler.class);
+        Broadcaster ws = mock(Broadcaster.class);
 
         DeviceEntity dev = new DeviceEntity();
         dev.setCode("CNC-01");

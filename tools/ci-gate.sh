@@ -217,12 +217,13 @@ if [ "$ONLY_OPCUA" -eq 1 ]; then
   exit 0
 fi
 
-# ---------- 代码结构护栏（包结构 / 拆包完整性 / 单文件行数）----------
+# ---------- 代码结构护栏（包结构 / 拆包完整性 / 单文件行数 / 依赖方向）----------
 # ⚠️ 刻意放在后端块**外面**（与上面两项同一个理由）：纯静态检查，不编译、不需要数据库
 #   ⇒ 自检用 --skip-be 跑时它仍执行 ⇒ 否则「门禁还活着」没人能证明。
 #
 # 拦什么：① `erp` 域的包结构重新膨胀 ② 拆分过程中漏改 import / 残留旧全限定名
 #        ③ **新增的单文件超 300 行**（存量 46 个已豁免，只拦新增）
+#        ④ **业务层反向 import web 层**（依赖方向倒置）
 #   背景（①②）：2026-11-07 拆包前 `com.factory.hub.erp` 有 68 个文件零子包（占后端 27.5%），
 #   且 `quality` 包 38 个文件**全部是 Erp\* 命名**（它本质是 erp 域的质量子域）
 #   ⇒ erp 域真实规模 106 main + 26 test = 132 个文件，溢出在两个包里。
@@ -252,6 +253,9 @@ run_pkg_guard() {
     #   ⇒ 挂这里能同时被主干与 --only-pkg 旁路覆盖 ⇒ 自检变异 1 秒跑完。
     check "单文件行数护栏" "target-logs/_ci-file-size.log" \
       node tools/check-file-size.mjs
+    # 依赖方向：业务层不许反向 import web 层（抽了 service.Broadcaster 契约之后防它长回去）
+    check "依赖方向护栏" "target-logs/_ci-layer-direction.log" \
+      node tools/check-layer-direction.mjs
   else
     line "—" "包结构护栏" "跳过（没有 node）"
   fi
