@@ -105,6 +105,19 @@ check() {
   fi
   line "✗" "$name" "失败（$((SECONDS - t0)) 秒，日志 $log）"
   grep -aE "ERROR|FAIL|error|错误|失败|缺失|未通过" "$log" | tail -8 | sed 's/^/       /'
+  # ⚠️ **CI 上把失败原因写成 GitHub annotation**（`::error::`）。
+  #   为什么必须有这一步（2026-11-07 实测踩到）：
+  #   CI 失败时，**日志正文要认证才能看**（artifact 下载也要认证）⇒
+  #   「CI 红了但查不出为什么」会让人只能干等或瞎猜。
+  #   ⇒ 而 `::error::` 会出现在 run 页面的 Annotations 里，**不用认证就能看到**。
+  #   ⇒ 一行一条（GitHub 的 annotation 不接受换行）⇒ 只取每条的第一行。
+  if [ "${CI:-}" = "true" ]; then
+    echo "::error title=门禁失败::$name（$((SECONDS - t0)) 秒）"
+    grep -aE "ERROR|FAIL|error|错误|失败|缺失|未通过" "$log" | tail -8 | while IFS= read -r l; do
+      # 去掉换行与 GitHub 指令注入字符（防止日志内容伪造 annotation）
+      printf '::error::%s\n' "${l//$'\r'/ }" | head -1
+    done
+  fi
   FAIL=$((FAIL + 1)); FAILED+=("$name")
   return 1
 }
@@ -342,6 +355,11 @@ if [ "$FAIL" -gt 0 ]; then
   echo
   echo "  挂了：" >&2
   for n in "${FAILED[@]}"; do echo "    - $n" >&2; done
+  # ⚠️ 汇总也写成 annotation：CI 上不用认证就能看到「哪几项挂了」，
+  #   而不用去下载日志（下载也要认证）。
+  if [ "${CI:-}" = "true" ]; then
+    echo "::error title=门禁汇总::通过 $OK / 失败 $FAIL；挂了：${FAILED[*]}"
+  fi
   exit 1
 fi
 echo "  全部通过"
