@@ -97,74 +97,115 @@ public class DeviceCollector implements Runnable {
         }
     }
 
+    /**
+     * 采集器的主循环（保留它是为了兼容与单测；调度器走的是下面的 collectOnce 自调度）。
+     * <p>
+     * ⚠️ 这段逻辑与 collectOnce + nextDelayMs 的组合**完全等价**，
+     * 差别只有「失败时的 sleep 位置」：原来在 catch 块里 sleep(退避) 后 continue，
+     * 现在由 collectOnce 返回后统一 sleep —— 在时间轴上是一回事。
+     */
     @Override
     public void run() {
         log.info("[{}] 采集启动，协议={}，点数={}，周期={}ms",
                 device.getCode(), device.getProtocol(), points.size(), device.getPollIntervalMs());
 
         while (running) {
-            long start = System.currentTimeMillis();
-            try {
-                Map<String, Object> raw;
-                ioLock.lock();
-                try {
-                    if (!driver.isConnected()) {
-                        driver.connect(ctx);
-                        log.info("[{}] 已连接", device.getCode());
-                    }
-                    raw = driver.read(ctx, points);
-                } finally {
-                    ioLock.unlock();
-                }
-
-                long now = System.currentTimeMillis();
-
-                Map<String, PointValue> values = new LinkedHashMap<>();
-                for (PointDef p : points) {
-                    if (raw.containsKey(p.getKey())) {
-                        values.put(p.getKey(), PointValue.good(device.getCode(), p, raw.get(p.getKey()), now));
-                    } else {
-                        values.put(p.getKey(), PointValue.bad(device.getCode(), p, now));
-                    }
-                }
-
-                long cost = System.currentTimeMillis() - start;
-                store.update(device.getCode(), values, cost);
-                pushValues(values);
-                pushStatus(true, null);
-                failures = 0;
-
-            } catch (Exception e) {
-                failures++;
-                // 无线链路丢一个包是常事。只失败一次就标离线，设备会在页面上闪红，
-                // 运行人员很快学会"红色不用管"——真出事那天也没人看。
-                // 所以连续失败到阈值才判离线；之前只是重试。
-                if (failures >= device.getOfflineAfterFails()) {
-                    pushStatus(false, e.getMessage());
-                    store.markOffline(device.getCode(), e.getMessage());
-                    log.warn("[{}] 采集失败 {} 次，判定离线: {}", device.getCode(), failures, e.getMessage());
-                } else {
-                    log.debug("[{}] 采集失败第 {} 次（未达离线阈值），重试: {}",
-                            device.getCode(), failures, e.getMessage());
-                }
-                ioLock.lock();
-                try {
-                    driver.disconnect();
-                } catch (Exception ignored) {
-                } finally {
-                    ioLock.unlock();
-                }
-                sleepQuietly(backoffMs(failures));
-                continue;
-            }
-
-            long cost = System.currentTimeMillis() - start;
-            long wait = Math.max(50, device.getPollIntervalMs() - cost);
-            sleepQuietly(wait);
+            long cost = collectOnce();
+            sleepQuietly(nextDelayMs(cost));
         }
 
         driver.disconnect();
         log.info("[{}] 采集停止", device.getCode());
+    }
+
+    /**
+     * 采集<b>一轮</b>，返回本轮耗时（毫秒）。
+     * <p>
+     * 抽出来是为了让调度器能把它排进<b>共享线程池</b>：
+     * 以前「一台设备 = 一个常驻线程」，上千台设备就是上千个线程
+     * （线程数 × 栈内存是 OOM 的头号原因），而实际每轮采集只占用几毫秒。
+     * <p>
+     * ⚠️ <b>失败时这里不 sleep</b>：退避由 {@link #nextDelayMs(long)} 决定，
+     * 由调用方去等 —— 因为退避时间可能几十秒，
+     * 放在这里 sleep 会<b>占住一个工作线程</b>，几十台设备同时掉线就能把线程池占满，
+     * 连带把没掉线的设备饿死。
+     * <p>
+     * ⚠️ 失败计数（failures）与「判离线」的口径**完全沿用原逻辑**，一个字节没改。
+     */
+    public long collectOnce() {
+        long start = System.currentTimeMillis();
+        try {
+            Map<String, Object> raw;
+            ioLock.lock();
+            try {
+                if (!driver.isConnected()) {
+                    driver.connect(ctx);
+                    log.info("[{}] 已连接", device.getCode());
+                }
+                raw = driver.read(ctx, points);
+            } finally {
+                ioLock.unlock();
+            }
+
+            long now = System.currentTimeMillis();
+
+            Map<String, PointValue> values = new LinkedHashMap<>();
+            for (PointDef p : points) {
+                if (raw.containsKey(p.getKey())) {
+                    values.put(p.getKey(), PointValue.good(device.getCode(), p, raw.get(p.getKey()), now));
+                } else {
+                    values.put(p.getKey(), PointValue.bad(device.getCode(), p, now));
+                }
+            }
+
+            store.update(device.getCode(), values, System.currentTimeMillis() - start);
+            pushValues(values);
+            pushStatus(true, null);
+            failures = 0;
+
+        } catch (Exception e) {
+            failures++;
+            // 无线链路丢一个包是常事。只失败一次就标离线，设备会在页面上闪红，
+            // 运行人员很快学会"红色不用管"——真出事那天也没人看。
+            // 所以连续失败到阈值才判离线；之前只是重试。
+            if (failures >= device.getOfflineAfterFails()) {
+                pushStatus(false, e.getMessage());
+                store.markOffline(device.getCode(), e.getMessage());
+                log.warn("[{}] 采集失败 {} 次，判定离线: {}", device.getCode(), failures, e.getMessage());
+            } else {
+                log.debug("[{}] 采集失败第 {} 次（未达离线阈值），重试: {}",
+                        device.getCode(), failures, e.getMessage());
+            }
+            ioLock.lock();
+            try {
+                driver.disconnect();
+            } catch (Exception ignored) {
+            } finally {
+                ioLock.unlock();
+            }
+        }
+        return System.currentTimeMillis() - start;
+    }
+
+    /**
+     * 下一轮该等多久（毫秒）。
+     * <p>
+     * 成功：周期减去本轮耗时（下限 50ms）—— 与原逻辑一字不差。
+     * 失败：断线重连退避（1s → 2s → 4s → 8s → 16s → 30s 封顶 + 随机抖动）。
+     * <p>
+     * ⚠️ 判定「上轮是否失败」用 failures &gt; 0 —— 因为成功时 failures 被清零，
+     * 失败时自增，所以 failures&gt;0 精确等于「上轮失败」。
+     */
+    public long nextDelayMs(long cost) {
+        if (failures > 0) {
+            return backoffMs(failures);
+        }
+        return Math.max(50, device.getPollIntervalMs() - cost);
+    }
+
+    /** 采集是否还在进行（停止后不再排下一轮） */
+    public boolean isRunning() {
+        return running;
     }
 
     private void pushValues(Map<String, PointValue> values) {
