@@ -119,8 +119,22 @@ if [ "${CI:-}" = "true" ]; then
 else
   MVN_OFFLINE="-o"
 fi
-"$MVN_RESOLVED" $MVN_OFFLINE -q dependency:list -DoutputFile=target/deplist.txt || exit 1
-"$MVN_RESOLVED" $MVN_OFFLINE -q dependency:build-classpath -Dmdep.outputFile=target/cp-all.txt || exit 1
+# ⚠️ **CI 上必须用仓库里的 settings.xml（aliyun 镜像）**：
+#   不带 `-s` ⇒ 走 Maven Central ⇒ 国内 runner 只有 1-10 kB/s ⇒ 冷缓存必超时。
+#   （setup-java 的 `settings-path` 要求**绝对路径**，传相对路径会让它那一步直接失败
+#     ⇒ CI 表现为「setup-java 步骤 0 秒红、门禁根本没跑」⇒ 改由脚本自己传 `-s`。）
+#   MVN_SETTINGS 由 tools/ci-gate.sh 传入（它知道仓库根的绝对路径）。
+# ⚠️ **本地不传 `-s`**：本地仓库里的包是从 central 下的，换到 aliyun 后
+#   Maven 认为「aliyun 上没下过」⇒ 而本地是 `-o` 离线 ⇒ **直接失败**
+#   （实测：加上 `-s` 后本地 OPC UA 检查报 12 个包
+#    「Cannot access aliyun ... in offline mode」⇒ 门禁红）
+#   ⇒ 判据与 ci-gate.sh 一致：**只有 CI 冷缓存才需要镜像**。
+MVN_SETTINGS_ARGS=""
+if [ "${CI:-}" = "true" ] && [ -n "${MVN_SETTINGS:-}" ] && [ -f "${MVN_SETTINGS}" ]; then
+  MVN_SETTINGS_ARGS="-s ${MVN_SETTINGS}"
+fi
+"$MVN_RESOLVED" $MVN_OFFLINE $MVN_SETTINGS_ARGS -q dependency:list -DoutputFile=target/deplist.txt || exit 1
+"$MVN_RESOLVED" $MVN_OFFLINE $MVN_SETTINGS_ARGS -q dependency:build-classpath -Dmdep.outputFile=target/cp-all.txt || exit 1
 
 # 从 dependency:list 里取出 test/provided/system 作用域的 artifactId
 # 注意两点：
@@ -164,11 +178,11 @@ fi
 echo "OK 生产运行时类路径：$(tr "$CP_SEP" '\n' < target/cp-runtime.txt | wc -l) 个 jar，无 sdk-server，含 jaxb-api"
 
 echo "== 2/6 生成测试类路径（Server 端要用） =="
-"$MVN_RESOLVED" $MVN_OFFLINE -q dependency:build-classpath -Dmdep.includeScope=test \
+"$MVN_RESOLVED" $MVN_OFFLINE $MVN_SETTINGS_ARGS -q dependency:build-classpath -Dmdep.includeScope=test \
       -Dmdep.outputFile=target/cp-test.txt || exit 1
 
 echo "== 3/6 编译 =="
-"$MVN_RESOLVED" $MVN_OFFLINE -q test-compile || exit 1
+"$MVN_RESOLVED" $MVN_OFFLINE $MVN_SETTINGS_ARGS -q test-compile || exit 1
 
 TEST_CP="target/test-classes${CP_SEP}target/classes${CP_SEP}$(cat target/cp-test.txt)"
 RUNTIME_CP="target/test-classes${CP_SEP}target/classes${CP_SEP}$(cat target/cp-runtime.txt)"

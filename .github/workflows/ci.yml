@@ -49,12 +49,14 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: maven
-          # ⚠️ **用仓库里的 settings.xml（带 aliyun 镜像）**：
-          #   setup-java 的 maven cache key 绑 pom.xml ⇒ 冷缓存 runner 上
-          #   `mvn -B test` 要**联网**下载依赖 ⇒ 走 Maven Central 慢/不稳
-          #   ⇒ 34 秒就失败（实测 2026-11-07：CI 红了，服务器上同一份代码全绿）。
-          #   ⇒ 换镜像后下载快且稳。
-          settings-path: tools/settings.xml
+          # ⚠️ **不要用 setup-java 的 `settings-path`**（2026-11-07 实测踩到）：
+          #   那个参数要求**绝对路径**（它会拼成 <绝对路径>/settings.xml），
+          #   传相对路径 ⇒ setup-java 这一步**直接失败** ⇒ CI 表现为
+          #   「setup-java 步骤 0 秒红、门禁根本没跑」⇒ 看起来像「代码有问题」，
+          #   其实是配置写错（run #16 就是这样红的）。
+          #   ⇒ 镜像改由**门禁脚本自己传 `-s tools/settings.xml`**（见 tools/ci-gate.sh）。
+          #   仓库里那份 settings.xml 带 aliyun 镜像：国内到 Maven 中央仓库只有
+          #   1-10 kB/s ⇒ 冷缓存 runner 上不带镜像必超时。
 
       # Node 22：Vite 8 要求 `^20.19.0 || >=22.12.0`
       # （release.yml 用的 node 20 恰好卡在下限，这里用 22 更稳）

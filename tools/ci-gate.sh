@@ -33,6 +33,30 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT" || exit 1
 
 MVN="${MVN:-mvn}"
+# ⚠️ **仓库内自带 settings.xml（带 aliyun 镜像）**：国内 CI 到 Maven 中央仓库只有
+#   1-10 kB/s ⇒ 冷缓存 runner 上 `mvn test` 要联网下载依赖 ⇒ 必红（实测）。
+#   ⇒ 用它。
+# ⚠️ **为什么不用 setup-java 的 `settings-path`**：那个参数要求**绝对路径**
+#   （它会拼成 <绝对路径>/settings.xml），传相对路径或传文件路径都会让
+#   setup-java 这一步直接失败（CI 里表现为「setup-java 步骤 0 秒红」，
+#   而**门禁根本没跑** ⇒ 看起来像「代码有问题」，其实是配置写错）。
+#   ⇒ 这里由门禁脚本自己传 `-s` ⇒ 路径一定对（相对仓库根，脚本自己 cd 过）。
+MVN_ARGS=()
+if [ -f "$ROOT/tools/settings.xml" ]; then
+  # ⚠️ **只在 CI 上换镜像**：本地仓库里的 artifact 是从 **central** 下的，
+  #   换到 aliyun 之后 Maven 会认为「aliyun 上没下过这些包」
+  #   ⇒ 而本地 OPC UA 检查用 `-o`（离线）⇒ **直接拒绝下载 ⇒ 门禁红**
+  #   （实测 2026-11-07：加上 `-s` 后本地门禁的 OPC UA 段立刻红，
+  #     报「Cannot access aliyun ... in offline mode」⇒ 12 个包全下过）
+  # ⇒ 判据：**CI 冷缓存才需要镜像**；本地有缓存 ⇒ 用默认源。
+  #   （CI 上不能离线：maven-dependency-plugin 不在 test 生命周期里，
+  #     setup-java 的 cache key 又绑 pom.xml ⇒ pom 一改就 cache miss ⇒ 缓存是空的。）
+  if [ "${CI:-}" = "true" ]; then
+    MVN_ARGS+=("-s" "$ROOT/tools/settings.xml")
+    # 子脚本（verify-opcua-boot4.sh）自己也要用同一份 settings ⇒ 用环境变量传路径
+    export MVN_SETTINGS="$ROOT/tools/settings.xml"
+  fi
+fi
 SKIP_BE=0
 SKIP_FE=0
 ONLY_OPCUA=0
@@ -204,7 +228,7 @@ if [ "$SKIP_BE" -eq 0 ]; then
   #   ⇒ 日志放 target/ 之外的 target-logs/（gitignore 覆盖）。
   mkdir -p "$ROOT/target-logs"
   check "后端单测" "target-logs/_ci-test.log" \
-    "$MVN" -B clean test
+    "$MVN" "${MVN_ARGS[@]}" -B clean test
   # 断言真的跑了（而不是「跑了个 0」）：
   #   surefire 报告文件数 + 用例总数，两个都要 > 0。
   #   报告数 > 0 但用例数 = 0，说明测试被跳过了（例如环境里带了 -DskipTests）。
