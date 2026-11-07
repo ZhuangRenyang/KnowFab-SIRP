@@ -98,16 +98,27 @@ const problems = [];
     const text = readFileSync(file, 'utf8');
     const lines = text.split('\n');
     lines.forEach((line, i) => {
-      if (/^\s*import\s/.test(line)) return;           // import 行单独由检查 2 处理
-      const re = new RegExp(`${PKG_ROOT}\\.erp\\.([A-Z][A-Za-z0-9_]*)`, 'g');
+      // ⚠️⚠️ **import 行也要判「过时」**（2026-11-07 架构师抓到 15 处 `import static` 后我改了这里）：
+      //   第一版我写 `if (/^\s*import\s/.test(line)) return;` ⇒ **完全跳过 import 行**
+      //   ⇒ 而 `import static com.factory.hub.quality.ErpQcBody.str;` 这类**静态导入**
+      //   是「旧全限定名」的一种形态 ⇒ 被漏掉了。
+      //   ⇒ 现在改成：**import 行也用「目标类的实际位置 ≠ import 路径」来判定**。
+      //   ⇒ 静态导入自动被覆盖，且**比之前更早暴露问题**（不必等编译失败）。
+      const isImport = /^\s*import\s/.test(line);
+      // ⚠️ 前缀要覆盖**两个域**（erp + quality），与守恒口径一致
+      //   ⇒ 否则 `import static com.factory.hub.quality.ErpQcBody.str;` 这类**静态导入**
+      //   在 quality 尚未搬进 erp 时**根本匹配不到** ⇒ 检查 1 对它无效。
+      const re = new RegExp(`${PKG_ROOT}\\.(?:erp|quality)\\.([A-Z][A-Za-z0-9_]*)`, 'g');
       let m;
       while ((m = re.exec(line))) {
         const cls = m[1];
         const actual = actualLocation.get(cls);
         if (!actual) continue;                          // 该类不存在（别的检查管）
-        if (actual === `${PKG_ROOT}.erp.${cls}`) continue;  // 完全匹配 ⇒ 合法
+        // 「旧路径」= 去掉类名后的前缀部分
+        const oldPath = m[0].slice(0, m[0].length - cls.length);
+        if (actual === oldPath + cls) continue;        // 完全匹配 ⇒ 合法
         problems.push(
-          `残留旧全限定名：${relative(ROOT, file)}:${i + 1}  「${m[0]}」`
+          `${isImport ? '过时的 import' : '残留旧全限定名'}：${relative(ROOT, file)}:${i + 1}  「${m[0]}」`
           + ` ⇒ ${cls} 现在位于 ${actual}，应改成 ${actual} 或短名+import`
         );
       }
