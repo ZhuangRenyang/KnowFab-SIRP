@@ -94,6 +94,49 @@ public class ProdRollup {
     /** key = deviceCode|hourStart，值是该小时该设备的累计 */
     private final Map<String, ProdHourly> buckets = new ConcurrentHashMap<>();
 
+    /**
+     * 今日产量的<b>已落库部分</b>快照（deviceCode → 该设备今日已落库的产量和）。
+     * <p>
+     * <b>为什么需要它</b>（2026-11-07 的 1000 台压测发现）：
+     * {@link #todayOutputOf(String)} 原来每台设备每轮都要查一次库
+     * （{@code findByDeviceCodeAndHourStartBetween}），1000 台 × 1 秒 = 1000 次/秒，
+     * 而它是<b>方法级 synchronized</b> ⇒ 1000 次全部串行在一把锁上 ⇒
+     * 实测锁占用率 71.5%、最慢的设备等锁 883ms ⇒ <b>采集周期被拉长</b>。
+     * <p>
+     * <b>为什么是「不可变快照」而不是直接读 {@code buckets}</b>：
+     * {@link ProdHourly} 是<b>可变 JPA 实体</b>（output/runSec 都是普通 double，非 volatile），
+     * 而 {@code scan()} 线程会在锁内改它 ⇒ 无锁读者与写者之间<b>没有 happens-before 边</b>
+     * ⇒ 可能读到「runSec 是新的、output 是旧的」这种不一致组合。
+     * ⇒ 所以这里发布的是 {@code Map<String, Double}>（不可变值），不是可变实体。
+     * <p>
+     * <b>失效按「写事件」，不按时间</b>：{@code flush()} 写库成功、或
+     * {@link #purgeByCode(String)} 删除设备时，立刻让快照作废。
+     * ⇒ 不依赖任何关于时钟/落库周期的推理 ⇒ 不会算出过期值。
+     */
+    private final java.util.concurrent.atomic.AtomicReference<Map<String, TodayOut>> todayFromDb =
+            new java.util.concurrent.atomic.AtomicReference<>(Map.of());
+
+    /**
+     * 某设备今日产量的<b>已落库部分</b>。
+     * <p>
+     * <b>为什么是三样而不是一个数</b>：{@link #todayOutputOf(String)} 命中快照后
+     * <b>一次库都不能查</b>（连设备表的 {@code byCode} 也不能查 —— 它只是为了让
+     * {@code prodResetHour} 拿到手）。所以当前小时那一行的 DB 值、有没有那一行，
+     * 都必须提前算好放进快照 ⇒ 快照自己带齐，调用方就不用再问库。
+     *
+     * @param closedSum   当前小时<b>之前</b>的已落库产量和
+     * @param curHourDb   当前小时那一行的 DB 产量（没查过 ⇒ 0）
+     * @param hasCurHour  当前小时那一行在不在 DB 里
+     */
+    private record TodayOut(double closedSum, double curHourDb, boolean hasCurHour) {
+    }
+
+    /** 快照里还记着建快照时的小时：跨小时后「当前小时」那部分就不能用了 */
+    private volatile long todaySnapshotHour = -1L;
+
+    /** 快照待重建标记：flush/purge 写库后置位，下一拍 scan() 重建 */
+    private volatile boolean todaySnapshotDirty = true;
+
     /** 每台设备的上一笔采样，用来算时间差和产量增量 */
     private final Map<String, DevState> states = new ConcurrentHashMap<>();
 
@@ -264,6 +307,116 @@ public class ProdRollup {
 
         cleanupStates();
         maybeCleanupOldData(now);
+
+        // 刷新「今日产量」的批量快照（见 todayFromDb 字段的说明）。
+        // 放在 scan() 末尾而不是新建 @Scheduled 任务：
+        //   Spring 的 @Scheduled 默认**单线程** ⇒ 新增一个定时任务会跟 scan() 抢同一个线程，
+        //   而 scan() 是每秒拍（生产链路的节拍），不能被别的任务拖慢。
+        //   ⇒ 挂在这里：它本来就每秒跑、本来就遍历全量设备、本来就持这把锁。
+        refreshTodaySnapshot();
+    }
+
+    /**
+     * 刷新「今日产量已落库部分」的批量快照。
+     * <p>
+     * <b>为什么批量</b>：原来每台设备每轮查一次库 ⇒ 1000 台 = 1000 次/秒，
+     * 而且都在 {@link #todayOutputOf(String)} 的 synchronized 里 ⇒ 全部串行。
+     * ⇒ 现在改成<b>一次批量查询</b>（所有设备一次查回来）⇒ 1000 次/秒 → 1 次/秒。
+     * <p>
+     * <b>为什么放在锁内</b>：查出来的值要跟内存桶（{@code buckets}）里的当前小时实时值
+     * 拼在一起才算今日产量，而内存桶正被 {@code scan()} 改 ⇒ 同一把锁下取值才自洽。
+     * <p>
+     * <b>失效按写事件</b>：{@code flush()} 写库成功、{@link #purgeByCode(String)} 删设备时
+     * 都会让快照作废（{@link #invalidateTodaySnapshot()}）⇒
+     * <b>不依赖任何关于时钟/落库周期的推理</b> ⇒ 不会算出过期值。
+     */
+    private void refreshTodaySnapshot() {
+        // ⚠️⚠️ **必须先判断要不要刷**（这是本改造最容易埋的雷）：
+        //   这个方法要查两次库（设备全表 + 批量小时行），而它跑在 {@code scan()} 的
+        //   synchronized 里 ⇒ **每秒持锁做重查询** = 制造一个比原来更糟的锁瓶颈。
+        // ⇒ 只在两种情况下刷：
+        //   ① 有人写过库（flush/purge 置 dirty）—— 数据变了
+        //   ② 跨了小时 —— 「当前小时」那部分的含义变了
+        //   其它时候**直接返回**，一次库都不查。
+        long nowMs = System.currentTimeMillis();
+        long nowHour = nowMs - (nowMs % HOUR_MS);
+        if (!todaySnapshotDirty && todaySnapshotHour == nowHour) {
+            return;
+        }
+        try {
+            List<DeviceEntity> devices = deviceService.all();
+            if (devices.isEmpty()) {
+                todayFromDb.set(Map.of());
+                return;
+            }
+            long now = System.currentTimeMillis();
+            long curHour = now - (now % HOUR_MS);
+
+            // 每台设备的「今日起点」不同（prodResetHour），批量查询只能用一个统一窗口
+            // ⇒ 取所有设备里最早的那个起点，保证一行都不漏；各设备再用自己的起点裁剪。
+            long minStart = Long.MAX_VALUE;
+            Map<String, Integer> resetHours = new HashMap<>();
+            List<String> codes = new ArrayList<>(devices.size());
+            for (DeviceEntity d : devices) {
+                if (d.getCode() == null) {
+                    continue;
+                }
+                codes.add(d.getCode());
+                int rh = d.getProdResetHour();
+                resetHours.put(d.getCode(), rh);
+                minStart = Math.min(minStart, ProdDay.dayStart(now, rh));
+            }
+            if (codes.isEmpty()) {
+                todayFromDb.set(Map.of());
+                return;
+            }
+
+            // 一次批量查询拿到所有设备今天的小时行（仓库里已有这个方法）
+            List<ProdHourly> rows = repo.findByDeviceCodeInAndHourStartBetween(codes, minStart, now);
+
+            // 每台设备用自己的今日起点裁剪（prodResetHour 不同 ⇒ 起点不同）
+            // 每台设备一份：closedSum / curHourDb / hasCurHour
+            Map<String, TodayOut> snap = new HashMap<>(devices.size() * 2);
+            Map<String, double[]> acc = new HashMap<>(devices.size() * 2);
+            for (String code : codes) {
+                acc.put(code, new double[]{0d, 0d, 0d});
+            }
+            for (ProdHourly p : rows) {
+                String code = p.getDeviceCode();
+                double[] a = acc.get(code);
+                Integer rh = resetHours.get(code);
+                if (a == null || rh == null) {
+                    continue;
+                }
+                if (p.getHourStart() < ProdDay.dayStart(now, rh)) {
+                    continue;
+                }
+                if (p.getHourStart() == curHour) {
+                    // 当前小时这一行：单独记（只有内存没实时值时才用它）
+                    a[1] = p.getOutput();
+                    a[2] = 1d;
+                } else {
+                    a[0] += p.getOutput();
+                }
+            }
+            for (Map.Entry<String, double[]> e : acc.entrySet()) {
+                double[] a = e.getValue();
+                snap.put(e.getKey(), new TodayOut(a[0], a[1], a[2] > 0d));
+            }
+            todayFromDb.set(Map.copyOf(snap));
+            todaySnapshotHour = curHour;
+            // ⚠️ **只在成功后清 dirty**：失败时保持 dirty ⇒ 下一拍重试
+            todaySnapshotDirty = false;
+        } catch (Exception e) {
+            // 刷新失败**不能让推送挂掉**：保留旧快照，下一拍再试。
+            // （旧快照可能略旧 ⇒ 今日产量最多差一个落库周期，客户看到的数字仍自洽。）
+            log.warn("刷新今日产量快照失败（沿用旧快照）: {}", e.getMessage());
+        }
+    }
+
+    /** 让快照作废：下一个 {@link #refreshTodaySnapshot()} 会重建 */
+    private void invalidateTodaySnapshot() {
+        todaySnapshotDirty = true;
     }
 
     /* ==================== DH-81 计数器水位：启动恢复 + 同步落库 ==================== */
@@ -392,16 +545,58 @@ public class ProdRollup {
      * <p>
      * 推送用——点位一变就把今日产量一起推给前端，设备卡片上的数字才能秒级跟涨
      * （列表接口的 todayOutput 只有在页面刷新时才会变，WS 推送不带就一直是旧值）。
+     * <p>
+     * <b>⚠️ 这里<b>不再</b>每台设备查一次库</b>（2026-11-07 的 1000 台压测发现）：
+     * 原来这里是 {@code synchronized} + 2 次查库，1000 台 × 1 秒 ⇒ 1000 次全部串行在一把锁上
+     * ⇒ 锁占用率 71.5%、最慢的设备等锁 883ms ⇒ 采集周期被拉长。
+     * ⇒ 现在：<b>已落库部分</b>读 {@link #todayFromDb} 批量快照（每秒由 {@code scan()} 刷一次），
+     * <b>当前小时</b>仍读内存实时值（{@link #liveOutput}）⇒ 查库 1000 次/秒 → 1 次/秒。
+     * <p>
+     * <b>口径一个字节没改</b>（见 {@code ProdRollupTodayOutputTest} 的 6 条契约）：
+     * <ol>
+     *   <li>DB 多行 ⇒ 累加</li>
+     *   <li>DB 行里当前小时那行 ⇒ 用内存实时值<b>替换</b>它</li>
+     *   <li>DB <b>没有</b>当前小时行、但内存桶有值 ⇒ 把内存值<b>加</b>上去</li>
+     *   <li>设备查不到 ⇒ 返回 0</li>
+     * </ol>
+     * ⇒ 快照只存「<b>当前小时之前</b>的已落库产量和」，当前小时一律由内存实时值决定，
+     * 这样契约②③ 天然成立（DB 有没有当前小时行，都由 liveOutput 说了算）。
      */
-    public synchronized double todayOutputOf(String code) {
+    public double todayOutputOf(String code) {
+        long now = System.currentTimeMillis();
+        long curHour = now - (now % HOUR_MS);
+
+        Map<String, TodayOut> snap = todayFromDb.get();
+        TodayOut t = snap.get(code);
+        if (t == null) {
+            // 快照里还没有这台设备（新加的、或快照还没刷出来）⇒ 走原来的查库路径，
+            // 保证「第一次推送就能拿到正确的今日产量」，而不是先推一个 0。
+            return todayOutputOfByQuery(code, now, curHour);
+        }
+
+        double live = liveOutput(code, curHour);
+        boolean hasLive = !Double.isNaN(live);
+
+        if (hasLive) {
+            // 契约②③：有内存实时值 ⇒ 当前小时由它说了算（DB 那行被**替换**，不是相加）
+            return t.closedSum() + live;
+        }
+        // 契约④：没有内存实时值 ⇒ 当前小时若 DB 里有行就用它
+        // ⚠️ 跨小时时快照里的「当前小时」是上一个小时的值 ⇒ 不能用（会重复算）
+        if (t.hasCurHour() && todaySnapshotHour == curHour) {
+            return t.closedSum() + t.curHourDb();
+        }
+        return t.closedSum();
+    }
+
+    /** 快照缺失时的兜底：按原来的逻辑查库算（口径与快照路径一致） */
+    private double todayOutputOfByQuery(String code, long now, long curHour) {
         DeviceEntity d = deviceService.byCode(code);
         if (d == null) {
             return 0d;
         }
         int rh = d.getProdResetHour();
-        long now = System.currentTimeMillis();
         long start = ProdDay.dayStart(now, rh);
-        long curHour = now - (now % HOUR_MS);
         double sum = 0;
         boolean hasCur = false;
         for (ProdHourly p : repo.findByDeviceCodeAndHourStartBetween(code, start, now)) {
@@ -434,6 +629,8 @@ public class ProdRollup {
         buckets.keySet().removeIf(k -> k.startsWith(code + "|"));
         states.remove(code);
         repo.deleteByDeviceCode(code);
+        // 设备被删了 ⇒ 快照里它的今日产量也作废（否则会一直推一个已删设备的产量）
+        invalidateTodaySnapshot();
         // DH-81 水位也要删：留着的话，同编码设备重建后新表读数若比旧水位大，
         // 差值会被当成"这一拍生产的"计进产量和入库单据（凭空多出一批货）。
         try {
@@ -494,6 +691,10 @@ public class ProdRollup {
             }
             try {
                 repo.saveAll(rows);
+                // ⚠️ **按写失效**（不按时间失效）：DB 里这些设备的今日产量变了 ⇒
+                //   快照里的旧值不能再用 ⇒ 立刻作废，下一拍 scan() 会重建。
+                //   ⇒ 不依赖任何关于时钟/落库周期的推理 ⇒ 不会算出过期值。
+                invalidateTodaySnapshot();
             } catch (Exception ex) {
                 log.error("小时生产数据写库失败（内存保留，下轮重试）: {}", ex.getMessage());
                 continue;
