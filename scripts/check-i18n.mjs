@@ -107,6 +107,13 @@ const DYNAMIC_LITERAL_ALLOWLIST = {
 const EXPANSIONS = [
   // 前缀                        值集（必须与代码实际拼出的字符串完全一致）
   { prefix: 'wo.st_',             values: ['DRAFT', 'RELEASED', 'RUNNING', 'DONE', 'CANCELLED'] },
+  // 维修工单（DH-85 待办页 MaintTodoView）。值集 = ErpMaintOrder 的 4 个状态常量
+  // （ST_ANALYZED / ST_IN_PROGRESS / ST_RESOLVED / ST_CANCELLED）。
+  // ⚠️ DRAFT 不在此列：那是生产工单的状态，维修单没有 DRAFT。
+  // 为什么必须登记：不登记时 `maint.st_` 只会被当作「动态前缀」跳过，
+  // 值集永不展开 ⇒ 4 个状态键存不存在**从来没被检查过**（实测：中英两侧同时
+  // 删掉 st_ANALYZED，检查仍 exit 0）⇒ 界面显示 `maint.st_ANALYZED` 原文。
+  { prefix: 'maint.st_',          values: ['ANALYZED', 'IN_PROGRESS', 'RESOLVED', 'CANCELLED'] },
   { prefix: 'status.alarm',        values: ['Active', 'Acked', 'Cleared'] },
   { prefix: 'alarmDict.lv.',       values: ['critical', 'major', 'minor'] },
   { prefix: 'alarmDict.stateOpt.', values: ['open', 'active', 'acked', 'cleared', 'all'] },

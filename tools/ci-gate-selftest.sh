@@ -134,13 +134,49 @@ fi
 # 门禁在这个副本里必须 exit 1
 expect_red() {
   local name="$1"
+  # 可选第 2 参数：门禁日志里**必须出现**的字样。
+  # 为什么需要它：只判"变红了"会放过"红得对、但理由不对"的假验证 ——
+  #   例如我们想证明「动态前缀值集展开」有鉴别力，却因为副作用
+  #   （中英不对称）而变红，那条变异就什么也没证明。
+  # 不传时行为与从前完全一致（现有变异零影响）。
+  local must_contain="${2:-}"
   local t0=$SECONDS
   if ( cd "$WORK" && bash tools/ci-gate.sh $SKIP_ARG ) >/tmp/_cgs.log 2>&1; then
     line "✗" "$name" "门禁没有变红 —— 门禁失效了（假绿）"
     FAIL=$((FAIL + 1))
     return 1
   fi
-  line "✓" "$name" "变红了（$((SECONDS - t0)) 秒）"
+  if [ -n "$must_contain" ]; then
+    # 证据源有**两处**，缺一不可：
+    #   ① 门禁 stdout（/tmp/_cgs.log）—— 只打 check() 的汇总行
+    #   ② 门禁自己落盘的详细日志（target*/_ci-*.log）—— 具体到哪个键/哪一行只在这里
+    # 只查 ① 会误判成「理由不对」：2026-11-07 实测，门禁红得完全正确
+    #   （i18n 缺 1 个键），但键名只出现在 target/_ci-i18n.log 里。
+    # ⚠️ 不能写 `! grep -rq X glob`：glob 一个都没匹配时 grep 返回 2（错误），
+    #   在 `!` 下会被当成「找到了」⇒ 假通过。必须先收集**真实存在**的日志文件。
+    local logs=()
+    local f
+    for f in "$WORK"/target/_ci-*.log "$WORK"/target-logs/_ci-*.log; do
+      [ -f "$f" ] && logs+=("$f")
+    done
+    local hit=0
+    grep -qF "$must_contain" /tmp/_cgs.log && hit=1
+    if [ "$hit" -eq 0 ] && [ "${#logs[@]}" -gt 0 ] \
+       && grep -qF "$must_contain" "${logs[@]}" 2>/dev/null; then
+      hit=1
+    fi
+    if [ "$hit" -eq 0 ]; then
+      line "✗" "$name" "变红了但**理由不对**：门禁输出与日志里都没有「$must_contain」⇒ 这条红不是被验证对象造成的"
+      tail -20 /tmp/_cgs.log | sed 's/^/       /'
+      FAIL=$((FAIL + 1))
+      return 1
+    fi
+  fi
+  if [ -n "$must_contain" ]; then
+    line "✓" "$name" "变红且理由正确（命中「$must_contain」，$((SECONDS - t0)) 秒）"
+  else
+    line "✓" "$name" "变红了（$((SECONDS - t0)) 秒）"
+  fi
   PASS=$((PASS + 1))
   return 0
 }
@@ -821,20 +857,27 @@ fi
 # ---------- 变异 13：把 erp 域的一个文件挪出域外 ⇒ 「拆包完整性核对」必须红 ----------
 # 验的是「守恒检查真的在数文件」（不是只查 import 悬空）。
 say "变异 13：把 erp 域的一个文件挪出域外 ⇒ 守恒检查必须红"
-MOVE_SRC="$WORK/src/main/java/com/factory/hub/erp/ErpWorkOrder.java"
+# ⚠️ 锚点不能写死「erp/ErpWorkOrder.java」：
+#   2026-11-07 拆包把它移进 erp/production/ ⇒ 硬编码路径当场失效 ⇒
+#   变异报「副本里找不到 ErpWorkOrder.java」⇒ **自检永远红**（而永远红的自检
+#   等于没有自检，因为没人再看得懂它为什么红）。
+#   ⇒ 改为「erp 域内任意一个 .java」：只要挪出域外，守恒数必少 1，
+#     对后续再拆包/改类名都免疫（这正是「变异锚点别挂在会被改动的地方」）。
+MOVE_SRC="$(find "$WORK/src/main/java/com/factory/hub/erp" -name '*.java' -type f 2>/dev/null | sort | head -1)"
 MOVE_DST_DIR="$WORK/src/main/java/com/factory/hub/zzprobe"
-if [ ! -f "$MOVE_SRC" ]; then
-  line "✗" "守恒变异" "副本里找不到 ErpWorkOrder.java，变异无法进行"
+if [ -z "$MOVE_SRC" ] || [ ! -f "$MOVE_SRC" ]; then
+  line "✗" "守恒变异" "副本的 erp 域里一个 .java 都没找到，变异无法进行"
   FAIL=$((FAIL + 1))
 else
+  MOVE_NAME="$(basename "$MOVE_SRC")"
   mkdir -p "$MOVE_DST_DIR"
-  mv "$MOVE_SRC" "$MOVE_DST_DIR/ErpWorkOrder.java"
+  mv "$MOVE_SRC" "$MOVE_DST_DIR/$MOVE_NAME"
   if ( cd "$WORK" && bash tools/ci-gate.sh --only-pkg ) >/tmp/_cgs.log 2>&1; then
     line "✗" "守恒变异 → 必须红" "门禁没有变红 —— 守恒检查没有鉴别力（装饰性的）"
     FAIL=$((FAIL + 1))
   else
     if grep -aq "拆包完整性核对" /tmp/_cgs.log; then
-      line "✓" "守恒变异 → 必须红" "变红了，且红的正是「拆包完整性核对」这一项"
+      line "✓" "守恒变异 → 必须红" "变红了，且红的正是「拆包完整性核对」这一项（挪走的是 $MOVE_NAME）"
       PASS=$((PASS + 1))
       grep -aE "守恒|拆包完整性核对" /tmp/_cgs.log | head -4 | sed 's/^/       /'
     else
@@ -843,8 +886,65 @@ else
       FAIL=$((FAIL + 1))
     fi
   fi
-  mv "$MOVE_DST_DIR/ErpWorkOrder.java" "$MOVE_SRC"
+  mv "$MOVE_DST_DIR/$MOVE_NAME" "$MOVE_SRC"
   rmdir "$MOVE_DST_DIR" 2>/dev/null || true
+fi
+
+# ---------- 变异 14：动态前缀「值集展开」路径 ⇒ 必须红，且理由必须是它 ----------
+# 为什么需要（2026-11-07 实测发现）：
+#   `t('maint.st_' + status)` 这种拼接键，在 check-i18n.mjs 里会被识别成「动态前缀」
+#   ⇒ **跳过精确校验**。只有登记进 EXPANSIONS 值集表才会逐个校验。
+#   未登记时：把 st_ANALYZED 从**中英两侧同时删掉**，检查仍 exit 0（实测）——
+#   界面显示 `maint.st_ANALYZED` 原文，而门禁全绿。
+#
+# 这条变异同时守护**两件事**（这是它比变异 1 多出来的价值）：
+#   ① 值集展开路径有效：删键 ⇒ 必须红
+#   ② EXPANSIONS 里 `maint.st_` 这条**还在**：若有人把它删掉，
+#      删键就不再报红 ⇒ 本变异的 expect_red 落空 ⇒ 自检自己报失败
+#   ⇒ 不需要另写一条「断言 EXPANSIONS 表里有 maint.st_」的静态断言。
+#
+# ⚠️ 必须**中英两侧都删**：只删一侧会因「中英不对称」变红，
+#   那是无关原因 ⇒ 红得对但什么也没证明（所以下面传了 must_contain 断言理由）。
+say "变异 14：删掉 maint.st_ANALYZED（动态前缀值集展开）⇒ 必须红且理由正确"
+if [ "$SKIP_FE" -eq 0 ]; then
+  ZH="$WORK/frontend/src/locales/zh-CN.ts"
+  EN="$WORK/frontend/src/locales/en-US.ts"
+  cp "$ZH" "$ZH.bak"
+  cp "$EN" "$EN.bak"
+  python - "$ZH" "$EN" <<'PY'
+import io, re, sys
+for p in sys.argv[1:]:
+    s = io.open(p, encoding='utf-8', newline='').read()
+    m = re.search(r"^\s*st_ANALYZED: '[^']*',\r?\n", s, re.M)
+    if not m:
+        print("  找不到锚点 st_ANALYZED：" + p)
+        sys.exit(1)
+    s = s[:m.start()] + s[m.end():]
+    io.open(p, 'w', encoding='utf-8', newline='').write(s)
+print("  已从中英两侧各删掉 st_ANALYZED")
+PY
+  # 断言注入真的生效：用**计数**（原来各 1 个，注入后应各 0 个）
+  ZH_LEFT=$(grep -c "st_ANALYZED:" "$ZH")
+  EN_LEFT=$(grep -c "st_ANALYZED:" "$EN")
+  if [ "$ZH_LEFT" -ne 0 ] || [ "$EN_LEFT" -ne 0 ]; then
+    line "✗" "动态前缀展开变异" "注入没生效（zh 剩 $ZH_LEFT / en 剩 $EN_LEFT，期望都是 0）"
+    FAIL=$((FAIL + 1))
+  else
+    # 第 2 参数是判据核心：红的理由必须命中这个键名
+    expect_red "动态前缀值集展开 → 必须红" "maint.st_ANALYZED"
+    mv "$ZH.bak" "$ZH"
+    mv "$EN.bak" "$EN"
+    RZ=$(grep -c "st_ANALYZED:" "$ZH")
+    RE=$(grep -c "st_ANALYZED:" "$EN")
+    if [ "$RZ" -ne 1 ] || [ "$RE" -ne 1 ]; then
+      line "✗" "动态前缀展开还原" "还原后键数不对（zh $RZ / en $RE，期望都是 1）"
+      FAIL=$((FAIL + 1))
+    else
+      expect_green "动态前缀展开还原后 → 必须绿"
+    fi
+  fi
+else
+  line "—" "动态前缀展开变异" "跳过（--skip-fe 未启用）"
 fi
 
 # ---------- 静态断言 1：拆包验收脚本的期望总数默认值不得为 null ----------
