@@ -110,12 +110,25 @@ check() {
   #   CI 失败时，**日志正文要认证才能看**（artifact 下载也要认证）⇒
   #   「CI 红了但查不出为什么」会让人只能干等或瞎猜。
   #   ⇒ 而 `::error::` 会出现在 run 页面的 Annotations 里，**不用认证就能看到**。
-  #   ⇒ 一行一条（GitHub 的 annotation 不接受换行）⇒ 只取每条的第一行。
+  #
+  # ⚠️ **取哪几行很关键**：只取「最后 8 行」会把真正的原因挤掉
+  #   （实测：mvn 的失败尾巴全是 "For more information..." 这种废话，
+  #   而真正的 "哪个测试失败了" 在中间 ⇒ annotation 里看不到 ⇒ 还是查不出原因）。
+  #   ⇒ 改成**按优先级取**：① 测试失败汇总行 ② 失败的测试类 ③ 编译错误位置 ④ 其它 ERROR。
   if [ "${CI:-}" = "true" ]; then
     echo "::error title=门禁失败::$name（$((SECONDS - t0)) 秒）"
-    grep -aE "ERROR|FAIL|error|错误|失败|缺失|未通过" "$log" | tail -8 | while IFS= read -r l; do
-      # 去掉换行与 GitHub 指令注入字符（防止日志内容伪造 annotation）
-      printf '::error::%s\n' "${l//$'\r'/ }" | head -1
+    {
+      # ① 测试失败汇总：Tests run: N, Failures: 1, Errors: 0
+      grep -aE "Tests run:.*(Failures: [1-9]|Errors: [1-9])" "$log" | head -2
+      # ② 失败的测试类名（<<< FAILURE! / <<< ERROR!）
+      grep -aE "<<< (FAILURE|ERROR)!" "$log" | head -3
+      # ③ 编译错误的位置（.java:[行号,列号]）
+      grep -aE "\.java:\[[0-9]+,[0-9]+\]" "$log" | head -3
+      # ④ 其它的 ERROR 行
+      grep -aE "ERROR|FAIL|错误|失败|缺失|未通过" "$log" | head -4
+    } | awk '!seen[$0]++' | head -10 | while IFS= read -r l; do
+      # 一行一条（GitHub 的 annotation 不接受换行）
+      printf '::error::%s\n' "${l//$'\r'/ }"
     done
   fi
   FAIL=$((FAIL + 1)); FAILED+=("$name")
