@@ -24,3 +24,23 @@ bin/apply-pending.sh
 bin/upgrade.sh
 bin/backup.sh
 bin/restore.sh
+
+# PLC 联网工具包（2026-11-07 加入）
+#
+# 为什么加进来：这个工具包原来**只存在于开发机**（.gitignore 整条忽略了 tools/net/）
+# ⇒ 客户与现场根本拿不到 ⇒ 「每次接 PLC 都要改本机 IP」这个坑一直没人能解决。
+# ⇒ 现在它解决的是**客户日常要遇到的问题**，必须随包交付。
+#
+# 放在包根的 tools/net/ 下，**不装进系统目录** ——
+#   它是给工程师/客户在机器上用的辅助工具，不是服务的一部分。
+#   *.sh 会按规则打成 755（可执行），.bat/.ps1/.txt 是 644。
+tools/net/README-net.txt
+tools/net/plc-diag.bat
+tools/net/plc-diag.ps1
+tools/net/plc-diag.sh
+tools/net/plc-off.bat
+tools/net/plc-off.ps1
+tools/net/plc-off.sh
+tools/net/plc-on.bat
+tools/net/plc-on.ps1
+tools/net/plc-on.sh
