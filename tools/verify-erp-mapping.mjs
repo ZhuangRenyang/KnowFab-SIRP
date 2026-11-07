@@ -16,16 +16,21 @@ const SRC = 'src/main/java/com/factory/hub';
 const TEST = 'src/test/java/com/factory/hub';
 
 // ---- 架构师定稿的映射表（main 106 个）----
+// ⚠️⚠️ 三条铁律（都是踩过的坑，别动）：
+//   1. **根包不含 ErpBom\*** —— BOM 是分析域，归 erp.analysis。曾误放根包（总数仍 106 ⇒ 守恒检查抓不到）
+//   2. **没有 erp.basic 这个包** —— 主数据（Sku/Warehouse/Partner）+ 各自 Repository + ErpBaseController
+//      + ErpWarehouseKindNotice 全部留在**根包**（它们入度 5~10，是共享内核）
+//   3. **ErpDefectSyncService 归 erp.quality.defect**（不是 inspection）—— 它属于「缺陷同步」
+//   ⇒ 教训：**守恒检查（总数 106）只能防丢/多，防不了错位** ⇒ 归属必须逐条对照架构师方案
 const PLAN = {
-  'erp.root': 'ErpBom ErpBomRepository ErpBomService ErpBomController ErpPartner ErpPartnerRepository ErpWarehouse ErpWarehouseRepository ErpWarehouseKindNotice ErpQualityReleaseGate ErpQualityReturnGate ErpQcBody ProdDay StockBillVoidedEvent',
-  'erp.basic': 'ErpBaseController ErpSku ErpSkuRepository',
+  erp: 'ProdDay StockBillVoidedEvent ErpQualityReleaseGate ErpQualityReturnGate ErpSku ErpSkuRepository ErpWarehouse ErpWarehouseRepository ErpPartner ErpPartnerRepository ErpBaseController ErpWarehouseKindNotice ErpQcBody',
   'erp.stock': 'ErpStockService ErpStockController ErpStockBill ErpStockBillHdr ErpStockBillRepository ErpStockBillHdrRepository ErpStockBackfill ErpProdInboundService ErpInboundQty',
   'erp.sales': 'ErpSalesService ErpSalesController ErpSalesQueryService ErpSalesQueryController ErpSalesOrder ErpSalesOrderItem ErpSalesOrderRepository ErpSalesOrderItemRepository',
   'erp.purchase': 'ErpPurchaseService ErpPurchaseController ErpPurchaseOrder ErpPurchaseOrderItem ErpPurchaseOrderRepository ErpPurchaseOrderItemRepository ErpPayment ErpPaymentRepository',
   'erp.production': 'ErpWorkOrderService ErpWorkOrderController ErpWorkOrder ErpWorkOrderMaterial ErpWorkOrderOutput ErpWorkOrderRepository ErpWorkOrderMaterialRepository ErpWorkOrderOutputRepository ErpBackflushService ErpProdController ErpProdLine ErpProdLineRepository ErpLineService ErpLineController ErpScheduleService ErpScheduleController ErpMaintService ErpMaintController ErpMaintOrder ErpMaintOrderRepository',
-  'erp.analysis': 'ErpCostService ErpCostController ErpFinanceService ErpFinanceController ErpReportService ErpReportController ErpReportExcel',
-  'erp.quality.inspection': 'ErpQcAqlPlan ErpQcAqlPlanRepository ErpAqlController ErpAqlLevelMap ErpAqlSeeder ErpAqlService ErpAqlStandardGrid ErpDefectSyncService ErpInspectionJudge ErpQcChannelRule ErpQcDeviceQty ErpQcInspection ErpQcInspectionController ErpQcInspectionItem ErpQcInspectionItemRepository ErpQcInspectionRepository ErpQcInspectionService ErpQcInspectionView',
-  'erp.quality.defect': 'ErpQcDefect ErpQcDefectCode ErpQcDefectCodeController ErpQcDefectCodeRepository ErpQcDefectCodeService ErpQcDefectController ErpQcDefectQueryService ErpQcDefectRepository ErpQcDefectService ErpQcDisposition ErpQcDispositionRepository ErpQcReconController ErpQcReconService ErpQcReleaseController ErpQcReleaseService ErpQcReturnService ErpQcBoardController ErpQcBoardService ErpQualityStockAdapter',
+  'erp.analysis': 'ErpBom ErpBomRepository ErpBomService ErpBomController ErpCostService ErpCostController ErpFinanceService ErpFinanceController ErpReportService ErpReportController ErpReportExcel',
+  'erp.quality.inspection': 'ErpAqlController ErpAqlLevelMap ErpAqlSeeder ErpAqlService ErpAqlStandardGrid ErpQcAqlPlan ErpQcAqlPlanRepository ErpQcInspection ErpQcInspectionController ErpQcInspectionItem ErpQcInspectionItemRepository ErpQcInspectionRepository ErpQcInspectionService ErpQcInspectionView ErpInspectionJudge ErpQcChannelRule ErpQcDeviceQty',
+  'erp.quality.defect': 'ErpQcDefect ErpQcDefectCode ErpQcDefectCodeController ErpQcDefectCodeRepository ErpQcDefectCodeService ErpQcDefectController ErpQcDefectQueryService ErpQcDefectRepository ErpQcDefectService ErpQcDisposition ErpQcDispositionRepository ErpDefectSyncService ErpQcBoardController ErpQcBoardService ErpQcReconController ErpQcReconService ErpQcReleaseController ErpQcReleaseService ErpQcReturnService ErpQualityStockAdapter',
 };
 
 const diskMain = new Set(readdirSync(join(SRC, 'erp')).filter((f) => f.endsWith('.java')).map((f) => f.replace('.java', '')));

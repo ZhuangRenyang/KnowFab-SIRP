@@ -1,0 +1,175 @@
+{
+  "_readme": [
+    "erp 域拆包映射表 —— 唯一真相在 plan.json，脚本只读它",
+    "修改方式：只改本文件，然后跑 node tools/verify-erp-mapping.mjs 校验（会报漏/多/重复）",
+    "三条铁律：",
+    "  1. com.factory.hub.erp 根包不含 ErpBom* —— BOM 归 erp.analysis",
+    "  2. 没有 erp.basic 这个包 —— 主数据 + BaseController + WarehouseKindNotice 全留根包",
+    "  3. ErpDefectSyncService 归 erp.quality.defect（不是 inspection）",
+    "为什么这三点要写死：总数守恒（106）只能防丢/多，防不了错位 —— 曾把 BOM 放进根包而总数仍是 106"
+  ],
+  "main": {
+    "com.factory.hub.erp": [
+      "ProdDay",
+      "StockBillVoidedEvent",
+      "ErpQualityReleaseGate",
+      "ErpQualityReturnGate",
+      "ErpSku",
+      "ErpSkuRepository",
+      "ErpWarehouse",
+      "ErpWarehouseRepository",
+      "ErpPartner",
+      "ErpPartnerRepository",
+      "ErpBaseController",
+      "ErpWarehouseKindNotice",
+      "ErpQcBody"
+    ],
+    "com.factory.hub.erp.stock": [
+      "ErpStockService",
+      "ErpStockController",
+      "ErpStockBill",
+      "ErpStockBillHdr",
+      "ErpStockBillRepository",
+      "ErpStockBillHdrRepository",
+      "ErpStockBackfill",
+      "ErpProdInboundService",
+      "ErpInboundQty"
+    ],
+    "com.factory.hub.erp.sales": [
+      "ErpSalesService",
+      "ErpSalesController",
+      "ErpSalesQueryService",
+      "ErpSalesQueryController",
+      "ErpSalesOrder",
+      "ErpSalesOrderItem",
+      "ErpSalesOrderRepository",
+      "ErpSalesOrderItemRepository"
+    ],
+    "com.factory.hub.erp.purchase": [
+      "ErpPurchaseService",
+      "ErpPurchaseController",
+      "ErpPurchaseOrder",
+      "ErpPurchaseOrderItem",
+      "ErpPurchaseOrderRepository",
+      "ErpPurchaseOrderItemRepository",
+      "ErpPayment",
+      "ErpPaymentRepository"
+    ],
+    "com.factory.hub.erp.production": [
+      "ErpWorkOrderService",
+      "ErpWorkOrderController",
+      "ErpWorkOrder",
+      "ErpWorkOrderMaterial",
+      "ErpWorkOrderOutput",
+      "ErpWorkOrderRepository",
+      "ErpWorkOrderMaterialRepository",
+      "ErpWorkOrderOutputRepository",
+      "ErpBackflushService",
+      "ErpProdController",
+      "ErpProdLine",
+      "ErpProdLineRepository",
+      "ErpLineService",
+      "ErpLineController",
+      "ErpScheduleService",
+      "ErpScheduleController",
+      "ErpMaintService",
+      "ErpMaintController",
+      "ErpMaintOrder",
+      "ErpMaintOrderRepository"
+    ],
+    "com.factory.hub.erp.analysis": [
+      "ErpBom",
+      "ErpBomRepository",
+      "ErpBomService",
+      "ErpBomController",
+      "ErpCostService",
+      "ErpCostController",
+      "ErpFinanceService",
+      "ErpFinanceController",
+      "ErpReportService",
+      "ErpReportController",
+      "ErpReportExcel"
+    ],
+    "com.factory.hub.erp.quality.inspection": [
+      "ErpAqlController",
+      "ErpAqlLevelMap",
+      "ErpAqlSeeder",
+      "ErpAqlService",
+      "ErpAqlStandardGrid",
+      "ErpQcAqlPlan",
+      "ErpQcAqlPlanRepository",
+      "ErpQcInspection",
+      "ErpQcInspectionController",
+      "ErpQcInspectionItem",
+      "ErpQcInspectionItemRepository",
+      "ErpQcInspectionRepository",
+      "ErpQcInspectionService",
+      "ErpQcInspectionView",
+      "ErpInspectionJudge",
+      "ErpQcChannelRule",
+      "ErpQcDeviceQty"
+    ],
+    "com.factory.hub.erp.quality.defect": [
+      "ErpQcDefect",
+      "ErpQcDefectCode",
+      "ErpQcDefectCodeController",
+      "ErpQcDefectCodeRepository",
+      "ErpQcDefectCodeService",
+      "ErpQcDefectController",
+      "ErpQcDefectQueryService",
+      "ErpQcDefectRepository",
+      "ErpQcDefectService",
+      "ErpQcDisposition",
+      "ErpQcDispositionRepository",
+      "ErpDefectSyncService",
+      "ErpQcBoardController",
+      "ErpQcBoardService",
+      "ErpQcReconController",
+      "ErpQcReconService",
+      "ErpQcReleaseController",
+      "ErpQcReleaseService",
+      "ErpQcReturnService",
+      "ErpQualityStockAdapter"
+    ]
+  },
+  "test": {
+    "com.factory.hub.erp.stock": [
+      "ErpStockTestKit",
+      "ErpStockAcceptanceGapsTest",
+      "ErpStockCaliberConsistencyTest",
+      "ErpStockConcurrencyTest",
+      "ErpStockDefectQtyTest",
+      "ErpStockPendingLifecycleTest"
+    ],
+    "com.factory.hub.erp.sales": [
+      "ErpSalesShipQualityGateTest"
+    ],
+    "com.factory.hub.erp.production": [
+      "ErpWorkOrderReworkReleaseTest"
+    ],
+    "com.factory.hub.erp.analysis": [
+      "ErpCostScrapNotCountedTest"
+    ],
+    "com.factory.hub.erp.quality.inspection": [
+      "ErpAqlAvailableCombosTest",
+      "ErpAqlLevelMapTest",
+      "ErpAqlServiceTest",
+      "ErpAqlStandardGridTest",
+      "ErpAqlStrictTableTest",
+      "ErpInspectionJudgeTest",
+      "ErpQcChannelRuleTest",
+      "ErpQcDeviceQtyTest"
+    ],
+    "com.factory.hub.erp.quality.defect": [
+      "ErpDefectSyncServiceTest",
+      "ErpInboundQtyTest",
+      "ErpQcBoardServiceTest",
+      "ErpQcDefectServiceTest",
+      "ErpQcDisposalModelTest",
+      "ErpQcReleaseServiceTest",
+      "ErpQcReturnServiceTest",
+      "ErpQualityStockAdapterTest",
+      "ErpStockOutboundTest"
+    ]
+  }
+}
