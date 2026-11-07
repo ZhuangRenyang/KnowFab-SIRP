@@ -235,9 +235,29 @@ if [ "$SKIP_BE" -eq 0 ]; then
   REPORT_N=$(ls target/surefire-reports/*.txt 2>/dev/null | wc -l | tr -d ' ')
   CASE_N=$(grep -h "Tests run:" target/surefire-reports/*.txt 2>/dev/null \
            | sed -n 's/.*Tests run: \([0-9]\+\).*/\1/p' | awk '{s+=$1} END {print s+0}')
+  # ⚠️⚠️⚠️ **还要断言「不许比基线少」**（2026-11-07 实测的真实假绿口子）：
+  #   原本只断言 > 0 ⇒ 拆包期间若某些测试类**没被 surefire 收集**
+  #   （包名写错 / 测试类没跟着搬 / @Test 被误删），`mvn clean test` **仍然全绿**
+  #   ⇒ 而门禁也全绿 ⇒ **没有任何地方会报「测试丢了」**。
+  #   ⇒ 基线在 tools/test-baseline.json（reports 51 / cases 409）。
+  #   ⇒ 断言用 **>=** 而不是 == ：一条规则同时覆盖
+  #      「拆包期间不许变少」与「以后允许新增测试」⇒ **不需要人工切换模式**
+  #      （运维曾建议「拆包窗口内 ==，拆完后转 >=」⇒ 那多一个人为约定，少一个就出错 ⇒ 不采纳）。
+  BASE_REPORTS=0
+  BASE_CASES=0
+  if [ -f "$ROOT/tools/test-baseline.json" ]; then
+    BASE_REPORTS=$(sed -n 's/.*"reports"[[:space:]]*:[[:space:]]*\([0-9]\+\).*/\1/p' "$ROOT/tools/test-baseline.json" | head -1)
+    BASE_CASES=$(sed -n 's/.*"cases"[[:space:]]*:[[:space:]]*\([0-9]\+\).*/\1/p' "$ROOT/tools/test-baseline.json" | head -1)
+    BASE_REPORTS=${BASE_REPORTS:-0}
+    BASE_CASES=${BASE_CASES:-0}
+  fi
   CHECK_NAMES+=("surefire 报告")
-  if [ "$REPORT_N" -gt 0 ] && [ "$CASE_N" -gt 0 ]; then
-    line "✓" "surefire 报告" "$REPORT_N 个文件 / $CASE_N 个用例"
+  if [ "$REPORT_N" -gt 0 ] && [ "$CASE_N" -gt 0 ] \
+     && [ "$REPORT_N" -ge "$BASE_REPORTS" ] && [ "$CASE_N" -ge "$BASE_CASES" ]; then
+    line "✓" "surefire 报告" "$REPORT_N 个文件 / $CASE_N 个用例（基线 $BASE_REPORTS / $BASE_CASES）"
+  elif [ "$REPORT_N" -lt "$BASE_REPORTS" ] || [ "$CASE_N" -lt "$BASE_CASES" ]; then
+    line "✗" "surefire 报告" "**比基线少了**：$REPORT_N 个文件 / $CASE_N 个用例（基线 $BASE_REPORTS / $BASE_CASES）⇒ 可能有测试类没被收集（包名写错 / 测试类没跟着搬）"
+    FAIL=$((FAIL + 1)); FAILED+=("surefire 报告")
   else
     line "✗" "surefire 报告" "报告 $REPORT_N 个 / 用例 $CASE_N 个 —— 测试可能没跑（假绿）"
     FAIL=$((FAIL + 1)); FAILED+=("surefire 报告")
@@ -323,6 +343,31 @@ if command -v node >/dev/null 2>&1; then
     node tools/verify-l4-section.mjs
 else
   line "—" "压测报告数字核对" "跳过（没有 node）"
+fi
+
+# ---------- 包结构护栏（防「拆完又长回去」）----------
+# ⚠️ 刻意放在后端块**外面**（与上面两项同一个理由）：纯静态检查，不编译、不需要数据库
+#   ⇒ 自检用 --skip-be 跑时它仍执行 ⇒ 否则「门禁还活着」没人能证明。
+#
+# 拦什么：① `erp` 域的包结构重新膨胀 ② 拆分过程中漏改 import / 残留旧全限定名
+#   背景：2026-11-07 拆包前 `com.factory.hub.erp` 有 68 个文件零子包（占后端 27.5%），
+#   且 `quality` 包 38 个文件**全部是 Erp\* 命名**（它本质是 erp 域的质量子域）
+#   ⇒ erp 域真实规模 106 main + 26 test = 132 个文件，溢出在两个包里。
+#   ⇒ 拆完后如果不加护栏，**3 个月后它会长回去** ⇒ 「拆了等于没拆」。
+#
+# ⚠️ 两项都做过**双向验证**（正向绿 / 反向红）：
+#   check-package-size：给 erp 加 3 个假文件 ⇒ 立刻红「直属 71 > 基线 68」
+#   verify-package-split：注入悬空 import + 把类移到子包 ⇒ 立刻红（且给出正确新名）
+#   ⇒ 证明它们**不是装饰性的**。
+say "包结构护栏"
+if command -v node >/dev/null 2>&1; then
+  mkdir -p "$ROOT/target-logs"
+  check "包结构护栏" "target-logs/_ci-package-size.log" \
+    node tools/check-package-size.mjs
+  check "拆包完整性核对" "target-logs/_ci-package-split.log" \
+    node tools/verify-package-split.mjs
+else
+  line "—" "包结构护栏" "跳过（没有 node）"
 fi
 
 # ================= 前端 =================

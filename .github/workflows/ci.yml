@@ -85,7 +85,13 @@ jobs:
           #   ⇒ 门禁失败时**日志反而传不上来**，等于让失败变成「查不出原因」。
           #   ⇒ 门禁的前端段虽然 cd 到 frontend/，但日志路径写的是 `../target/...`
           #   ⇒ 实际仍落在**仓库根的 target/** ⇒ 只写这一条就够。
+          # ⚠️⚠️ **必须同时包含 target-logs/**（2026-11-07 运维指出）：
+          #   门禁的后端单测日志被挪到了 `target-logs/`（原因：`mvn clean` 会把
+          #   `target/` 整个删掉 ⇒ 门禁读不到自己的日志 ⇒ 误判「假绿」）
+          #   ⇒ 门禁日志现在**不在** `target/` 下 ⇒ 只写 `target/_ci-*.log` 的话，
+          #   **后端单测的日志传不上来** ⇒ CI 红了却看不到最关键的那份日志。
           path: |
             target/_ci-*.log
+            target-logs/_ci-*.log
           retention-days: 7
           if-no-files-found: ignore
