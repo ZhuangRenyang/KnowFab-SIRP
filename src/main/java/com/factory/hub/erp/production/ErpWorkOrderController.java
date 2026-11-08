@@ -73,6 +73,41 @@ public class ErpWorkOrderController {
         }
     }
 
+    /**
+     * 缺料一键请购：按当前缺口生成采购订单草稿。
+     * <p>
+     * body: {@code { supplierId, items: [{skuId, qty}] }}。
+     * 数量超过当前缺口会被拒绝（防超买），不在缺料清单里的 SKU 也会被拒绝。
+     * <p>
+     * ⚠️ 路由必须放在 {@code /{orderNo}} 之前：Spring 的路径匹配按声明顺序，
+     * 两段路径不会被单段通配吃掉，但把固定路径写在通配后面是"哪天改成
+     * {@code /{orderNo}/**} 就突然失效"的隐患，索性按「固定路径在前」排。
+     */
+    @PostMapping("/shortage/purchase")
+    public Map<String, Object> purchaseForShortage(@RequestBody(required = false) Map<String, Object> body) {
+        try {
+            Map<String, Object> b = body == null ? Map.of() : body;
+            Long supplierId = null;
+            if (b.get("supplierId") != null) {
+                supplierId = Long.valueOf(String.valueOf(b.get("supplierId")).trim());
+            }
+            List<Map<String, Object>> items = new ArrayList<>();
+            if (b.get("items") instanceof List<?> list) {
+                for (Object o : list) {
+                    if (o instanceof Map<?, ?> m) {
+                        Map<String, Object> it = new LinkedHashMap<>();
+                        it.put("skuId", m.get("skuId"));
+                        it.put("qty", m.get("qty"));
+                        items.add(it);
+                    }
+                }
+            }
+            return service.purchaseForShortage(supplierId, items, operator());
+        } catch (Exception e) {
+            return fail(e);
+        }
+    }
+
     @GetMapping("/{orderNo}")
     public Map<String, Object> detail(@PathVariable String orderNo) {
         try {

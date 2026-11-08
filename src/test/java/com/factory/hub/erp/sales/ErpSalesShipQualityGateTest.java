@@ -69,7 +69,9 @@ class ErpSalesShipQualityGateTest {
     private Fx fx() {
         Fx f = new Fx();
         f.svc = new ErpSalesService(f.orderRepo, f.itemRepo, f.stockService, f.billRepo,
-                f.hdrRepo, f.skuRepo, f.partnerRepo, f.gate, f.returnGate);
+                f.hdrRepo, f.skuRepo, f.partnerRepo, f.gate, f.returnGate,
+                mock(com.factory.hub.erp.production.ErpWorkOrderRepository.class),
+                mock(com.factory.hub.erp.production.ErpWorkOrderService.class));
 
         ErpSalesOrder o = new ErpSalesOrder();
         o.setOrderNo(ORDER_NO);

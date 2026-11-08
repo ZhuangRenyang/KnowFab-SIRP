@@ -47,6 +47,29 @@ export interface SalesBillRow {
   voided: boolean
 }
 
+/**
+ * 这张销售单关联的生产工单。
+ *
+ * 以前销售单只有一个自由填写的 `srcOrderNo`，销售看不到「我这张单生产到哪了」，
+ * 生产也不知道「这单是给谁做的」——客户催单时两边都答不上来。
+ */
+export interface SalesWorkOrder {
+  orderNo: string
+  status: string
+  statusLabel: string
+  productSkuId: number
+  productCode?: string | null
+  productName?: string | null
+  planQty: number
+  doneQty: number
+  /** 完工百分比（已按 1 位小数取整） */
+  progress: number
+  lineCode?: string | null
+  deviceCode?: string | null
+  planStart?: number | null
+  planEnd?: number | null
+}
+
 export interface SalesOrderHead {
   orderNo: string
   customerId?: number | null
@@ -108,7 +131,20 @@ export const salesApi = {
     order: SalesOrderHead
     lines: SalesOrderLine[]
     bills: SalesBillRow[]
+    /* 关联的生产工单（按 srcOrderNo 反查）：客户催单时唯一要回答的问题 */
+    workOrders: SalesWorkOrder[]
   }>(`/api/erp/sales/orders/${encodeURIComponent(orderNo)}`),
+
+  /**
+   * 按订单行生成生产工单（销售 ↔ 生产联动）。
+   *
+   * 不传 planQty 时按「订货 − 已发货 − 已排产」的剩余量建单；
+   * 超过剩余量会被后端拒绝，防止同一批货排两遍。
+   * 落地是**草稿工单**，还要人工下达。
+   */
+  makeWorkOrder: (orderNo: string, b: { itemId: number; planQty?: number }) =>
+    http.post<{ ok: boolean; message?: string; orderNo?: string; remainingQty?: number }>(
+      `/api/erp/sales/orders/${encodeURIComponent(orderNo)}/make-work-order`, b),
   create: (b: {
     customerId: number; orderDate?: string; deliverDate?: string; remark?: string
     lines: SalesLineInput[]

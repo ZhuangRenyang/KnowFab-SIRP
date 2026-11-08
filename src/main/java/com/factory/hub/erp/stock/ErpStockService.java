@@ -62,7 +62,8 @@ public class ErpStockService {
             ErpStockBill.TYPE_PO_IN, ErpStockBill.TYPE_SO_OUT,
             ErpStockBill.TYPE_OTHER_IN, ErpStockBill.TYPE_OTHER_OUT,
             ErpStockBill.TYPE_TRANSFER, ErpStockBill.TYPE_PO_RETURN, ErpStockBill.TYPE_SO_RETURN,
-            ErpStockBill.TYPE_MATERIAL_OUT, ErpStockBill.TYPE_SCRAP_OUT);
+            ErpStockBill.TYPE_MATERIAL_OUT, ErpStockBill.TYPE_SCRAP_OUT,
+            ErpStockBill.TYPE_MAINT_OUT);
 
     /**
      * 方向判定：这张单是不是"货从仓库出去"（qty 记为负数）。
@@ -88,7 +89,10 @@ public class ErpStockService {
                 // 漏了它，领料单能开出比库存还多的数（DH-70 的坑就在这儿）。
                 || ErpStockBill.TYPE_MATERIAL_OUT.equals(type)
                 // 报废出库：不良品处置产生，货真的没了，必须扣所在仓（QC-SPEC §3.4）
-                || ErpStockBill.TYPE_SCRAP_OUT.equals(type);
+                || ErpStockBill.TYPE_SCRAP_OUT.equals(type)
+                // 维修领料：备件从仓库领到设备现场，库存必须真的减。
+                // 以前维修单只有一串「换了什么」的自由文本，库存一分不动 —— 备件账实不符的主因
+                || ErpStockBill.TYPE_MAINT_OUT.equals(type);
     }
 
     /**
@@ -115,6 +119,7 @@ public class ErpStockService {
         m.put(ErpStockBill.TYPE_PROD_IN, "生产入库");
         m.put(ErpStockBill.TYPE_MATERIAL_OUT, "生产领料");
         m.put(ErpStockBill.TYPE_SCRAP_OUT, "报废出库");
+        m.put(ErpStockBill.TYPE_MAINT_OUT, "维修领料");
         TYPE_LABELS = java.util.Collections.unmodifiableMap(m);
 
         TYPE_PREFIX.put(ErpStockBill.TYPE_PO_IN, "CGRK");
@@ -128,6 +133,7 @@ public class ErpStockService {
         TYPE_PREFIX.put(ErpStockBill.TYPE_PROD_IN, "SCRK");
         TYPE_PREFIX.put(ErpStockBill.TYPE_MATERIAL_OUT, "SCLL");
         TYPE_PREFIX.put(ErpStockBill.TYPE_SCRAP_OUT, "BFCK");
+        TYPE_PREFIX.put(ErpStockBill.TYPE_MAINT_OUT, "WXLL");
     }
 
     private final ErpStockBillRepository billRepo;
@@ -802,6 +808,92 @@ public class ErpStockService {
                 ? hdrRepo.countByBillTypeAndVoidedAtIsNull(ErpStockBill.TYPE_PROD_IN)
                 : 0L);
         return out;
+    }
+
+    /**
+     * 按「来源单号」汇总某类单据（维修备件成本、工单领料成本都靠它算回原单）。
+     * <p>
+     * 为什么不让调用方自己去查 erp_stock_bill：维修/工单服务只想要一个数字
+     * （花了多少、领了多少），让它直接碰单据表会把「单据长什么样」的知识散到各个域里去，
+     * 以后单据加字段就得改好几处。统一从这里出入。
+     * <p>
+     * <b>作废单不计入</b>：作废意味着这批货没动，算进成本会让维修费/材料费虚高。
+     * <b>数量与金额返回绝对值</b>：单据行的 qty 带方向符号（出库为负），
+     * 但「领了 5 个、花了 200 块」是正数概念，调用方不该自己翻符号。
+     *
+     * @param srcOrderNo 来源单号（维修单号 / 工单号 / 采购单号…）
+     * @param type       只看某一单据类型；null = 该来源单号下的全部类型
+     */
+    public Map<String, Object> bySourceOrder(String srcOrderNo, String type) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        List<Map<String, Object>> bills = new ArrayList<>();
+        List<Map<String, Object>> allLines = new ArrayList<>();
+        BigDecimal totalQty = BigDecimal.ZERO;
+        BigDecimal totalAmount = BigDecimal.ZERO;
+        if (srcOrderNo != null && !srcOrderNo.isBlank()) {
+            Map<Long, ErpSku> skus = new HashMap<>();
+            for (ErpSku s : skuRepo.findAll()) {
+                skus.put(s.getId(), s);
+            }
+            Map<Long, ErpWarehouse> whs = new HashMap<>();
+            for (ErpWarehouse w : whRepo.findAll()) {
+                whs.put(w.getId(), w);
+            }
+            for (ErpStockBillHdr h : hdrRepo.findBySrcOrderNoOrderByCreatedAtDesc(srcOrderNo)) {
+                if (type != null && !type.equals(h.getBillType())) {
+                    continue;
+                }
+                if (h.isVoided()) {
+                    continue;
+                }
+                BigDecimal hQty = h.getTotalQty() == null ? BigDecimal.ZERO : h.getTotalQty().abs();
+                BigDecimal hAmt = h.getTotalAmount() == null ? BigDecimal.ZERO : h.getTotalAmount().abs();
+                Map<String, Object> hm = new LinkedHashMap<>();
+                hm.put("billNo", h.getBillNo());
+                hm.put("type", h.getBillType());
+                hm.put("typeLabel", TYPE_LABELS.getOrDefault(h.getBillType(), h.getBillType()));
+                hm.put("warehouseName", h.getDstWhId() == null ? null
+                        : whs.containsKey(h.getDstWhId()) ? whs.get(h.getDstWhId()).getName() : null);
+                hm.put("qty", scale(hQty));
+                hm.put("amount", scale(hAmt));
+                hm.put("createdAt", h.getCreatedAt());
+                hm.put("operator", h.getOperator());
+                bills.add(hm);
+                totalQty = totalQty.add(hQty);
+                totalAmount = totalAmount.add(hAmt);
+                for (ErpStockBill b : billRepo.findByBillNoOrderByLineNoAsc(h.getBillNo())) {
+                    ErpSku s = skus.get(b.getSkuId());
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("billNo", b.getBillNo());
+                    m.put("skuId", b.getSkuId());
+                    m.put("skuCode", s == null ? ("商品#" + b.getSkuId()) : s.getCode());
+                    m.put("skuName", s == null ? "" : s.getName());
+                    m.put("unit", s == null ? "" : s.getUnit());
+                    m.put("qty", scale(b.getQty().abs()));
+                    m.put("unitPrice", b.getUnitPrice() == null ? null : scale(b.getUnitPrice()));
+                    m.put("amount", b.getUnitPrice() == null ? null
+                            : scale(b.getQty().multiply(b.getUnitPrice()).abs()));
+                    allLines.add(m);
+                }
+            }
+        }
+        out.put("ok", true);
+        out.put("srcOrderNo", srcOrderNo);
+        out.put("bills", bills);
+        out.put("lines", allLines);
+        out.put("billCount", bills.size());
+        out.put("totalQty", scale(totalQty));
+        out.put("totalAmount", scale(totalAmount));
+        return out;
+    }
+
+    /** 某 SKU 的全厂合计库存（未作废明细累计）；没有流水返回 0 */
+    public BigDecimal totalOnHand(Long skuId) {
+        if (skuId == null) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal v = billRepo.totalStockOf(skuId);
+        return v == null ? BigDecimal.ZERO : v;
     }
 
     /** 单据详情：单头 + 明细行（带商品/仓库名称） */

@@ -6,6 +6,8 @@ import com.factory.hub.alarm.AlarmEventRepository;
 import com.factory.hub.alarm.AlarmNotifier;
 import com.factory.hub.auth.UserAccount;
 import com.factory.hub.auth.UserRepository;
+import com.factory.hub.erp.stock.ErpStockBill;
+import com.factory.hub.erp.stock.ErpStockService;
 // ⚠️ AlarmCodeDict 在 screen 包，不在 alarm 包（我第一版猜错了，编译报「找不到符号」）
 import com.factory.hub.screen.AlarmCodeDict;
 import com.factory.hub.service.DeviceService;
@@ -14,6 +16,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
+import java.math.BigDecimal;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -22,7 +26,14 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -43,12 +54,14 @@ class ErpMaintServiceContractTest {
 
     private ErpMaintOrderRepository repo;
     private UserRepository userRepo;
+    private ErpStockService stockService;
     private ErpMaintService service;
 
     @BeforeEach
     void setUp() {
         repo = mock(ErpMaintOrderRepository.class);
         userRepo = mock(UserRepository.class);
+        stockService = mock(ErpStockService.class);
         service = new ErpMaintService(
                 repo,
                 mock(AlarmEventRepository.class),
@@ -58,7 +71,8 @@ class ErpMaintServiceContractTest {
                 mock(AiConfigStore.class),
                 new ObjectMapper(),
                 userRepo,
-                mock(AlarmNotifier.class));
+                mock(AlarmNotifier.class),
+                stockService);
     }
 
     private ErpMaintOrder order(String no, String status) {
@@ -181,5 +195,83 @@ class ErpMaintServiceContractTest {
         // 未知值必须原样回显，不能返回 null（前端会显示空白，看起来像数据丢了）
         assertEquals("SOMETHING_NEW", ErpMaintService.statusText("SOMETHING_NEW"));
         assertFalse(ErpMaintService.statusText(null).isEmpty(), "null 也要给一个可读文案");
+    }
+
+    // ==================== 维修领料（维修 ↔ 库存联动） ====================
+
+    private static final List<ErpMaintService.PartLine> ONE_PART =
+            List.of(new ErpMaintService.PartLine(7L, new BigDecimal("2")));
+
+    @Test
+    @DisplayName("领料：已取消的维修单必须拒绝，且根本不能碰库存服务")
+    void issuePartsRejectsCancelledOrder() {
+        ErpMaintOrder o = order("MO-C", ErpMaintOrder.ST_CANCELLED);
+        givenOrder(o);
+
+        Map<String, Object> r = service.issueParts("MO-C", 3L, ONE_PART, "zhangsan");
+
+        assertEquals(Boolean.FALSE, r.get("ok"));
+        assertTrue(String.valueOf(r.get("message")).contains("已取消"),
+                "拒绝理由要说清是「已取消」，不能只说失败");
+        verifyNoInteractions(stockService);
+    }
+
+    @Test
+    @DisplayName("领料：空清单 / 数量非正数一律拒绝，且不产生任何单据")
+    void issuePartsRejectsEmptyOrBadLines() {
+        ErpMaintOrder o = order("MO-E", ErpMaintOrder.ST_IN_PROGRESS);
+        givenOrder(o);
+
+        assertNotOk(service.issueParts("MO-E", 3L, List.of(), "u"), "空清单");
+        assertNotOk(service.issueParts("MO-E", 3L,
+                List.of(new ErpMaintService.PartLine(7L, BigDecimal.ZERO)), "u"), "数量为 0");
+        assertNotOk(service.issueParts("MO-E", 3L,
+                List.of(new ErpMaintService.PartLine(7L, new BigDecimal("-1"))), "u"), "数量为负");
+        assertNotOk(service.issueParts("MO-E", 3L,
+                List.of(new ErpMaintService.PartLine(null, BigDecimal.ONE)), "u"), "没选备件");
+        verifyNoInteractions(stockService);
+    }
+
+    @Test
+    @DisplayName("领料：走 MAINT_OUT 单据类型，并把维修单号写进 srcOrderNo（备件成本才算得回原单）")
+    void issuePartsCreatesMaintOutWithSourceOrder() {
+        ErpMaintOrder o = order("MO-OK", ErpMaintOrder.ST_IN_PROGRESS);
+        givenOrder(o);
+        when(stockService.createManual(eq(ErpStockBill.TYPE_MAINT_OUT), isNull(), eq(3L), isNull(),
+                anyString(), eq("zhangsan"), anyList(), eq("MO-OK")))
+                .thenReturn(new ErpStockService.Created("WXLL20261108-0001", 1));
+        when(stockService.bySourceOrder("MO-OK", ErpStockBill.TYPE_MAINT_OUT))
+                .thenReturn(Map.of("totalAmount", new BigDecimal("11.60")));
+
+        Map<String, Object> r = service.issueParts("MO-OK", 3L, ONE_PART, "zhangsan");
+
+        assertEquals(Boolean.TRUE, r.get("ok"), "正常领料应成功");
+        assertEquals("WXLL20261108-0001", r.get("billNo"));
+        // 这条是核心：单据类型错了会混进「其他出库」，备件消耗统计就没了
+        verify(stockService).createManual(eq(ErpStockBill.TYPE_MAINT_OUT), isNull(), eq(3L),
+                isNull(), anyString(), eq("zhangsan"), anyList(), eq("MO-OK"));
+    }
+
+    @Test
+    @DisplayName("领料：库存不足要返回 ok:false + 那句人话，不能把异常抛给前端变成 500")
+    void issuePartsTurnsStockShortageIntoMessage() {
+        ErpMaintOrder o = order("MO-SHORT", ErpMaintOrder.ST_IN_PROGRESS);
+        givenOrder(o);
+        when(stockService.createManual(any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenThrow(new IllegalArgumentException(
+                        "「深沟球轴承 6206」在「原材料仓」库存不足：现有 1，本次需要 2"));
+
+        Map<String, Object> r = service.issueParts("MO-SHORT", 3L,
+                List.of(new ErpMaintService.PartLine(8L, new BigDecimal("2"))), "zhangsan");
+
+        assertEquals(Boolean.FALSE, r.get("ok"));
+        assertTrue(String.valueOf(r.get("message")).contains("库存不足"),
+                "必须把后端那句人话透出来，否则用户只看到 500");
+        assertTrue(String.valueOf(r.get("message")).contains("现有 1"),
+                "要带现有量，否则仓管不知道该补多少");
+    }
+
+    private static void assertNotOk(Map<String, Object> r, String why) {
+        assertEquals(Boolean.FALSE, r.get("ok"), why + " 应被拒绝");
     }
 }

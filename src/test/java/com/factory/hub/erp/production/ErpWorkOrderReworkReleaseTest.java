@@ -73,7 +73,8 @@ class ErpWorkOrderReworkReleaseTest {
         when(f.woRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
         f.svc = new ErpWorkOrderService(f.woRepo, f.womRepo, f.wooRepo, f.bomRepo,
                 f.bomService, f.backflushService, f.stockService, f.billRepo,
-                f.skuRepo, f.lineRepo, f.whRepo, f.deviceService);
+                f.skuRepo, f.lineRepo, f.whRepo, f.deviceService,
+                mock(com.factory.hub.erp.purchase.ErpPurchaseService.class));
         return f;
     }
 

@@ -47,6 +47,40 @@ export interface MaintAssignee {
   role: string
 }
 
+/**
+ * 维修单已领备件（**成本口径**）。
+ *
+ * 数量与金额都是绝对值：单据行上的 qty 带方向符号（出库为负），
+ * 但「领了 2 个、花了 11.6 块」是正数概念，后端已经翻好号。
+ */
+export interface MaintParts {
+  ok: boolean
+  srcOrderNo?: string
+  bills: {
+    billNo: string
+    type: string
+    typeLabel: string
+    warehouseName?: string | null
+    qty: number
+    amount: number
+    createdAt: number
+    operator?: string
+  }[]
+  lines: {
+    billNo: string
+    skuId: number
+    skuCode: string
+    skuName: string
+    unit?: string
+    qty: number
+    unitPrice?: number | null
+    amount?: number | null
+  }[]
+  billCount: number
+  totalQty: number
+  totalAmount: number
+}
+
 /** 历史同类维修记录的摘要 */
 export interface MaintSample {
   orderNo: string
@@ -95,6 +129,23 @@ export const maintApi = {
   start: (orderNo: string) =>
     http.post<{ ok: boolean; message?: string; order?: MaintOrder }>(
       `/api/erp/maint/${encodeURIComponent(orderNo)}/start`, {}),
+
+  /**
+   * 领用备件：生成维修领料单（MAINT_OUT）并真实扣库存。
+   *
+   * 为什么必须走单据：以前维修单只有 `partsReplaced` 一串自由文本，库存一分不动 ——
+   * 备件账实不符就是从这儿开始的，而且「这台机一年吃掉多少备件」永远算不出来。
+   * 库存不足会整单失败（后端行锁校验），不会写出半张单。
+   */
+  issueParts: (orderNo: string, body: {
+    warehouseId: number
+    lines: { skuId: number; qty: number }[]
+  }) => http.post<{ ok: boolean; message?: string; billNo?: string; parts?: MaintParts }>(
+    `/api/erp/maint/${encodeURIComponent(orderNo)}/parts`, body),
+
+  /** 这张维修单领过的备件与成本（成本口径，作废单不计） */
+  parts: (orderNo: string) =>
+    http.get<MaintParts>(`/api/erp/maint/${encodeURIComponent(orderNo)}/parts`),
 
   /**
    * 结案：回填实际原因。

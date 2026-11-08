@@ -1,5 +1,7 @@
 package com.factory.hub.erp.production;
 
+import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -96,6 +98,51 @@ public class ErpMaintController {
         auditIfOk(out, AuditLog.ACT_UPDATE, "取消维修单", orderNo
                 + (body == null ? "" : "：" + body.get("reason")));
         return out;
+    }
+
+    /**
+     * 领用备件：生成维修领料单（MAINT_OUT）并真实扣库存。
+     * <p>
+     * body: {@code { warehouseId, lines: [{skuId, qty}] }}。
+     * 库存不足会整单失败并说清差多少（行锁校验），不会写出半张单。
+     */
+    @PostMapping("/{orderNo}/parts")
+    public Map<String, Object> issueParts(@PathVariable String orderNo,
+                                          @RequestBody(required = false) Map<String, Object> body) {
+        Map<String, Object> b = body == null ? Map.of() : body;
+        Long whId = null;
+        if (b.get("warehouseId") != null) {
+            try {
+                whId = Long.valueOf(String.valueOf(b.get("warehouseId")).trim());
+            } catch (NumberFormatException e) {
+                Map<String, Object> bad = new LinkedHashMap<>();
+                bad.put("ok", false);
+                bad.put("message", "仓库编号不是数字");
+                return bad;
+            }
+        }
+        List<ErpMaintService.PartLine> lines = new ArrayList<>();
+        if (b.get("lines") instanceof List<?> list) {
+            for (Object o : list) {
+                if (o instanceof Map<?, ?> m) {
+                    Object sku = m.get("skuId");
+                    Object qty = m.get("qty");
+                    lines.add(new ErpMaintService.PartLine(
+                            sku == null ? null : Long.valueOf(String.valueOf(sku).trim()),
+                            qty == null ? null : new BigDecimal(String.valueOf(qty).trim())));
+                }
+            }
+        }
+        Map<String, Object> out = service.issueParts(orderNo, whId, lines, operator());
+        auditIfOk(out, AuditLog.ACT_UPDATE, "维修领料", orderNo
+                + (out.get("billNo") == null ? "" : "，出库单 " + out.get("billNo")));
+        return out;
+    }
+
+    /** 这张维修单领过的备件明细与成本（成本口径，作废单不计） */
+    @GetMapping("/{orderNo}/parts")
+    public Map<String, Object> parts(@PathVariable String orderNo) {
+        return service.parts(orderNo);
     }
 
     @GetMapping

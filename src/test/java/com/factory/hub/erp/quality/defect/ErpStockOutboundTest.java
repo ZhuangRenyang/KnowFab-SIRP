@@ -34,7 +34,9 @@ class ErpStockOutboundTest {
 
     /** 出库（qty 为负，必须查可用量） */
     private static final Set<String> OUTBOUND = new LinkedHashSet<>(java.util.List.of(
-            "TYPE_SO_OUT", "TYPE_OTHER_OUT", "TYPE_PO_RETURN", "TYPE_MATERIAL_OUT", "TYPE_SCRAP_OUT"));
+            "TYPE_SO_OUT", "TYPE_OTHER_OUT", "TYPE_PO_RETURN", "TYPE_MATERIAL_OUT", "TYPE_SCRAP_OUT",
+            // 维修领料：备件从仓库领到设备现场，库存必须真的减
+            "TYPE_MAINT_OUT"));
 
     /**
      * 非出库：入库方向（qty 为正）、以及"方向由行自己带"的调拨与盘点。

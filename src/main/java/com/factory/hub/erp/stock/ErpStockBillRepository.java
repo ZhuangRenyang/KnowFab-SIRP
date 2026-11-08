@@ -46,6 +46,20 @@ public interface ErpStockBillRepository extends JpaRepository<ErpStockBill, Long
     BigDecimal stockOf(@Param("skuId") Long skuId, @Param("whId") Long whId);
 
     /**
+     * 单个 SKU 在<b>全厂所有仓</b>的合计库存（未作废明细累计）。
+     * <p>
+     * 用途单一：缺料请购前判断「库存是不是本来就够」。
+     * 缺料看板算的是「未领料量」，不等于「库存不够」——螺栓可能一个都没领，
+     * 但仓库里躺着 4800 个。不看这一眼，请购就会把不需要的东西买回来。
+     * <p>
+     * ⚠️ 这里刻意 <b>不加行锁</b>：它只用于"要不要采购"的提示判断，
+     * 真正出库时的可用量校验仍然走 {@link #stockOfForUpdate}。
+     */
+    @Query("select sum(b.qty) from ErpStockBill b " +
+           "where b.voidedAt is null and b.skuId = :skuId")
+    BigDecimal totalStockOf(@Param("skuId") Long skuId);
+
+    /**
      * 出库/作废/盘点前用：<b>带行锁</b>地读当前库存。
      * <p>
      * 为什么必须让数据库来锁：Java 层的 synchronized 只挡得住本进程，

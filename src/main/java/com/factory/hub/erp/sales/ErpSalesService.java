@@ -25,6 +25,9 @@ import com.factory.hub.erp.ErpQualityReturnGate;
 import com.factory.hub.erp.ErpSku;
 import com.factory.hub.erp.ErpSkuRepository;
 import com.factory.hub.erp.StockBillVoidedEvent;
+import com.factory.hub.erp.production.ErpWorkOrder;
+import com.factory.hub.erp.production.ErpWorkOrderRepository;
+import com.factory.hub.erp.production.ErpWorkOrderService;
 import com.factory.hub.erp.stock.ErpStockBill;
 import com.factory.hub.erp.stock.ErpStockBillHdr;
 import com.factory.hub.erp.stock.ErpStockBillHdrRepository;
@@ -90,6 +93,9 @@ public class ErpSalesService {
     private final ErpQualityReleaseGate releaseGate;
     /** 质量退货闸门：按退货原因分流（质量原因 → 禁发仓 + 不良记录） */
     private final ErpQualityReturnGate returnGate;
+    /** 销售 ↔ 生产联动：按销售单查关联工单、按订单行生成工单 */
+    private final ErpWorkOrderRepository woRepo;
+    private final ErpWorkOrderService woService;
 
     public ErpSalesService(ErpSalesOrderRepository orderRepo,
                            ErpSalesOrderItemRepository itemRepo,
@@ -99,7 +105,9 @@ public class ErpSalesService {
                            ErpSkuRepository skuRepo,
                            ErpPartnerRepository partnerRepo,
                            ErpQualityReleaseGate releaseGate,
-                           ErpQualityReturnGate returnGate) {
+                           ErpQualityReturnGate returnGate,
+                           ErpWorkOrderRepository woRepo,
+                           ErpWorkOrderService woService) {
         this.orderRepo = orderRepo;
         this.itemRepo = itemRepo;
         this.stockService = stockService;
@@ -109,6 +117,8 @@ public class ErpSalesService {
         this.partnerRepo = partnerRepo;
         this.releaseGate = releaseGate;
         this.returnGate = returnGate;
+        this.woRepo = woRepo;
+        this.woService = woService;
     }
 
     /* ==================== 建单 / 改单 ==================== */
@@ -523,12 +533,113 @@ public class ErpSalesService {
         head.put("editable", o.isEditable());
         head.put("shippable", o.isShippable());
 
+        // 关联工单：按 srcOrderNo 反查。
+        // 没有这一块，销售只知道「发货了没」，不知道「这批货在生产线上到哪一步了」——
+        // 而这恰恰是客户催单时唯一要回答的问题。
+        List<Map<String, Object>> workOrders = new ArrayList<>();
+        for (ErpWorkOrder w : woRepo.findBySrcOrderNo(orderNo)) {
+            BigDecimal plan = nz(w.getPlanQty());
+            BigDecimal done = nz(w.getDoneQty());
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("orderNo", w.getOrderNo());
+            m.put("status", w.getStatus());
+            m.put("statusLabel", ErpWorkOrderService.statusLabel(w.getStatus()));
+            m.put("productSkuId", w.getProductSkuId());
+            m.put("productCode", w.getProductCode());
+            m.put("productName", w.getProductName());
+            m.put("planQty", scale(plan));
+            m.put("doneQty", scale(done));
+            // 进度用整数百分比，避免前端拿到 33.33333333 再自己截
+            m.put("progress", plan.signum() <= 0 ? 0d
+                    : Math.round(done.doubleValue() / plan.doubleValue() * 1000) / 10.0);
+            m.put("lineCode", w.getLineCode());
+            m.put("deviceCode", w.getDeviceCode());
+            m.put("planStart", w.getPlanStart());
+            m.put("planEnd", w.getPlanEnd());
+            workOrders.add(m);
+        }
+
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("ok", true);
         out.put("order", head);
         out.put("lines", lines);
         out.put("bills", bills);
+        out.put("workOrders", workOrders);
         return out;
+    }
+
+    /**
+     * 按销售订单行生成生产工单 —— 销售 ↔ 生产的那条联动。
+     * <p>
+     * 在此之前，工单上的 {@code src_order_no} 只能<b>手填</b>：填错一个字就断链，
+     * 而且没人会去核对。销售看不到「我这张单生产到哪了」，生产也不知道「这单是给谁做的」。
+     * <p>
+     * 几条校验（都是防错）：
+     * <ul>
+     *   <li>只有「已确认 / 部分发货」的订单能排产——草稿还没定、已完成不用再做</li>
+     *   <li>订单行必须属于这张单（不接受传别家的 itemId）</li>
+     *   <li>计划量 <b>不得超过「订货 − 已发货 − 已排产」</b>——否则同一批货会被排两遍，
+     *       做出来卖不掉，库存压在成品仓</li>
+     * </ul>
+     * 不传 planQty 时默认按剩余可排量建单（最常见：这行一次排完）。
+     * 工单落地状态是<b>草稿</b>，还要人工下达——排产不该一点就自动开工。
+     */
+    public Map<String, Object> makeWorkOrder(String orderNo, Map<String, Object> body, String operator) {
+        ErpSalesOrder o = orderRepo.findByOrderNo(orderNo)
+                .orElseThrow(() -> new IllegalArgumentException("销售订单不存在：" + orderNo));
+        if (!ErpSalesOrder.STATUS_CONFIRMED.equals(o.getStatus())
+                && !ErpSalesOrder.STATUS_PARTIAL.equals(o.getStatus())) {
+            throw new IllegalArgumentException("只有「已确认 / 部分发货」的订单才能排产（当前："
+                    + STATUS_LABELS.getOrDefault(o.getStatus(), o.getStatus()) + "）");
+        }
+        Long itemId = asLong(body.get("itemId"));
+        if (itemId == null) {
+            throw new IllegalArgumentException("请选择要生产的订单行");
+        }
+        ErpSalesOrderItem it = itemRepo.findById(itemId).orElse(null);
+        if (it == null || !o.getId().equals(it.getOrderId())) {
+            throw new IllegalArgumentException("这一行不属于该销售订单");
+        }
+        // 还能生产多少 = 订货量 − 已发货 − 已排产（同单同 SKU 的非取消工单）
+        BigDecimal notShipped = nz(it.getQty()).subtract(nz(it.getShippedQty()));
+        BigDecimal planned = BigDecimal.ZERO;
+        for (ErpWorkOrder w : woRepo.findBySrcOrderNo(orderNo)) {
+            if (ErpWorkOrder.ST_CANCELLED.equals(w.getStatus())) {
+                continue;
+            }
+            if (!it.getSkuId().equals(w.getProductSkuId())) {
+                continue;
+            }
+            planned = planned.add(nz(w.getPlanQty()));
+        }
+        BigDecimal cap = notShipped.subtract(planned);
+        if (cap.signum() <= 0) {
+            throw new IllegalArgumentException("这一行已经排满了（订货 " + scale(nz(it.getQty()))
+                    + "，已发货 " + scale(nz(it.getShippedQty()))
+                    + "，已排产 " + scale(planned) + "），不需要再建工单");
+        }
+        BigDecimal planQty = body.get("planQty") == null ? cap : dec(body.get("planQty"));
+        if (planQty == null || planQty.signum() <= 0) {
+            throw new IllegalArgumentException("计划产量必须大于 0");
+        }
+        if (planQty.compareTo(cap) > 0) {
+            throw new IllegalArgumentException("计划产量超过剩余可排产量（最多 "
+                    + scale(cap) + "）");
+        }
+        Map<String, Object> wo = new LinkedHashMap<>();
+        wo.put("productSkuId", it.getSkuId());
+        wo.put("planQty", planQty);
+        wo.put("srcOrderNo", orderNo);
+        for (String k : new String[]{"lineCode", "deviceCode", "warehouseId", "materialWhId",
+                "planStart", "planEnd", "remark"}) {
+            if (body.get(k) != null) {
+                wo.put(k, body.get(k));
+            }
+        }
+        Map<String, Object> r = new LinkedHashMap<>(woService.create(wo, operator));
+        r.put("saleOrderNo", orderNo);
+        r.put("remainingQty", scale(cap.subtract(planQty)));
+        return r;
     }
 
     public Map<String, Object> stats() {

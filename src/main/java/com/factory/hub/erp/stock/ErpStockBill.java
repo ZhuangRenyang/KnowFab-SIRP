@@ -76,6 +76,18 @@ public class ErpStockBill {
      * 不允许在库存页手搓一张报废单——否则不良单与出库单会分家，处置状态永远结不了案。
      */
     public static final String TYPE_SCRAP_OUT = "SCRAP_OUT";
+    /**
+     * 维修领料：维修工单换下来的备件，从仓库领出。
+     * <p>
+     * 为什么单独立一个类型，而不是并进 {@code OTHER_OUT}（其他出库）：
+     * 备件消耗是设备管理的核心经营数据——「这台机一年吃掉多少备件」「哪类备件要备库存」
+     * 全靠它统计。混进"其他出库"以后，报表里只剩一个笼统的其他出库总数，
+     * 备件储备和预防性维护就没有依据了（DH-85 注释里点明过这个缺口）。
+     * <p>
+     * 它<b>不在</b> {@code MANUAL_UI_TYPES} 里：维修领料必须从维修工单发起，
+     * 这样 {@code src_order_no} 才带着维修单号，备件成本才算得回那张单上。
+     */
+    public static final String TYPE_MAINT_OUT = "MAINT_OUT";
     /** 调拨：源仓负数行 + 目标仓正数行，同一单号 */
     public static final String TYPE_TRANSFER = "TRANSFER";
     /** 盘点调整：只落有差异的行（盘盈正数、盘亏负数） */

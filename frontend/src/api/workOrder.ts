@@ -127,6 +127,19 @@ export const workOrderApi = {
     http.get<WorkOrderDetail>(`/api/erp/work-orders/${encodeURIComponent(orderNo)}`),
   shortage: () =>
     http.get<{ ok: boolean; rows: ShortageRow[]; total: number }>('/api/erp/work-orders/shortage'),
+
+  /**
+   * 缺料一键请购：按当前缺口生成**采购订单草稿**。
+   *
+   * 看板只解决「看得见」，采购还得把同样的数据在采购模块重录一遍 ——
+   * 重录就会漏、就会录错，也没人说得清"这次买的是补哪张单的缺口"。
+   * 数量超过当前缺口会被后端拒绝（防超买）。
+   */
+  purchaseForShortage: (body: {
+    supplierId: number
+    items: { skuId: number; qty: number }[]
+  }) => http.post<{ ok: boolean; message?: string; orderNo?: string; lineCount?: number }>(
+    '/api/erp/work-orders/shortage/purchase', body),
   create: (b: WorkOrderInput) =>
     http.post<{ ok: boolean; message?: string; orderNo?: string }>('/api/erp/work-orders', b),
   update: (orderNo: string, b: Partial<WorkOrderInput>) =>

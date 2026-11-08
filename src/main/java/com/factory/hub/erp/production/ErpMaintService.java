@@ -1,5 +1,6 @@
 package com.factory.hub.erp.production;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -23,6 +24,8 @@ import com.factory.hub.alarm.AlarmEventRepository;
 import com.factory.hub.alarm.AlarmNotifier;
 import com.factory.hub.auth.UserAccount;
 import com.factory.hub.auth.UserRepository;
+import com.factory.hub.erp.stock.ErpStockBill;
+import com.factory.hub.erp.stock.ErpStockService;
 import com.factory.hub.model.DeviceEntity;
 import com.factory.hub.screen.AlarmCodeDict;
 import com.factory.hub.service.DeviceService;
@@ -79,6 +82,7 @@ public class ErpMaintService {
     private final ObjectMapper mapper;
     private final UserRepository userRepo;
     private final AlarmNotifier notifier;
+    private final ErpStockService stockService;
 
     /**
      * 能承接维修工单的角色（DH-85）。
@@ -97,7 +101,8 @@ public class ErpMaintService {
                            AiConfigStore aiConfigStore,
                            ObjectMapper mapper,
                            UserRepository userRepo,
-                           AlarmNotifier notifier) {
+                           AlarmNotifier notifier,
+                           ErpStockService stockService) {
         this.repo = repo;
         this.alarmRepo = alarmRepo;
         this.deviceService = deviceService;
@@ -107,6 +112,7 @@ public class ErpMaintService {
         this.mapper = mapper;
         this.userRepo = userRepo;
         this.notifier = notifier;
+        this.stockService = stockService;
     }
 
     /* ==================== 诊断（核心） ==================== */
@@ -396,6 +402,82 @@ public class ErpMaintService {
         out.put("message", "已取消");
         out.put("order", row(o));
         return out;
+    }
+
+    /* ==================== 领用备件（维修 ↔ 库存联动） ==================== */
+
+    /** 领用一行备件 */
+    public record PartLine(Long skuId, BigDecimal qty) {}
+
+    /**
+     * 维修领用备件：生成维修领料单（{@code MAINT_OUT}）并真实扣减库存。
+     * <p>
+     * <b>为什么必须走单据、不能只记一串文字</b>：维修单以前只有一个
+     * {@code partsReplaced} 自由文本（"换了轴承"），库存一分不动 ——
+     * 备件账实不符就是从这儿开始的；而且"这台机一年吃掉多少备件"永远算不出来，
+     * 备件储备也就没有依据。
+     * <p>
+     * 几条边界：
+     * <ul>
+     *   <li>库存不足<b>整单失败</b>（{@code createManual} 内部用 FOR UPDATE 行锁校验），
+     *       不会写出半张单</li>
+     *   <li>已结案（RESOLVED）<b>允许补领</b>：现场漏记很常见，逼人重开工单只会让人干脆不记</li>
+     *   <li>已取消（CANCELLED）<b>拒绝</b>：那张单的事没发生，领料没有依据</li>
+     *   <li>单价走<b>采购价</b>（成本口径）——{@code defaultPrice} 只对销售侧取售价</li>
+     * </ul>
+     * <p>
+     * ⚠️ <b>刻意不加 {@code @Transactional}</b>：{@code createManual} 自己就是一个事务，
+     * 库存不足时它抛出异常、把<em>它自己那段</em>回滚。如果这里再包一层事务，
+     * 异常被 catch 住之后外层事务已被标记 rollback-only，提交时会抛
+     * {@code UnexpectedRollbackException} —— 用户看到的是 500，而不是「库存不足 5 个」那句人话。
+     * 这与 DH-72 把反冲拆成独立事务是同一类问题。
+     */
+    public Map<String, Object> issueParts(String orderNo, Long warehouseId,
+                                          List<PartLine> lines, String operator) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        ErpMaintOrder o = repo.findByOrderNo(orderNo).orElse(null);
+        if (o == null) {
+            return fail(out, "维修单不存在：" + orderNo);
+        }
+        if (ErpMaintOrder.ST_CANCELLED.equals(o.getStatus())) {
+            return fail(out, "这张维修单已取消，不能领料");
+        }
+        if (lines == null || lines.isEmpty()) {
+            return fail(out, "请至少选择一种备件");
+        }
+        List<ErpStockService.LineReq> reqs = new ArrayList<>();
+        for (PartLine l : lines) {
+            if (l == null || l.skuId() == null) {
+                return fail(out, "有一行没选备件");
+            }
+            if (l.qty() == null || l.qty().signum() <= 0) {
+                return fail(out, "领用数量必须大于 0");
+            }
+            reqs.add(new ErpStockService.LineReq(l.skuId(), l.qty(), null));
+        }
+        try {
+            ErpStockService.Created c = stockService.createManual(
+                    ErpStockBill.TYPE_MAINT_OUT, null, warehouseId, null,
+                    "维修备件 · " + orderNo, operator, reqs, orderNo);
+            out.put("ok", true);
+            out.put("message", "已领用备件，出库单 " + c.billNo());
+            out.put("billNo", c.billNo());
+            // 顺带把这张单当前的备件明细与成本一起返回，前端不用再查一次
+            out.put("parts", stockService.bySourceOrder(orderNo, ErpStockBill.TYPE_MAINT_OUT));
+        } catch (Exception e) {
+            // 库存不足 / 仓库停用 / 商品不存在 等业务校验都从这里出去
+            return fail(out, e.getMessage() == null ? "领料失败" : e.getMessage());
+        }
+        return out;
+    }
+
+    /**
+     * 这张维修单领过的备件（含金额汇总）。
+     * <p>
+     * 金额是<b>成本口径</b>（采购价），作废单不计入。
+     */
+    public Map<String, Object> parts(String orderNo) {
+        return stockService.bySourceOrder(orderNo, ErpStockBill.TYPE_MAINT_OUT);
     }
 
     /* ==================== 派工（DH-85） ==================== */

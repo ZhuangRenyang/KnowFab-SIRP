@@ -113,6 +113,25 @@ public class ErpSalesController {
     }
 
     /**
+     * 按订单行生成生产工单（销售 ↔ 生产联动）。
+     * <p>
+     * body: {@code { itemId, planQty?, lineCode?, deviceCode?, warehouseId?, materialWhId? }}。
+     * 不传 planQty 按「订货 − 已发货 − 已排产」的剩余量建单；
+     * 超过剩余量会被拒绝，防止同一批货排两遍。
+     * <p>
+     * 落地是<b>草稿工单</b>——排产不该一点就自动开工，仍要走人工下达。
+     */
+    @PostMapping("/orders/{orderNo}/make-work-order")
+    public Map<String, Object> makeWorkOrder(@PathVariable String orderNo,
+                                             @RequestBody(required = false) Map<String, Object> body) {
+        try {
+            return service.makeWorkOrder(orderNo, body == null ? Map.of() : body, operator());
+        } catch (IllegalArgumentException e) {
+            return fail(e.getMessage());
+        }
+    }
+
+    /**
      * 客户退货：数量按净发货校验，生成 SO_RETURN（正数入库）。
      * <p>
      * {@code returnReason} 必填（QUALITY / OTHER）：质量原因的货强制入禁发仓

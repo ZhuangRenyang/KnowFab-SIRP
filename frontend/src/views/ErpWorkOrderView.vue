@@ -84,8 +84,9 @@
               </span>
             </template>
           </el-table-column>
-          <el-table-column :label="t('base.action')" width="110" align="right">
+          <el-table-column :label="t('base.action')" width="200" align="right">
             <template #default="{ row }">
+              <el-button size="small" type="primary" plain @click="openPurchase(row)">{{ t('wo.purchaseBtn') }}</el-button>
               <el-button size="small" @click="openDetail(row.orderNo)">{{ t('wo.detail') }}</el-button>
             </template>
           </el-table-column>
@@ -468,6 +469,31 @@
         <el-button type="primary" :loading="saving" @click="doIssue">{{ t('wo.issueSubmit') }}</el-button>
       </template>
     </el-dialog>
+
+    <!-- 缺料请购：按缺口生成采购订单草稿（缺料看板 → 采购的那条联动） -->
+    <el-dialog v-model="poDlg" :title="t('wo.purchaseTitle')" width="560px" :close-on-click-modal="false">
+      <p class="hint">{{ t('wo.purchaseHint') }}</p>
+      <el-form label-width="110px">
+        <el-form-item :label="t('wo.colMaterial')">
+          <span class="num">{{ poForm.skuCode }}</span>&nbsp;{{ poForm.skuName }}
+        </el-form-item>
+        <el-form-item :label="t('wo.colGap')">
+          <span class="num danger">{{ qty(poForm.gapQty, 2) }}</span>&nbsp;{{ poForm.unit || '' }}
+        </el-form-item>
+        <el-form-item :label="t('wo.purchaseQty')" required>
+          <el-input-number v-model="poForm.qty" :min="0" :precision="2" :step="1" style="width:180px" />
+        </el-form-item>
+        <el-form-item :label="t('wo.purchaseSupplier')" required>
+          <el-select v-model="poForm.supplierId" filterable style="width:300px">
+            <el-option v-for="p in suppliers" :key="p.id" :label="p.name" :value="p.id" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="poDlg = false">{{ t('base.cancel') }}</el-button>
+        <el-button type="primary" :loading="poSaving" @click="submitPurchase">{{ t('wo.purchaseSubmit') }}</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -485,7 +511,7 @@ import {
   type WorkOrderRow,
   type WorkOrderSummary
 } from '../api/workOrder'
-import { skuApi, warehouseApi, type ErpSku, type ErpWarehouse } from '../api/erp'
+import { skuApi, warehouseApi, partnerApi, type ErpSku, type ErpWarehouse, type ErpPartner } from '../api/erp'
 import { lineApi } from '../api/lines'
 import { devicesApi } from '../api/devices'
 import { costApi, type OrderCost } from '../api/cost'
@@ -565,6 +591,63 @@ async function loadShortage() {
     ElMessage.error((e as Error)?.message || t('common.reqFail'))
   } finally {
     sLoading.value = false
+  }
+}
+
+// ---------- 缺料请购（工单 ↔ 采购联动）----------
+
+const poDlg = ref(false)
+const poSaving = ref(false)
+const suppliers = ref<ErpPartner[]>([])
+const poForm = ref({
+  skuId: 0, skuCode: '', skuName: '', unit: '',
+  gapQty: 0, qty: 0, supplierId: null as number | null
+})
+
+async function openPurchase(row: ShortageRow) {
+  poForm.value = {
+    skuId: row.skuId,
+    skuCode: row.skuCode || '',
+    skuName: row.skuName,
+    unit: row.unit || '',
+    gapQty: Number(row.gapQty),
+    qty: Number(row.gapQty),
+    // 记住上次选的供应商：同一批缺料通常找同一家
+    supplierId: poForm.value.supplierId
+  }
+  poDlg.value = true
+  if (!suppliers.value.length) {
+    try { suppliers.value = await partnerApi.list('', 'SUPPLIER') } catch { /* 拉不到就空着，用户能看出来 */ }
+  }
+}
+
+async function submitPurchase() {
+  if (poForm.value.supplierId == null) {
+    ElMessage.warning(t('wo.purchaseNeedSupplier'))
+    return
+  }
+  if (!(poForm.value.qty > 0)) {
+    ElMessage.warning(t('wo.purchaseNeedQty'))
+    return
+  }
+  poSaving.value = true
+  try {
+    const r = await workOrderApi.purchaseForShortage({
+      supplierId: poForm.value.supplierId,
+      items: [{ skuId: poForm.value.skuId, qty: poForm.value.qty }]
+    })
+    if (r.ok) {
+      ElMessage.success(r.message || t('wo.purchaseOk'))
+      poDlg.value = false
+      // 采购单是草稿，缺料不会立刻消失（料还没到），所以这里只是刷新看板
+      await loadShortage()
+    } else {
+      ElMessage.error(r.message || t('wo.purchaseFail'))
+    }
+  } catch (e: unknown) {
+    ElMessage.error((e as Error)?.message || t('wo.purchaseFail'))
+  } finally {
+    poSaving.value = false
   }
 }
 

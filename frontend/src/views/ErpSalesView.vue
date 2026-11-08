@@ -158,7 +158,7 @@
 
         <table class="lines">
           <thead>
-            <tr><th>#</th><th>{{ t('erpSales.thSku') }}</th><th class="r">{{ t('erpSales.thOrdered') }}</th><th class="r">{{ t('erpSales.thShipped') }}</th><th class="r">{{ t('erpSales.thRemaining') }}</th><th class="r">{{ t('erpSales.thPrice') }}</th><th class="r">{{ t('erpSales.thAmount') }}</th></tr>
+            <tr><th>#</th><th>{{ t('erpSales.thSku') }}</th><th class="r">{{ t('erpSales.thOrdered') }}</th><th class="r">{{ t('erpSales.thShipped') }}</th><th class="r">{{ t('erpSales.thRemaining') }}</th><th class="r">{{ t('erpSales.thPrice') }}</th><th class="r">{{ t('erpSales.thAmount') }}</th><th class="r">{{ t('erpSales.thProduce') }}</th></tr>
           </thead>
           <tbody>
             <tr v-for="l in detail.lines" :key="l.itemId">
@@ -169,6 +169,15 @@
               <td class="r num dim">{{ qty(l.remainQty) }}</td>
               <td class="r num dim">{{ l.unitPrice == null ? '--' : money(l.unitPrice) }}</td>
               <td class="r num">{{ l.amount == null ? '--' : money(l.amount) }}</td>
+              <td class="r">
+                <el-button
+                  v-if="canMakeWo && l.remainQty > 0"
+                  size="small" text type="primary"
+                  :loading="woBusy === l.itemId"
+                  @click="makeWo(l)"
+                >{{ t('erpSales.makeWo') }}</el-button>
+                <span v-else class="dim">--</span>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -194,6 +203,34 @@
           <div v-else class="empty">{{ t('erpSales.noShips') }}</div>
         </div>
 
+        <!-- 关联生产工单：客户催单时唯一要回答的问题 -->
+        <div class="sec">
+          <div class="sec-head">{{ t('erpSales.workOrders') }}</div>
+          <table v-if="detail.workOrders && detail.workOrders.length" class="lines">
+            <thead>
+              <tr>
+                <th>{{ t('erpSales.thWoNo') }}</th>
+                <th>{{ t('erpSales.thWoStatus') }}</th>
+                <th>{{ t('erpSales.thSku') }}</th>
+                <th class="r">{{ t('erpSales.thPlan') }}</th>
+                <th class="r">{{ t('erpSales.thDone') }}</th>
+                <th class="r">{{ t('erpSales.thProgress') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="w in detail.workOrders" :key="w.orderNo">
+                <td class="num">{{ w.orderNo }}</td>
+                <td>{{ w.statusLabel }}</td>
+                <td><span class="num">{{ w.productCode }}</span> {{ w.productName }}</td>
+                <td class="r num">{{ qty(w.planQty) }}</td>
+                <td class="r num plus">{{ qty(w.doneQty) }}</td>
+                <td class="r num">{{ w.progress }}%</td>
+              </tr>
+            </tbody>
+          </table>
+          <div v-else class="empty">{{ t('erpSales.noWorkOrders') }}</div>
+        </div>
+
         <div v-if="auth.canWrite" class="d-foot">
           <el-button v-if="detail.order.shippable" type="primary" @click="openShip(detail.order, 'ship')">{{ t('erpSales.ship') }}</el-button>
           <el-button v-if="detail.order.shippedQty > 0" @click="openShip(detail.order, 'return')">{{ t('erpSales.customerReturn') }}</el-button>
@@ -206,13 +243,13 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useErpLabel } from '@/composables/useErpLabel'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, Plus, Refresh, Search } from '@element-plus/icons-vue'
 import { partnerApi, type ErpPartner } from '@/api/erp'
-import { SALES_STATUS_TAG, salesApi, type SalesBillRow, type SalesOrderHead, type SalesOrderLine, type SalesOrderRow, type SalesStats } from '@/api/sales'
+import { SALES_STATUS_TAG, salesApi, type SalesBillRow, type SalesOrderHead, type SalesOrderLine, type SalesOrderRow, type SalesStats, type SalesWorkOrder } from '@/api/sales'
 import { useAuthStore } from '@/stores/auth'
 import { dayText, dt, money, qty } from '@/utils/format'
 import SalesOrderDialog from '@/components/erp/SalesOrderDialog.vue'
@@ -242,7 +279,12 @@ const shipNo = ref('')
 const shipMode = ref<'ship' | 'return'>('ship')
 
 const detailOpen = ref(false)
-const detail = ref<{ order: SalesOrderHead; lines: SalesOrderLine[]; bills: SalesBillRow[] } | null>(null)
+const detail = ref<{
+  order: SalesOrderHead
+  lines: SalesOrderLine[]
+  bills: SalesBillRow[]
+  workOrders: SalesWorkOrder[]
+} | null>(null)
 
 const tagOf = (s: string) => (SALES_STATUS_TAG[s] || 'info') as any
 /** 只有"已确认/部分发货"能发货 */
@@ -323,6 +365,45 @@ async function openDetail(row: { orderNo: string }) {
     detailOpen.value = true
   } catch (e: any) {
     ElMessage.error(e?.message || t('erpSales.detailFailed'))
+  }
+}
+
+// ---------- 销售单 → 生产工单（销售 ↔ 生产联动）----------
+
+/** 只有「已确认 / 部分发货」的订单能排产（与后端校验一致，避免点了才报错） */
+const canMakeWo = computed(() => {
+  const s = detail.value?.order.status
+  return s === 'CONFIRMED' || s === 'PARTIAL'
+})
+/** 正在建单的订单行 id，用于按钮 loading（防连点开出两张工单） */
+const woBusy = ref<number | null>(null)
+
+async function makeWo(l: { itemId: number; skuCode: string; remainQty: number }) {
+  if (!detail.value) return
+  const orderNo = detail.value.order.orderNo
+  try {
+    await ElMessageBox.confirm(
+      t('erpSales.makeWoConfirm', { sku: l.skuCode, qty: qty(l.remainQty) }),
+      t('erpSales.makeWo'),
+      { type: 'info', confirmButtonText: t('common.confirm'), cancelButtonText: t('common.cancel') }
+    )
+  } catch {
+    return // 用户取消
+  }
+  woBusy.value = l.itemId
+  try {
+    const r = await salesApi.makeWorkOrder(orderNo, { itemId: l.itemId })
+    if (r.ok) {
+      ElMessage.success(r.message || t('erpSales.makeWoOk'))
+      // 重新拉详情：新工单会出现在「关联生产工单」里，进度条也能看到
+      await openDetail({ orderNo })
+    } else {
+      ElMessage.error(r.message || t('erpSales.makeWoFail'))
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || t('erpSales.makeWoFail'))
+  } finally {
+    woBusy.value = null
   }
 }
 

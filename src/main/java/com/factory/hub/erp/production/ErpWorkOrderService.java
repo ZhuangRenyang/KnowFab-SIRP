@@ -27,6 +27,7 @@ import com.factory.hub.erp.ErpWarehouseRepository;
 import com.factory.hub.erp.analysis.ErpBom;
 import com.factory.hub.erp.analysis.ErpBomRepository;
 import com.factory.hub.erp.analysis.ErpBomService;
+import com.factory.hub.erp.purchase.ErpPurchaseService;
 import com.factory.hub.erp.stock.ErpStockBill;
 import com.factory.hub.erp.stock.ErpStockBillRepository;
 import com.factory.hub.erp.stock.ErpStockService;
@@ -71,6 +72,7 @@ public class ErpWorkOrderService {
     private final ErpProdLineRepository lineRepo;
     private final ErpWarehouseRepository whRepo;
     private final DeviceService deviceService;
+    private final ErpPurchaseService purchaseService;
 
     /**
      * 设备 → 当前在产工单的路由。
@@ -95,7 +97,8 @@ public class ErpWorkOrderService {
                                ErpSkuRepository skuRepo,
                                ErpProdLineRepository lineRepo,
                                ErpWarehouseRepository whRepo,
-                               DeviceService deviceService) {
+                               DeviceService deviceService,
+                               ErpPurchaseService purchaseService) {
         this.woRepo = woRepo;
         this.womRepo = womRepo;
         this.wooRepo = wooRepo;
@@ -108,6 +111,7 @@ public class ErpWorkOrderService {
         this.lineRepo = lineRepo;
         this.whRepo = whRepo;
         this.deviceService = deviceService;
+        this.purchaseService = purchaseService;
     }
 
     /** 行录入：领料时的一种材料 */
@@ -220,7 +224,14 @@ public class ErpWorkOrderService {
      * 采购看它决定今天补什么货，AI 看它回答「哪张工单会因为缺料停线」。
      * 只算未完工的工单：完工了再缺料已经没有意义（那叫"少领"，是成本核算的事）。
      */
-    public Map<String, Object> shortage() {
+    /**
+     * 缺料明细行（按「工单 + 材料」，缺口大的排前面）。
+     * <p>
+     * 抽成独立方法是为了让「一键请购」与「缺料看板」用<b>同一份口径</b>——
+     * 两处各算一遍的话，某天改了一处的过滤条件（比如返工单算不算），
+     * 就会变成"看板说缺 10、请购按别的数校验"，谁也说不清哪个对。
+     */
+    private List<Map<String, Object>> shortageRows() {
         List<ErpWorkOrder> open = woRepo.findByStatusIn(
                 List.of(ErpWorkOrder.ST_RELEASED, ErpWorkOrder.ST_RUNNING));
         // 返工单<b>不算进缺料看板</b>：它不展开 BOM（返工不重复计料），
@@ -258,10 +269,98 @@ public class ErpWorkOrderService {
         }
         // 缺口大的排前面：最急的先看到
         rows.sort((a, b) -> ((BigDecimal) b.get("gapQty")).compareTo((BigDecimal) a.get("gapQty")));
+        return rows;
+    }
+
+    /** 缺料看板（接口用） */
+    public Map<String, Object> shortage() {
+        List<Map<String, Object>> rows = shortageRows();
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("ok", true);
         out.put("rows", rows);
         out.put("total", rows.size());
+        return out;
+    }
+
+    /**
+     * 缺料一键请购：按当前缺口生成<b>采购订单草稿</b>。
+     * <p>
+     * 为什么必须做这一步：看板只解决「看得见」，采购还得把同样的数据在采购模块重录一遍。
+     * 重录就会漏、就会录错，而且没人会对得上"这次买的到底是补哪张单的缺口"。
+     * <p>
+     * 三条校验（都是防错，不是防坏人）：
+     * <ul>
+     *   <li>请购数量 <b>不得超过当前缺口</b>——超了就是超买，库存会压在那儿</li>
+     *   <li>SKU <b>必须真的在缺料清单里</b>——不接受前端传一个随便的 skuId</li>
+     *   <li>必须选供应商——采购单一开工就得知道跟谁买，草稿也不例外</li>
+     * </ul>
+     * 单价取该 SKU 的<b>采购价</b>，用户可在采购单里改。
+     */
+    public Map<String, Object> purchaseForShortage(Long supplierId,
+                                                   List<Map<String, Object>> items,
+                                                   String operator) {
+        if (supplierId == null) {
+            throw new IllegalArgumentException("请选择供应商");
+        }
+        if (items == null || items.isEmpty()) {
+            throw new IllegalArgumentException("请至少选择一种要请购的材料");
+        }
+        // 用现算的缺口做上限，不信任前端传的数
+        Map<Long, BigDecimal> gapBySku = new LinkedHashMap<>();
+        Map<Long, String> nameBySku = new LinkedHashMap<>();
+        for (Map<String, Object> r : shortageRows()) {
+            Long skuId = longOf(r.get("skuId"));
+            Object gap = r.get("gapQty");
+            if (skuId == null || !(gap instanceof BigDecimal g)) {
+                continue;
+            }
+            gapBySku.merge(skuId, g, BigDecimal::add);
+            nameBySku.put(skuId, String.valueOf(r.get("skuName")));
+        }
+        if (gapBySku.isEmpty()) {
+            throw new IllegalArgumentException("当前没有缺料，不需要请购");
+        }
+        List<Map<String, Object>> lines = new ArrayList<>();
+        for (Map<String, Object> it : items) {
+            Long skuId = longOf(it.get("skuId"));
+            BigDecimal qty = decOf(it.get("qty"));
+            if (skuId == null || qty == null || qty.signum() <= 0) {
+                throw new IllegalArgumentException("请购行缺少商品或数量");
+            }
+            BigDecimal cap = gapBySku.get(skuId);
+            if (cap == null) {
+                throw new IllegalArgumentException("商品 #" + skuId + " 当前不在缺料清单里，不能按缺料请购");
+            }
+            if (qty.compareTo(cap) > 0) {
+                throw new IllegalArgumentException("「" + nameBySku.get(skuId) + "」请购 "
+                        + qty.stripTrailingZeros().toPlainString()
+                        + " 超过当前缺口 " + cap.stripTrailingZeros().toPlainString());
+            }
+            // 库存本来就够的，不该采购。
+            // 缺料看板算的是「未领料量」，不等于「库存不够」——螺栓可能一个都没领，
+            // 但仓库里躺着 4800 个。不查这一眼，请购就会把不需要的东西买回来。
+            BigDecimal onHand = stockService.totalOnHand(skuId);
+            if (onHand.compareTo(cap) >= 0) {
+                throw new IllegalArgumentException("「" + nameBySku.get(skuId) + "」现有 "
+                        + onHand.stripTrailingZeros().toPlainString()
+                        + " 已经覆盖缺口 " + cap.stripTrailingZeros().toPlainString()
+                        + "，不需要采购——先去工单里领料");
+            }
+            ErpSku sku = skuRepo.findById(skuId).orElse(null);
+            Map<String, Object> line = new LinkedHashMap<>();
+            line.put("skuId", skuId);
+            line.put("qty", qty);
+            line.put("unitPrice", sku == null ? null : sku.getPurchasePrice());
+            line.put("remark", "缺料请购");
+            lines.add(line);
+        }
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("supplierId", supplierId);
+        body.put("lines", lines);
+        body.put("remark", "缺料请购（按工单缺口生成）");
+        Map<String, Object> r = purchaseService.create(body, operator);
+        Map<String, Object> out = new LinkedHashMap<>(r);
+        out.put("lineCount", lines.size());
         return out;
     }
 
