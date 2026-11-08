@@ -38,6 +38,18 @@ public record DeviceView(
         Double idealCycleSec,
         /* 主计数器口径 TOTAL / GOOD：决定入库量要不要减不良数 */
         String counterMode,
+        /*
+         * 生产入库联动（DH-44）的四项配置。
+         * <p>
+         * 为什么列表视图也要带这几项：它们决定「这台设备的产出会不会自动变成入库单」，
+         * 是排查「产量涨了但没入库」时的第一现场。以前只有编辑表单（DeviceConfig）返回，
+         * 想确认必须逐台点开表单——现场没法一眼看出是哪台没配。
+         * 只读展示，改动仍走 DeviceUpsert（写入口不变）。
+         */
+        Long prodSkuId,
+        Long prodWhId,
+        Integer prodResetHour,
+        boolean prodAutoStockin,
         Double todayOutput,
         List<PointValue> points
 ) {

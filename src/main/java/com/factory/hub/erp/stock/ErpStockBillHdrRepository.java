@@ -57,6 +57,15 @@ public interface ErpStockBillHdrRepository extends JpaRepository<ErpStockBillHdr
     /** 某类型今日单数 */
     long countByBillTypeAndCreatedAtGreaterThanEqual(String billType, long ts);
 
+    /**
+     * 某类型的有效（未作废）单数。
+     * <p>
+     * 用途单一：单据列表默认把生产入库单藏起来（数量太大，会淹没日常单据），
+     * 但「藏了多少」必须说出来——否则用户看到产量涨了、料也扣了，列表里却没有入库单，
+     * 第一反应是「入库丢了」。有了这个数才能提示「另有 N 张生产入库单未显示」。
+     */
+    long countByBillTypeAndVoidedAtIsNull(String billType);
+
     /** 作废 / 红冲审计：按类型倒序列最近 N 张 */
     List<ErpStockBillHdr> findTop20ByOrderByCreatedAtDesc();
 

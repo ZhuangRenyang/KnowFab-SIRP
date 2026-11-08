@@ -28,7 +28,7 @@ PASS = "123456"
 cj = http.cookiejar.CookieJar()
 opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
 created = {"sku": 0, "warehouse": 0, "partner": 0, "purchase": 0, "sales": 0, "bill": 0,
-           "payment": 0, "line": 0}
+           "payment": 0, "line": 0, "bom": 0}
 skipped = 0
 
 
@@ -149,6 +149,60 @@ def ensure_master():
             fail("往来单位 %s 创建失败：%s" % (code, r.get("message")))
         created["partner"] += 1
         ok("往来单位 %s %s" % (code, name))
+
+
+# ---------------------------------------------------------------- 物料清单（BOM）
+
+# 产品编码 → [(材料编码, 单位用量, 损耗率%), ...]
+#
+# ⚠️ **lossRate 是百分数（0~100）**，后端算式是 qty × (1 + lossRate/100)。
+#    P-101 的 20kg × 1.03 = 20.6kg/件 与 DH-71 的实测记录完全一致；
+#    写成 0.03 会被当成 0.03%（单件 20.006kg），账面上看不出来，只有对账时才发现料少扣了。
+#
+# 除 P-101 有实测依据外，其余是按常规工艺估的演示值——客户应当按自己的工艺改。
+# 本函数只在「该产品还没有 BOM」时写入，所以这里改数字**不会**覆盖客户已维护的 BOM。
+BOMS = [
+    ("P-101", [("M-002", 20, 3), ("M-004", 4, 2)]),   # 箱体铸件 + 装配螺栓
+    ("P-102", [("M-002", 3.5, 3)]),                   # 端盖铸件
+    ("P-103", [("M-001", 2.2, 3)]),                   # 齿轮轴锻件
+    ("P-001", [("M-001", 0.02, 2)]),                  # 冷镦螺栓，损耗很小
+    ("P-002", [("M-001", 1.8, 3)]),                   # 法兰锻件
+]
+
+
+def ensure_bom(s):
+    """给成品配 BOM —— 没有它，工单**下达不了**。
+
+    后端在下达时会按 BOM 展开用料快照；产品没配 BOM 直接拒绝：
+    「这个产品还没配 BOM，无法下达工单」。所以新库灌完演示数据如果缺 BOM，
+    演示流程走到「建工单 → 下达」就断在那里（这是本项目最容易踩的一步）。
+
+    幂等策略：**只在还没有 BOM 时写入**。已经配过的（包括客户按自己工艺改过的）
+    一律跳过 —— 演示数据不能覆盖人工维护的主数据。
+    """
+    global skipped
+    print("\n[物料清单]")
+    for pcode, lines in BOMS:
+        pid = s.get(pcode)
+        if not pid:
+            fail("商品 %s 不存在，BOM 无法配置" % pcode)
+            continue
+        missing = [m for m, _, _ in lines if m not in s]
+        if missing:
+            fail("%s 的 BOM 引用了不存在的材料：%s" % (pcode, ", ".join(missing)))
+            continue
+        st, r = call("GET", "/api/erp/bom?productSkuId=%d" % pid)
+        if st == 200 and r.get("hasBom"):
+            skipped += 1
+            continue
+        body = {"lines": [{"materialSkuId": s[m], "qty": q, "lossRate": lr}
+                          for m, q, lr in lines]}
+        st, r = call("POST", "/api/erp/bom?productSkuId=%d" % pid, body)
+        if not r.get("ok"):
+            fail("%s 的 BOM 保存失败：%s" % (pcode, r.get("message")))
+            continue
+        created["bom"] += 1
+        ok("%s 的 BOM（%d 种材料）" % (pcode, len(lines)))
 
 
 # ---------------------------------------------------------------- 索引
@@ -747,6 +801,7 @@ def main():
     login()
     ensure_master()
     s, w, p = ids()
+    ensure_bom(s)              # 属于主数据：缺它工单下达不了，演示会断在建单那一步
     purchase_flow(s, w, p)
     opening_stock(s, w)        # 备货要在销售流程前面：销售要从成品仓出货
     sales_flow(s, w, p)
@@ -756,9 +811,9 @@ def main():
     finance_flow(s, w, p)
     report(s, w)
 
-    print("\n======== 播种完成：新增 商品 %d / 仓库 %d / 单位 %d / 采购单 %d / 销售单 %d / 库存单 %d / 收付款 %d / 产线 %d，跳过已存在 %d ========"
+    print("\n======== 播种完成：新增 商品 %d / 仓库 %d / 单位 %d / 物料清单 %d / 采购单 %d / 销售单 %d / 库存单 %d / 收付款 %d / 产线 %d，跳过已存在 %d ========"
           % (created["sku"], created["warehouse"], created["partner"],
-             created["purchase"], created["sales"], created["bill"],
+             created["bom"], created["purchase"], created["sales"], created["bill"],
              created.get("payment", 0), created.get("line", 0), skipped))
 
 

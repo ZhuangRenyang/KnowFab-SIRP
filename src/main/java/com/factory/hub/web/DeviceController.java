@@ -517,6 +517,7 @@ public class DeviceController {
                 rt.successCount, rt.failCount, rt.lastCostMs,
                 d.getProdLineId(), lineName, d.getLineSeq(),
                 d.getDailyTarget(), d.getIdealCycleSec(), d.getCounterMode(),
+                d.getProdSkuId(), d.getProdWhId(), d.getProdResetHour(), d.isProdAutoStockin(),
                 Math.round(todayOutput * 100d) / 100d, points);
     }
 }

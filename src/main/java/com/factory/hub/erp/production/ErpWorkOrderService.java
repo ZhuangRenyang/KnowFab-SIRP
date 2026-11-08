@@ -553,8 +553,13 @@ public class ErpWorkOrderService {
                     + statusLabel(o.getStatus()));
         }
         if (o.isAutoBackflush() && ErpWorkOrder.ST_RUNNING.equals(o.getStatus())) {
-            throw new IllegalArgumentException("这张工单开着「产出自动反冲」，产出时已按 BOM 扣过料。"
-                    + "再手工领料会重复扣。如果确实要手工领料，请先在工单上关掉自动反冲");
+            // 文案顺序很重要：先说「正常该怎么走」（什么都不用做），再说「什么情况下才需要改配置」。
+            // 旧文案开口就是「请先关掉自动反冲」，把用户直接引去改配置——而反冲才是默认正路，
+            // 关掉它会让产出一分料都不扣，账面库存虚高，比"重复扣"更难发现。
+            throw new IllegalArgumentException("这张工单开着「产出自动反冲」：产出多少就按 BOM 扣多少，"
+                    + "料会在产出时自动扣，不需要手工领料。"
+                    + "确实要走「先领料、后生产」的方式，请在工单上关掉自动反冲再领——"
+                    + "两者只能选一个，同时开会把同一批料扣两次");
         }
         if (lines == null || lines.isEmpty()) {
             throw new IllegalArgumentException("请选择要领的材料和数量");

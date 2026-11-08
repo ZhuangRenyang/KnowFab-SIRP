@@ -49,6 +49,21 @@
       </div>
     </div>
 
+    <!-- 生产入库联动（DH-44）：只读展示，改配置走「编辑配置」表单。
+         放这里是为了排查「产量涨了却没入库」时能一眼看出这台设备的开关与绑定状态——
+         以前这些字段只有编辑表单返回，得逐台点开才能确认是哪台没配。 -->
+    <div class="prod-link">
+      <span class="pl-title">{{ t('device.prodLink') }}</span>
+      <span class="pl-item" :class="d.prodAutoStockin ? 'on' : 'off'">
+        {{ d.prodAutoStockin ? t('device.prodLinkOn') : t('device.prodLinkOff') }}
+      </span>
+      <span class="pl-item" :class="{ off: !d.prodSkuId }">
+        {{ d.prodSkuId ? t('device.prodSkuBound') : t('device.prodSkuUnbound') }}
+      </span>
+      <span class="pl-item">{{ t('device.prodResetHour', { h: d.prodResetHour ?? 0 }) }}</span>
+    </div>
+    <div v-if="!d.prodAutoStockin && !d.prodSkuId" class="pl-hint">{{ t('device.prodLinkHint') }}</div>
+
     <!-- 远程控制：只显示点表里显式勾了「可写」的点位（默认只读，没配就看不到这块） -->
     <div v-if="writablePoints.length" class="ctrl">
       <div class="ctrl-head">
@@ -205,6 +220,17 @@ async function toggleKey(enabled: boolean) {
 .pt span { font-size: var(--text-2xs); color: var(--muted); }
 .pt b { font-size: var(--text-sm); font-weight: 500; }
 .pt.bad b { color: var(--muted); }
+
+/* 生产入库联动（只读状态行） */
+.prod-link {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-top: var(--space-3); padding: 8px 12px; border-radius: var(--radius-md);
+  background: var(--surface-2); font-size: var(--text-xs); color: var(--fg-2);
+}
+.pl-title { color: var(--muted); }
+.pl-item.on { color: var(--ok, var(--fg-2)); }
+.pl-item.off { color: var(--muted); }
+.pl-hint { margin-top: 4px; font-size: var(--text-2xs); color: var(--muted); }
 
 /* 远程控制区 */
 .ctrl {

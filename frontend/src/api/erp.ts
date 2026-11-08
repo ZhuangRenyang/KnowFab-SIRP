@@ -240,7 +240,11 @@ export const stockApi = {
     if (p.kw && p.kw.trim()) qs.set('kw', p.kw.trim())
     qs.set('page', String(p.page || 1))
     qs.set('size', String(p.size || 20))
-    return http.get<{ ok: boolean; total: number; page: number; size: number; rows: StockBillRow[] }>(
+    return http.get<{
+      ok: boolean; total: number; page: number; size: number; rows: StockBillRow[]
+      /* 被默认隐藏的生产入库单数（仅在 withProd=false 且未按 PROD_IN 筛选时 > 0）*/
+      prodHidden?: number
+    }>(
       `/api/erp/stock/bills?${qs.toString()}`)
   },
   billDetail: (billNo: string) =>

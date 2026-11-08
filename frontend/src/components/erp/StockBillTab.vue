@@ -30,6 +30,12 @@
       <el-button v-if="auth.canWrite" type="primary" :icon="Plus" @click="emit('new-bill')">{{ t('erpBill.newBill') }}</el-button>
     </div>
 
+    <!-- 生产入库单默认不在此列表（数量大，会淹没日常单据）。但「藏了多少」必须说出来，
+         否则用户看到产量涨了、料也扣了，却没有入库单，只会判断成「入库丢了」 -->
+    <div v-if="prodHidden > 0" class="prod-hint">
+      {{ t('erpBill.prodHiddenHint', { n: prodHidden }) }}
+    </div>
+
     <div class="trend">
       <div class="trend-head">
         <span>{{ t('erpBill.chartTitle') }}</span>
@@ -186,6 +192,8 @@ const type = ref('')
 const range = ref<[string, string] | null>(null)
 const kw = ref('')
 const withProd = ref(false)
+/* 被默认过滤掉的生产入库单数：>0 时在列表上方明说，避免「产量涨了但没入库」的误判 */
+const prodHidden = ref(0)
 const loading = ref(false)
 const types = ref<{ value: string; label: string }[]>([])
 
@@ -225,6 +233,7 @@ async function load() {
     })
     rows.value = r.rows || []
     total.value = r.total || 0
+    prodHidden.value = r.prodHidden || 0
   } catch (e: any) {
     ElMessage.error(e?.message || t('erpBill.loadFailed'))
   } finally {
@@ -326,6 +335,13 @@ defineExpose({ load })
 <style scoped>
 .tab-toolbar { display: flex; gap: 10px; margin-bottom: var(--space-3); flex-wrap: wrap; align-items: center; }
 .tab-toolbar .spacer { flex: 1; }
+/* 「另有 N 张生产入库单未显示」——提示而不是错误，用中性色，不用告警色 */
+.prod-hint {
+  margin-bottom: var(--space-3); padding: 6px 12px;
+  background: var(--surface-2); border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs); color: var(--fg-2);
+}
 .trend {
   background: var(--surface-2); border: 1px solid var(--border-soft);
   border-radius: var(--radius-md); padding: var(--space-3) var(--space-4) var(--space-2);
