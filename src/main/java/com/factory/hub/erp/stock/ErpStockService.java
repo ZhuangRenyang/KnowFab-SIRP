@@ -792,9 +792,12 @@ public class ErpStockService {
         out.put("rows", rows);
         // 生产入库单被默认隐藏时，把「藏了多少张」明确告诉前端。
         // 不这么做的话，用户看到产量涨了、料也扣了，列表里却一张入库单都没有（因为默认过滤），
-        // 只会判断成「入库丢了」。刻意只在「确实过滤了」的时候带这个字段：
-        // withProd=true 或显式按 PROD_IN 筛选时谈不上隐藏，带出去反而会误导。
-        boolean prodFiltered = !withProd && !ErpStockBill.TYPE_PROD_IN.equals(type);
+        // 只会判断成「入库丢了」。
+        // 触发条件刻意收紧到「没有按类型筛选」这一种情况：
+        //   · withProd=true 或按 PROD_IN 筛选 ⇒ 没隐藏，谈不上提示；
+        //   · 按 PO_IN / SO_OUT 等其它类型筛选 ⇒ 用户根本没在找生产入库，
+        //     这时弹「另有 3519 张生产入库单」纯属噪音。
+        boolean prodFiltered = !withProd && (type == null || type.isBlank());
         out.put("prodHidden", prodFiltered
                 ? hdrRepo.countByBillTypeAndVoidedAtIsNull(ErpStockBill.TYPE_PROD_IN)
                 : 0L);
